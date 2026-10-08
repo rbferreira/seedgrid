@@ -1,0 +1,9 @@
+# Runtime image WITHOUT RUN steps: also builds where `docker build` with RUN fails
+# (e.g., Docker inside a system container with AppArmor).
+#
+# The binary must be compiled beforehand (scripts/build-controller.sh) in bin/.
+# On a standard Docker host the default multi-stage Dockerfile produces the same result.
+FROM gcr.io/distroless/static:nonroot
+COPY bin/seedgrid-controller /usr/local/bin/seedgrid-controller
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/seedgrid-controller"]

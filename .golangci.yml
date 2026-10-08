@@ -1,0 +1,23 @@
+# SeedGrid — golangci-lint configuration.
+# Used by CI (.github/workflows/ci.yml) in the control-plane and agent jobs.
+# Documented in docs/21 - Coding Standards.md.
+
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+
+  settings:
+    gosec:
+      excludes:
+        # G104: audit errors (already covered by errcheck).
+        - G104
+        # G404: use of math/rand (non-cryptographic) — acceptable for seeds
+        # non-cryptographic (e.g., round-robin node selection).
+        - G404

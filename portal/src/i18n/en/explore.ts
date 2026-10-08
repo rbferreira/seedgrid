@@ -1,0 +1,66 @@
+import type { Catalog } from "../types";
+
+export const explore: Catalog["explore"] = {
+  explore: {
+    title: "Catalog",
+    description: "Tracker showcase with poster, Portuguese title and basic info. The \"already have\" match is by name (approximate); duplicates are blocked on download. Metadata comes from TMDB (movie/series), IGDB (game) and Open Library (book/audiobook) — when the provider has no key, the card falls back to simple mode.",
+    noIntegration: "No tracker with API integration. Register one (source + token) in your",
+    profileLink: "Profile",
+    confirmDuplicate: "Download a second copy anyway (on another Node)?",
+    loadMore: "Load more",
+    error: {
+      listFailed: "Failed to list catalog",
+      seedFailed: "Failed to download/seed",
+    },
+    search: {
+      placeholder: "🔎 Search tracker (Enter)…",
+      buttonTitle: "Search tracker",
+      button: "Search",
+    },
+    filters: {
+      tracker: "Tracker",
+      typeTitle: "Media type",
+      allTypes: "All types",
+      sizeTitle: "Minimum size",
+      anySize: "Any size",
+      minSeedsPlaceholder: "min. seeds",
+      minSeedsTitle: "Minimum seeds",
+      statusTitle: "Cluster status",
+      statusAll: "All",
+      statusAvail: "Available only",
+      statusHave: "In cluster only",
+      clear: "clear filters",
+    },
+    stats: {
+      searchPrefix: "search \"{query}\"",
+      count: "{shown} of {total} loaded",
+    },
+    empty: {
+      catalog: "Nothing in the catalog.",
+      filters: "No items match the filters.",
+    },
+    media: {
+      movie: "Movie",
+      tv: "Series",
+      game: "Game",
+      book: "Book",
+      audiobook: "Audiobook",
+      other: "Other",
+      item: "Item",
+      moviePlural: "Movies",
+      tvPlural: "Series",
+      gamePlural: "Games",
+      bookPlural: "Books",
+      audiobookPlural: "Audiobooks",
+    },
+    card: {
+      noPoster: "No poster",
+      openTracker: "Open in tracker",
+      byAuthor: "by {author}",
+      inCluster: "in cluster",
+      seedButton: "Download & Seed",
+      season: "Season {season}",
+      seasonEpisode: "Season {season} · Ep. {episode}",
+    },
+  },
+};

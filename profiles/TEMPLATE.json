@@ -1,0 +1,91 @@
+{
+  "format": "seedgrid.tracker-profile",
+  "site": {
+    "name": "Example Tracker",
+    "host": "tracker.example"
+  },
+  "family": "unit3d",
+  "schema_version": 1,
+  "taxonomy": {
+    "category": [
+      {
+        "id": 1,
+        "name": "Movies",
+        "kind": "movie"
+      },
+      {
+        "id": 2,
+        "name": "TV",
+        "kind": "tv"
+      },
+      {
+        "id": 3,
+        "name": "Games",
+        "kind": "game"
+      },
+      {
+        "id": 4,
+        "name": "Music"
+      }
+    ],
+    "resolution": [
+      {
+        "id": 1,
+        "name": "2160p"
+      },
+      {
+        "id": 2,
+        "name": "1080p"
+      },
+      {
+        "id": 3,
+        "name": "720p"
+      }
+    ],
+    "type": [
+      {
+        "id": 1,
+        "name": "Full Disc"
+      },
+      {
+        "id": 2,
+        "name": "Remux"
+      },
+      {
+        "id": 3,
+        "name": "Encode"
+      },
+      {
+        "id": 4,
+        "name": "WEB-DL"
+      }
+    ]
+  },
+  "description": {
+    "media_blocks": [
+      "poster",
+      "synopsis",
+      "tags",
+      "screenshots",
+      "mediainfo"
+    ],
+    "game_blocks": [
+      "cover",
+      "title",
+      "about",
+      "genres",
+      "platforms"
+    ],
+    "media_info_tag": "mediainfo",
+    "language": "en"
+  },
+  "image_host": {
+    "name": "Example image host",
+    "upload_url": "https://img.tracker.example/api/upload",
+    "file_field": "image",
+    "auth_header": "X-API-Key",
+    "auth_prefix": "",
+    "url_path": "data.url",
+    "thumbnail_path": "data.thumb"
+  }
+}

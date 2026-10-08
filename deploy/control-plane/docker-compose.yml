@@ -1,0 +1,110 @@
+# SeedGrid — Control Plane (V1 / MVP)
+# Starts PostgreSQL 17 + the Control Plane service (seedgrid-controller).
+# Observability (Prometheus/Grafana/Loki) and Traefik are added in later phases.
+#
+# Usage:
+#   cp .env.example .env   # and adjust the values
+#   docker compose up -d --build
+
+name: seedgrid
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: seedgrid-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-seedgrid}
+      POSTGRES_USER: ${POSTGRES_USER:-seedgrid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - seedgrid-core
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seedgrid} -d ${POSTGRES_DB:-seedgrid}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Port exposed only locally for debugging; the application accesses it via the internal network.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  controller:
+    build:
+      context: ../../control-plane
+      dockerfile: Dockerfile
+      # Binary version (ADR-024). Compose doesn't run git; to inject the actual
+      # version, export VERSION before the build:  VERSION=$(../../scripts/version.sh) docker compose up -d --build
+      # (The scripts/build-controller.sh, used by the bootstrap, already derives it on its own.)
+      args:
+        VERSION: ${VERSION:-dev}
+    image: seedgrid/controller:dev
+    container_name: seedgrid-controller
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SEEDGRID_DATABASE_URL: postgres://${POSTGRES_USER:-seedgrid}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-seedgrid}?sslmode=disable
+      SEEDGRID_HTTP_ADDR: ":8080"
+      SEEDGRID_LOG_LEVEL: ${SEEDGRID_LOG_LEVEL:-info}
+      SEEDGRID_AGENT_REGISTRATION_TOKEN: ${SEEDGRID_AGENT_REGISTRATION_TOKEN:?set the Agent registration token in .env}
+      SEEDGRID_ADMIN_USERNAME: ${SEEDGRID_ADMIN_USERNAME:-admin}
+      SEEDGRID_ADMIN_PASSWORD: ${SEEDGRID_ADMIN_PASSWORD:?set the initial admin password in .env}
+      # Internal webhooks (#116). Without this line the token from .env never reaches the process,
+      # and the middleware, with an empty token, leaves /integrations/* open.
+      SEEDGRID_INTEGRATION_TOKEN: ${SEEDGRID_INTEGRATION_TOKEN:-}
+      # Tunables (have defaults in the code; passed here so they can be adjusted in .env).
+      SEEDGRID_ALERT_WORKER_INTERVAL: ${SEEDGRID_ALERT_WORKER_INTERVAL:-30s}
+      SEEDGRID_NODE_OFFLINE_AFTER: ${SEEDGRID_NODE_OFFLINE_AFTER:-90s}
+      SEEDGRID_DISK_IO_SATURATED_PCT: ${SEEDGRID_DISK_IO_SATURATED_PCT:-90}
+      SEEDGRID_SAMPLE_RETENTION: ${SEEDGRID_SAMPLE_RETENTION:-168h}
+      # Download admission controller (#21 / ADR-021).
+      SEEDGRID_ADMISSION_INTERVAL: ${SEEDGRID_ADMISSION_INTERVAL:-20s}
+      SEEDGRID_MAX_CLUSTER_DOWNLOADS: ${SEEDGRID_MAX_CLUSTER_DOWNLOADS:-0}
+      SEEDGRID_DL_SLOT_LIMIT_TTL: ${SEEDGRID_DL_SLOT_LIMIT_TTL:-6h}
+      # Rotation by healthy rate (#22): active below MIN_DL_RATE (bytes/s) for
+      # SLOW_GRACE yields the slot; rotated stays SLOW_COOLDOWN out of the queue. 0 disables.
+      SEEDGRID_ADMISSION_MIN_DL_RATE: ${SEEDGRID_ADMISSION_MIN_DL_RATE:-51200}
+      SEEDGRID_ADMISSION_SLOW_GRACE: ${SEEDGRID_ADMISSION_SLOW_GRACE:-5m}
+      SEEDGRID_ADMISSION_SLOW_COOLDOWN: ${SEEDGRID_ADMISSION_SLOW_COOLDOWN:-10m}
+      # Peer-aware eligibility + dead torrent rotation (ADR-021 evolution):
+      # 0 seeds AND 0 peers for DEAD_GRACE → yields the slot and goes to the end of the queue (DEAD_COOLDOWN). 0 disables.
+      SEEDGRID_ADMISSION_DEAD_GRACE: ${SEEDGRID_ADMISSION_DEAD_GRACE:-3m}
+      SEEDGRID_ADMISSION_DEAD_COOLDOWN: ${SEEDGRID_ADMISSION_DEAD_COOLDOWN:-30m}
+      SEEDGRID_PROMETHEUS_URL: ${SEEDGRID_PROMETHEUS_URL:-http://seedgrid-prometheus:9090}
+      # Auto-registration in Prometheus (ADR-017): the CP writes the targets to this file
+      # (shared volume with Prometheus, which does file_sd from this path).
+      SEEDGRID_PROM_TARGETS_FILE: /targets/nodes.json
+      # TMDB (ADR-020): enriches the UNIT3D tracker publication with tmdb/imdb/tvdb.
+      # Empty disables enrichment (publication proceeds without the IDs).
+      SEEDGRID_TMDB_API_KEY: ${SEEDGRID_TMDB_API_KEY:-}
+      # IGDB (#17): enriches the GAMES/ROMs publication (igdb_id + cover + synopsis).
+      # Twitch App (client credentials). Empty disables game search.
+      SEEDGRID_IGDB_CLIENT_ID: ${SEEDGRID_IGDB_CLIENT_ID:-}
+      SEEDGRID_IGDB_CLIENT_SECRET: ${SEEDGRID_IGDB_CLIENT_SECRET:-}
+    volumes:
+      - prom-targets:/targets
+    networks:
+      - seedgrid-core
+    # Published ONLY on loopback (M2/#11): the ones that need the API are the Portal (nginx, via the
+    # internal seedgrid-core network), Prometheus (same, scrape of seedgrid-controller:8080)
+    # and the Agents — and these now talk via nginx on port 80. On the LAN 8080 served
+    # /metrics without authentication (M5/#76); outside it, the mapping here only serves
+    # curl/scripts INSIDE the Control Plane machine itself.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+networks:
+  seedgrid-core:
+    name: seedgrid-core
+
+volumes:
+  postgres-data:
+    name: seedgrid-postgres-data
+  # Shared with Prometheus (deploy/observability) — external to exist in
+  # both compose projects. Create once: docker volume create seedgrid-prom-targets
+  prom-targets:
+    name: seedgrid-prom-targets
+    external: true

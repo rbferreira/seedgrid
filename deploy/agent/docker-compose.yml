@@ -1,0 +1,72 @@
+# SeedGrid Seed Node — Torrent Engine (qBittorrent).
+# The SeedGrid Agent runs on the host (systemd) and talks to qBittorrent via the WebUI API
+# at 127.0.0.1:8080. Torrent data in /data.
+#
+# Usage:
+#   docker compose up -d
+
+name: seedgrid-node
+
+services:
+  # The service KEY remains `qbittorrent` (it's the image it runs); the NAME of the
+  # container is engine-agnostic. The Agent looks for exactly this name to report the
+  # Engine's uptime (SEEDGRID_ENGINE_CONTAINER, default `seedgrid-engine`) — changing one
+  # without the other leaves `engine_started_at` NULL (#146). Do not rename the key: on a Node that
+  # is already running, compose will treat the old container as orphaned and leave it up
+  # alongside the new one, competing for the same ports (host networking).
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: seedgrid-engine
+    restart: unless-stopped
+    # network_mode: host — the Node is behind CGNAT (no public IPv4); inbound connectivity
+    # comes from IPv6, which Docker DOES NOT expose to the container in bridge mode. With
+    # host networking qBt inherits the host's global IPv6, announces v6 to the tracker, and is
+    # reachable at [v6]:<BT-port>. The Agent talks to qBt at 127.0.0.1:8080 (doesn't use
+    # service names), so host net doesn't break anything; node-exporter already uses this
+    # mode. No `ports:` — host net binds WebUI 8080 and the BT port (SEEDGRID_ENGINE_BT_PORT,
+    # set by the Agent) directly to the host interfaces. The operator allows inbound IPv6 on the
+    # BT port in the router's firewall (v6 has no NAT/port-forward, but blocks inbound
+    # by default). See ADR-034. Prerequisite: host with accept_ra=2 (IPv6 SLAAC).
+    network_mode: host
+    environment:
+      PUID: "0"
+      PGID: "0"
+      TZ: UTC
+      WEBUI_PORT: "8080"
+    volumes:
+      - ./qbt-config:/config
+      # Torrent data. LONG syntax on purpose: the short one (`/data:/data`) mounts with
+      # `rprivate` propagation, and a disk mounted at /data on the host AFTER the Engine starts
+      # doesn't propagate into the container — the Engine kept writing to the old path
+      # (system disk) until someone recreated it (#143). With `rslave` the new mount
+      # appears by itself. What `rslave` DOES NOT do: remove already open files from the Engine on the
+      # old disk (which is why seedgrid-storage-reattach restarts the Engine when the disk
+      # comes back) nor bring into a CT a disk that the hypervisor mounts later.
+      #
+      # `rslave` requires the mount containing /data to be shared or slave (the default on
+      # any host with systemd). If it is `private`, Docker REFUSES to create the container —
+      # it's not a no-op, it's a failure. The bootstrap detects this and writes
+      # SEEDGRID_DATA_PROPAGATION=rprivate in this directory's .env (the old behavior,
+      # with a warning); the operator can also set it manually. See docs/06 - Storage.md §35.
+      - type: bind
+        source: /data
+        target: /data
+        bind:
+          propagation: ${SEEDGRID_DATA_PROPAGATION:-rslave}
+
+  # Seed Node hardware/OS metrics (scraped by Prometheus at :9100).
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: seedgrid-node-exporter
+    restart: unless-stopped
+    # procfs/sysfs point to the host's own /proc. When the host itself is a
+    # system container with virtualized /proc, without this node-exporter reads the physical
+    # machine's /proc and all containers on it report identical metrics.
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    network_mode: host
+    pid: host
+    volumes:
+      - "/:/host:ro,rslave"

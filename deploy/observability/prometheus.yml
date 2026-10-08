@@ -1,0 +1,36 @@
+# SeedGrid — Prometheus configuration (Monitoring.md).
+# Node Exporter listens on the seedgrid-core network gateway (172.18.0.1),
+# accessible by Prometheus but unreachable from the LAN.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["seedgrid-alertmanager:9093"]
+
+scrape_configs:
+  # Control Plane: Cluster metrics (seedgrid_*) + Go runtime.
+  - job_name: seedgrid-controller
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["seedgrid-controller:8080"]
+
+  # node-exporter on each Seed Node/host (hardware/OS metrics).
+  # The Control Plane host (113) is fixed infra → static. Seed Nodes are
+  # discovered via file_sd: the CP writes nodes.json (ADR-017) and Prometheus
+  # reloads automatically — a new Node appears without editing this config.
+  - job_name: node
+    static_configs:
+      - targets: ["172.18.0.1:9100"]
+        labels: { instance: seedgrid-controller }
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/nodes.json"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -1,0 +1,1195 @@
+[
+  {
+    "kind": "alert",
+    "code": "DISK_IO_SATURATED",
+    "payload": [
+      "hostname",
+      "util_pct"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_DISK_FULL",
+    "payload": [
+      "hostname",
+      "projected_free_bytes",
+      "min_free_bytes"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_FIREWALLED",
+    "payload": [
+      "hostname",
+      "public_ipv6",
+      "bt_port",
+      "connectable_since"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_INBOUND_SILENT",
+    "payload": [
+      "hostname",
+      "public_ipv6",
+      "bt_port",
+      "last_incoming_at",
+      "demand_torrents",
+      "demand_leechers",
+      "demand_seeds"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_IPV6_CHANGED",
+    "payload": [
+      "hostname",
+      "previous_ipv6",
+      "current_ipv6",
+      "bt_port"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_OFFLINE",
+    "payload": [
+      "hostname"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NODE_STORAGE",
+    "payload": [
+      "hostname",
+      "detail"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "STORAGE_RECOVERY_FAILED",
+    "payload": [
+      "hostname",
+      "step",
+      "attempt"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "DiskSpaceLow",
+    "payload": [
+      "instance"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "HighMemory",
+    "payload": [
+      "instance"
+    ]
+  },
+  {
+    "kind": "alert",
+    "code": "NodeExporterDown",
+    "payload": [
+      "instance"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "AGENT_UPDATE",
+    "payload": [
+      "hostname",
+      "from",
+      "to"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "ENGINE_RESTART",
+    "payload": [
+      "hostname"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "NODE_CONFIG_SEEDED",
+    "payload": [
+      "hostname",
+      "overrides"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "NODE_DELETED",
+    "payload": [
+      "hostname",
+      "force",
+      "torrents_removed"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "NODE_REGISTERED",
+    "payload": [
+      "hostname",
+      "agent_version",
+      "name_dropped"
+    ],
+    "variant": "name_dropped",
+    "variants": [
+      "false",
+      "true"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "STORAGE_RECOVERY",
+    "payload": [
+      "hostname",
+      "step",
+      "attempt"
+    ],
+    "variant": "step",
+    "variants": [
+      "start",
+      "reattach",
+      "reboot",
+      "verify",
+      "success",
+      "abort"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_CREATED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname",
+      "origin"
+    ],
+    "variant": "origin",
+    "variants": [
+      "created",
+      "scheduled"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_MIGRATED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname",
+      "source_hostname"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_MIGRATION_FAILED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname",
+      "cancelled"
+    ],
+    "variant": "cancelled",
+    "variants": [
+      "false",
+      "true"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_MIGRATION_STARTED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname",
+      "dest_hostname"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_PAUSED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_PUBLISHED_EXTERNAL",
+    "payload": [
+      "tracker",
+      "name"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_RECHECK",
+    "payload": [
+      "hash",
+      "name",
+      "hostname"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_REMOVED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname",
+      "reason"
+    ],
+    "variant": "reason",
+    "variants": [
+      "operator",
+      "inventory_reconcile"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_RESEEDED",
+    "payload": [
+      "name",
+      "hostname",
+      "old_hash",
+      "new_hash"
+    ]
+  },
+  {
+    "kind": "event",
+    "code": "TORRENT_RESUMED",
+    "payload": [
+      "hash",
+      "name",
+      "hostname"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "admission_hold",
+    "payload": [
+      "reason_code"
+    ],
+    "variant": "reason_code",
+    "variants": [
+      "cap",
+      "slow",
+      "dead",
+      "manual_pause_adopted"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "admission_resume",
+    "payload": []
+  },
+  {
+    "kind": "activity",
+    "code": "downloading",
+    "payload": [
+      "hostname"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "node_blocked",
+    "payload": [
+      "nodes",
+      "reason_code"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "scheduled",
+    "payload": [
+      "reason_code",
+      "score",
+      "candidates"
+    ],
+    "variant": "reason_code",
+    "variants": [
+      "best_health",
+      "best_health_with_space"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "screenshot_host_failed",
+    "payload": [
+      "host",
+      "reason",
+      "reason_code"
+    ],
+    "variant": "reason_code",
+    "variants": [
+      "key_mismatch",
+      "redirect",
+      "timeout",
+      "connect",
+      "no_url",
+      "invalid_url",
+      "http_status",
+      "other"
+    ]
+  },
+  {
+    "kind": "activity",
+    "code": "seeding",
+    "payload": [
+      "hostname",
+      "size_bytes"
+    ]
+  },
+  {
+    "kind": "error",
+    "code": "agent_artifacts_url_missing",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "agent_update_unavailable",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "already_current",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "already_migrating",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "browse_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "command_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "db_unavailable",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "dest_no_space",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "dest_not_eligible",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "discover_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "display_name_taken",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "download_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "duplicate_name",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "fetch_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "forbidden",
+    "payload": [
+      "permission"
+    ]
+  },
+  {
+    "kind": "error",
+    "code": "gate_locked",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "igdb_disabled",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "igdb_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "internal_error",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_announce",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_api_url",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_body",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_display_name",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_input",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_mode",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_profile",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_request",
+    "payload": [],
+    "generic": true
+  },
+  {
+    "kind": "error",
+    "code": "invalid_ticket",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "invalid_value",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "last_admin",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "manifest_error",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "metrics_unavailable",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "migration_already_cancelled",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "migration_finished",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "migration_in_flight",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "migration_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "no_binary",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "no_eligible_node",
+    "payload": [
+      "nodes"
+    ]
+  },
+  {
+    "kind": "error",
+    "code": "no_hash",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "no_node_with_space",
+    "payload": [
+      "need_bytes",
+      "min_free_bytes",
+      "best_free_bytes"
+    ]
+  },
+  {
+    "kind": "error",
+    "code": "no_torrent_file",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "node_config_unavailable",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "node_has_torrents",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "node_not_eligible",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "node_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "not_per_node",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "notify_channel_not_configured",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "notify_no_channel",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "notify_unavailable",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "payload_too_large",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "preview_stale",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "profile_without_image_host",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "prometheus_error",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "publish_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "reset_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "same_node",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "screenshots_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "send_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "setting_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "source_no_endpoint",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "torrent_file_missing",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "torrent_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "torrent_not_on_node",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "tracker_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "tracker_upload_failed",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "tracker_without_api",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "unauthorized",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "unknown_arch",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "unknown_metric",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "unsupported_family",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "user_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "weak_password",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "wrong_password",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "cluster_mode_changed",
+    "payload": [
+      "mode"
+    ],
+    "variant": "mode",
+    "variants": [
+      "full_auto",
+      "flex"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "enroll_token_created",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "login",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "login_failed",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "migration_cancelled",
+    "payload": [
+      "name",
+      "source",
+      "dest"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "node_drained",
+    "payload": [
+      "source",
+      "count",
+      "dest"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "node_mode_changed",
+    "payload": [
+      "mode"
+    ],
+    "variant": "mode",
+    "variants": [
+      "sg",
+      "manual"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "node_override_cleared",
+    "payload": [
+      "key",
+      "label",
+      "node",
+      "had_before",
+      "before",
+      "effective"
+    ],
+    "variant": "had_before",
+    "variants": [
+      "false",
+      "true"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "node_override_set",
+    "payload": [
+      "key",
+      "label",
+      "node",
+      "had_before",
+      "value",
+      "before",
+      "effective"
+    ],
+    "variant": "had_before",
+    "variants": [
+      "false",
+      "true"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "node_renamed",
+    "payload": [
+      "change",
+      "hostname",
+      "before",
+      "after"
+    ],
+    "variant": "change",
+    "variants": [
+      "none",
+      "removed",
+      "set",
+      "renamed"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "notify_test",
+    "payload": [
+      "channel"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "notify_test_all",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_cluster_mode",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_description_edit",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_description_reset",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_download_ticket",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_engine_restart",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_enroll_token",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_image_host_edit",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_image_host_key_remove",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_image_host_key_set",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_image_host_remove",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_migration_cancel",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_node_command",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_node_drain",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_node_mode",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_node_remove",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_node_rename",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_password_change",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_profile_edit",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_profile_import",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_publish_tracker",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_setting_change",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_setting_reset",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_taxonomy_apply",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_add",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_create",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_migrate",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_pause",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_recheck",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_remove",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_torrent_resume",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_tracker_add",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_tracker_default",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_tracker_edit",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_tracker_remove",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "route_tracker_seed",
+    "payload": []
+  },
+  {
+    "kind": "audit",
+    "code": "setting_changed",
+    "payload": [
+      "key",
+      "label",
+      "value",
+      "value_kind"
+    ],
+    "variant": "value_kind",
+    "variants": [
+      "plain",
+      "secret",
+      "cluster"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "setting_reset",
+    "payload": [
+      "key",
+      "label"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_migrated",
+    "payload": [
+      "name",
+      "source",
+      "dest"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_paused",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_prioritized",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_rechecked",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_removed",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_resumed",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_unprioritized",
+    "payload": [
+      "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_description_edited",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_description_reset",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_image_host_edited",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_image_host_key_removed",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_image_host_key_set",
+    "payload": [
+      "host",
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_image_host_removed",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_profile_edited",
+    "payload": [
+      "tracker"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_profile_imported",
+    "payload": [
+      "tracker",
+      "new",
+      "renamed",
+      "kind_set",
+      "protected",
+      "description",
+      "image_host"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "tracker_taxonomy_applied",
+    "payload": [
+      "tracker",
+      "added",
+      "renamed"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "user_created",
+    "payload": [
+      "username"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "user_disabled",
+    "payload": [
+      "user"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "user_password_reset",
+    "payload": [
+      "user"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "user_updated",
+    "payload": [
+      "username"
+    ]
+  }
+]

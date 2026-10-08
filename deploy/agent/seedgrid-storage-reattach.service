@@ -1,0 +1,8 @@
+[Unit]
+Description=SeedGrid — reattach storage and recover the Torrent Engine (/data hotplug)
+After=local-fs.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/seedgrid-storage-reattach.sh

@@ -1,0 +1,60 @@
+# Exceptions to the language policy (tools/cmd/languagepolicy, #64).
+# One per line: path<TAB>text found in the line<TAB>why it stays.
+tools/internal/langpolicy/langpolicy.go	(?i)(?:^|[^\p{L}])	the detector's own list of Portuguese words
+portal/src/i18n/no-literals.test.ts	acentuação	fixture: proves the Portal guard ignores accented text inside comments
+control-plane/internal/googlebooks/googlebooks.go	O Alfaiate Valentão	title of a real book cited as the case that motivated the retry (#110)
+tools/internal/langpolicy/langpolicy_test.go	needs the accent	test data: English words that must NOT match the detector
+control-plane/internal/enrich/enrich.go	Documentários	category names of a Brazilian tracker, the data enrich matches against
+portal/src/components/Layout.tsx	"Português"	the language selector shows each language in its own name
+portal/src/i18n/no-literals.test.ts	comentário de bloco	fixture: proves the Portal guard ignores comments
+control-plane/internal/description/labels.go	Sinopse	pt-BR description headings: product text sent to Brazilian sites (#74)
+control-plane/internal/description/labels.go	Sobre	pt-BR description headings: product text sent to Brazilian sites (#74)
+control-plane/internal/description/labels.go	Gêneros	pt-BR description headings: product text sent to Brazilian sites (#74)
+control-plane/internal/description/labels.go	Plataformas	pt-BR description headings: product text sent to Brazilian sites (#74)
+control-plane/internal/enrich/enrich.go	"Filmes", "Movies"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	Filmes, Séries, Animes	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"audiolivro"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"livro", "ebook"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"jogo"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"serie", "series"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"desenho"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	"filme"	category names of Brazilian trackers: the data DetectMediaType matches against
+control-plane/internal/enrich/enrich.go	ElAmigos|FitGirl	names of game scene groups
+control-plane/internal/enrich/enrich.go	Dom Casmurro	title of a real book, cited as a parsing example
+control-plane/internal/openlibrary/openlibrary.go	"eng","por","jpn"	MARC language codes
+control-plane/internal/openlibrary/openlibrary.go	case "por":	MARC language codes
+control-plane/internal/openlibrary/openlibrary.go	case "ger", "deu":	MARC language codes
+control-plane/internal/release/langs.go	DUBLADO / NACIONAL	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/langs.go	LEG / LEGENDADO	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/langs.go	dub(bed|lado)?|nacional	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/langs.go	DUB/NACIONAL alone	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/release.go	season|temporada	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/release.go	fase|parte|part	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/standard.go	"DUBLADO", []string{"dublado"}	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/standard.go	"LEGENDADO", []string{"legendado", "legendas"}	Brazilian release-name tokens the parser recognizes (language tags, season/part words)
+control-plane/internal/release/mediainfo.go	A Bruxa	title of a real film: the case that motivated the mediainfo fallback
+control-plane/internal/release/mediainfo_test.go	A Bruxa	title of a real film: the case that motivated the mediainfo fallback
+control-plane/internal/release/release_test.go	Jogo Do Exterminador	real release name as published on a Brazilian site
+control-plane/internal/api/handlers_publish.go	json:"mal"	MyAnimeList id: the field name of the UNIT3D API, not Portuguese
+control-plane/internal/unit3d/unit3d.go	"mal":	MyAnimeList id: the field name of the UNIT3D API, not Portuguese
+control-plane/internal/trackerprofile	Filmes	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/trackerprofile	Séries	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/trackerprofile	Seriados	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/trackerprofile	Programas	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/trackerprofile	Outros	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/trackerprofile	Outra	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Filmes	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Séries	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Seriados	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Programas	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Outros	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/api	Outra	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Filmes	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Séries	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Seriados	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Programas	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Outros	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d	Outra	category names as a Brazilian tracker publishes them: test data for the taxonomy merge
+control-plane/internal/unit3d/unit3d.go	MAL          int	MyAnimeList id: the field name of the UNIT3D API, not Portuguese
+control-plane/internal/notify/notify_test.go	filme.mkv	fixture of the pt-BR notification test (notify asserts pt-BR output)
+portal/src/components/Chart.test.ts	("Baixado")	the pt-BR legend is what the test proves the color survives

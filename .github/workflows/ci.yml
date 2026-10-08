@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  control-plane:
+    name: Control Plane (Go)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: seedgrid
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: seedgrid_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U seedgrid"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: control-plane
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: go mod tidy
+        run: go mod tidy
+      - name: go build
+        run: go build ./...
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: control-plane
+          args: --timeout=5m
+      - name: go test
+        # -p 1: integration tests share the same database; serial execution
+        # avoids a race on CREATE EXTENSION between packages.
+        run: go test ./... -count=1 -p 1
+        env:
+          SEEDGRID_TEST_DATABASE_URL: postgres://seedgrid:test@localhost:5432/seedgrid_test?sslmode=disable
+
+  agent:
+    name: Agent (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: go mod tidy
+        run: go mod tidy
+      - name: go build
+        run: go build ./...
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: agent
+          args: --timeout=5m
+      - name: go test
+        run: go test ./... -count=1
+
+  portal:
+    name: Portal (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: npm ci
+        run: npm ci
+      - name: npm test
+        run: npm test
+      - name: npm run build
+        run: npm run build
+
+  scripts:
+    name: Scripts (shell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n / sh -n
+        run: |
+          for f in scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh; do
+            bash -n "$f" && sh -n "$f"
+          done
+      - name: shellcheck (install scripts)
+        # -S warning: the baseline has old style notes; what must not get in is warning/error.
+        run: shellcheck -s sh -S warning scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh
+      - name: bootstrap-node.sh tests
+        # Bootstrap functions against ip/nmcli/networkctl stubs (see the script header).
+        run: sh scripts/test-bootstrap-node.sh
+      - name: bootstrap-controller.sh tests
+        # .env, secrets and the webhook token, with docker and the builds replaced by stubs.
+        run: sh scripts/test-bootstrap-controller.sh
+      - name: check-homelab.sh tests
+        run: sh scripts/test-check-homelab.sh
+      - name: check-docs-parity.sh tests
+        run: sh scripts/test-check-docs-parity.sh
+      - name: documentation in both languages
+        # docs/ (English) and docs/pt-BR/ (Portuguese) with the same files and the same structure.
+        run: sh scripts/check-docs-parity.sh
+      - name: original environment markers
+        # IPs, IPv6 prefix, machine number and own runner do not return to the repo (#5).
+        run: sh scripts/check-homelab.sh
+
+  policies:
+    name: Policies (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: tools
+          args: --timeout=5m
+      - name: go test
+        run: go test ./... -count=1
+      - name: architecture boundaries
+        run: go run ./cmd/architecturepolicy -root ..
+      - name: code in English
+        # Comments, messages and identifiers in English; exceptions in tools/language-allow.txt (#64).
+        run: go run ./cmd/languagepolicy -root ..
+      - name: commit messages
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            RANGE="$PR_BASE_SHA..$PR_HEAD_SHA"
+          else
+            if [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              # A root commit has no parent: its own history is just itself.
+              if git cat-file -e "$PUSH_SHA~1^{commit}" 2>/dev/null; then RANGE="$PUSH_SHA~1..$PUSH_SHA"; else RANGE="$PUSH_SHA"; fi
+            else
+              RANGE="$PUSH_BEFORE..$PUSH_SHA"
+            fi
+          fi
+          go run ./cmd/commitmsgcheck -range "$RANGE"

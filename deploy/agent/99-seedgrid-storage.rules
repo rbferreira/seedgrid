@@ -1,0 +1,6 @@
+# SeedGrid — recovers the storage/Engine when the /data disk reconnects (hotplug).
+# __DATA_UUID__ is replaced at install time (bootstrap-node.sh) with the UUID of the
+# /data filesystem, so the rule fires only for the right disk. When the device
+# reappears, it starts the oneshot unit that remounts /data and restarts the
+# Torrent Engine (see seedgrid-storage-reattach.sh).
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="__DATA_UUID__", TAG+="systemd", ENV{SYSTEMD_WANTS}="seedgrid-storage-reattach.service"

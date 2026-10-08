@@ -1,0 +1,22 @@
+[Unit]
+Description=SeedGrid Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/seedgrid-agent.env
+# Self-update rollback (ADR-027): if the installed binary doesn't run (`--version`
+# exits != 0 — corruption, wrong arch), restores the .prev that the update saved before
+# swapping. The main defense is the smoke-test the Agent does BEFORE the swap; this covers
+# what comes after it. `-` in prefix: failure here doesn't prevent start (without .prev,
+# there is nothing to restore and we proceed with what exists).
+ExecStartPre=-/bin/sh -c '/usr/local/bin/seedgrid-agent --version >/dev/null 2>&1 || { [ -x /usr/local/bin/seedgrid-agent.prev ] && cp -f /usr/local/bin/seedgrid-agent.prev /usr/local/bin/seedgrid-agent; }'
+ExecStart=/usr/local/bin/seedgrid-agent
+# Restart=always is what makes the self-update work: the Agent swaps the binary and exits 0; the
+# systemd brings it up with the new one. Without this, the update would kill the Node (ADR-027).
+Restart=always
+RestartSec=5
+StateDirectory=seedgrid-agent
+
+[Install]
+WantedBy=multi-user.target

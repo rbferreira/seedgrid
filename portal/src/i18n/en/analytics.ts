@@ -1,0 +1,92 @@
+import type { Catalog } from "../types";
+
+export const analytics: Catalog["analytics"] = {
+  analytics: {
+    title: "Collection Analytics",
+    summary: "{total} torrents · {bytes}",
+    visibleOf: "{visible} of {total} · {bytes}",
+    unknownVerdict: {
+      one: "{count} without a tracker verdict",
+      other: "{count} without a tracker verdict",
+    },
+    loadingCollection: "Loading collection…",
+    loadError: "failed to load",
+    filterTitle: "Filter: {label}",
+    searchPlaceholder: "🔎 Filter by name…",
+    nodeFilterTitle: "Node",
+    allNodes: "All Nodes",
+    minSizeTitle: "Minimum size",
+    sortTitle: "Sort order",
+    clearFilters: "clear filters",
+    onDisk: "{size} on disk",
+    copyOf: "copy of: {name}",
+    reasons: {
+      trackerDead: "tracker rejects",
+      deadSwarm: "dead swarm",
+      duplicateExtra: "duplicate",
+      neverUploaded: "never uploaded",
+    },
+    cards: {
+      trackerDead: "Tracker dead",
+      trackerDeadHint: "tracker no longer recognizes it",
+      duplicateExtra: "Duplicates",
+      duplicateExtraHint: "title already exists in the cluster",
+      neverUploaded: "Never uploaded",
+      neverUploadedHint: "taking up space without yielding",
+      deadSwarm: "Dead swarm",
+      deadSwarmHint: "and nobody else has it",
+    },
+    size: {
+      any: "Any size",
+      gt1: "> 1 GB",
+      gt5: "> 5 GB",
+      gt20: "> 20 GB",
+    },
+    sort: {
+      size: "Largest first",
+      age: "Oldest first",
+      ratio: "Worst ratio first",
+      seeds: "Fewest seeds first",
+      name: "Name (A→Z)",
+    },
+    panel: {
+      flagged: "Flagged",
+      repeatedTitles: "Repeated titles",
+      spaceByNode: "Space by Node",
+    },
+    empty: {
+      clean: "Nothing flagged — the collection is clean.",
+      filtered: "No torrents match these filters.",
+    },
+    table: {
+      name: "Name",
+      reason: "Reason",
+      node: "Node",
+      size: "Size",
+      age: "Age",
+      seeds: "Seeds",
+      ratio: "Ratio",
+    },
+    identicalCount: {
+      one: "{count} identical",
+      other: "{count} identical",
+    },
+    dups: {
+      empty: "No title has more than one copy.",
+      disclaimer: "Only what is marked {redMarker} is pure waste: the same copy across different Nodes. The rest are different resolutions or releases — the tracker accepts both and they both yield ratio, so the decision is yours.",
+      redMarker: "in red",
+      identicalWarn: "same copy across different Nodes — pure waste",
+      table: {
+        title: "Title",
+        copies: "Copies",
+        reclaim: "Reclaimable",
+      },
+    },
+    spaceTable: {
+      torrents: "Torrents",
+      occupied: "Used",
+      idle: "Idle",
+      duplicated: "Duplicated",
+    },
+  },
+};

@@ -1,0 +1,22 @@
+export const actions = {
+  actions: {
+    failed: "Falhou",
+    timeout: "tempo esgotado",
+    statusQueued: "Enfileirado",
+    statusDispatched: "Em execução no Node",
+    statusDone: "Concluído",
+    sendFailed: "falha ao enviar a ação",
+    starting: "Iniciando…",
+    migrationStartFailed: "falha ao iniciar a migração",
+    nothingToMigrate: "Nada a migrar",
+    stillInProgress: "Ainda em andamento — acompanhe em Eventos",
+    migrationFailedCount: "Falhou ({count}/{total})",
+    migrationsCompleted: "{count} concluídas",
+    migrationCompleted: "Concluída",
+    migrationQueuedCount: "Na fila… {done}/{total}",
+    migrationQueued: "Na fila…",
+    migratingCount: "Migrando… {done}/{total}",
+    migrating: "Migrando…",
+    processing: "processando",
+  },
+} as const;

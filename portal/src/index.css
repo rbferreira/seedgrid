@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/* Tailwind scans the project for class names - and `dist/` contains the CSS/JS from
+   the PREVIOUS build, full of classes that might no longer exist in the code. Scanning the
+   own output makes a removed class resurrect on a build (#134).
+
+   Locally this didn't happen: `portal/dist/` is in `.gitignore` and Tailwind respects the
+   ignore. But `scripts/build-portal.sh` mounts ONLY `portal/` in the build container, and
+   without the root `.git`/`.gitignore` in sight Tailwind scans everything under `/app`. Declaring the
+   exclusion here solves it for any invocation, not just the build script's. */
+@source not "../dist";
+
+/* Dark green theme (backlog #9). Tailwind v4 utilities reference the
+   --color-slate-* vars; redefining them here (after the import) re-tints the ENTIRE SITE to
+   dark green without touching it component by component. I only mess with the BACKGROUND/border shades
+   (950→600); the text shades (500→100) stay at default (neutral, readable over the
+   green). Light mode (#10) reuses this same mechanism. */
+:root {
+  color-scheme: dark;
+  --color-slate-950: #041410; /* app background — very dark green */
+  --color-slate-900: #0a1f18; /* panels / cards / inputs */
+  --color-slate-800: #163a2d; /* borders and active nav */
+  --color-slate-700: #20503e; /* input borders / secondary buttons */
+  --color-slate-600: #2c6650; /* border hover */
+  /* Toast fill (#132). Inline panel uses a MEDIUM shade alpha tint
+     (bg-*-500/10), which reads right in both themes; the toast cannot — it floats over
+     arbitrary content and needs a nearly opaque background, otherwise text falls on the
+     blurred content of the backdrop-blur. Hence a var per theme. These two values are
+     exactly the red-950/70 and emerald-950/60 from before: the dark doesn't change. */
+  --sg-toast-error-bg: rgb(70 8 9 / 0.7);
+  --sg-toast-ok-bg: rgb(0 44 34 / 0.6);
+}
+
+/* Light theme (backlog #10). The slate ramp INVERTS (light backgrounds / dark texts) and the
+   `white` hardcoded in titles/values/inputs turns dark (utilities use
+   var(--color-white)). The -400 TEXT accents darken for contrast on a light
+   background — without affecting badges (which use another shade's bg with opacity).
+
+   CAUTION (#132): only the shades listed here invert. Accent background/border must
+   come from a MEDIUM shade with alpha (bg-red-500/10, ring-red-500/30) — these read right in
+   both themes. `bg-red-950/40`, `border-red-800`, and `text-red-300` remain dark in the
+   light and produce an unreadable panel; do not use. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* backgrounds → light (slightly greenish white) */
+  --color-slate-950: #eef4f1; /* app background */
+  --color-slate-900: #ffffff; /* panels / cards / inputs */
+  --color-slate-800: #d7e5de; /* borders and active nav */
+  --color-slate-700: #c2d5cc; /* input borders */
+  --color-slate-600: #a7bfb4;
+  /* texts → dark */
+  --color-slate-500: #5d746a;
+  --color-slate-400: #47584f;
+  --color-slate-300: #34433b;
+  --color-slate-200: #1e2a25;
+  --color-slate-100: #131a16;
+  /* "white" hardcoded (titles/values/inputs) → dark in light */
+  --color-white: #0f1713;
+  /* TEXT accents in light (#136). The rule: the value must hit 4.5:1 over the WORST background
+     where the shade appears — which is always a tinted chip/button (bg-*-500/15, bg-*-600/25),
+     never the white card. And SMALLER shade = more emphasis = DARKER in light, inverted
+     compared to dark; the amber -200 already followed this.
+
+     The -300 is the SAME as the -400 on axes with two roles (Dashboard large number and
+     chip text): the large number is large text, where 3:1 is enough, and the chip needs
+     4.5:1 — so the dark shade serves both. The Dashboard blue/green pair (#130) stays
+     balanced because both sides step at the same pace of the ramp. Accepted side effect:
+     `hover:text-*-300` over `text-*-400` becomes a visual no-op in light (amber was already like this). */
+  --color-emerald-400: #065f46;
+  --color-emerald-300: #065f46; /* Explore/Settings chips, bg-emerald-600/25 button (2.54 before) */
+  --color-blue-400: #1d4ed8;
+  --color-blue-300: #1d4ed8; /* Dashboard pair with emerald-300 (#130) + Explore chips */
+  --color-sky-300: #075985; /* tracker badges / Publish breadcrumb */
+  --color-sky-200: #0c4a6e; /* -300 hover (TrackersPanel:209) — had no override: 1.19 */
+  --color-cyan-300: #155e75; /* language chips in Explore */
+  --color-violet-300: #6d28d9; /* "Scheduled" in Feed / category in TrackersPanel (already passed) */
+  --color-indigo-300: #4338ca; /* "movie" chip in Explore — had no override: 1.50 */
+  --color-pink-300: #9d174d; /* "audiobook" chip in Explore — had no override: 1.35 */
+  --color-fuchsia-300: #a21caf; /* IGDB label in Publish — had no override: 1.48 */
+  --color-amber-400: #92400e;
+  --color-amber-300: #92400e; /* amber text (e.g.: "Pending" section) */
+  --color-amber-200: #78350f; /* amber text over light pill (already passed) */
+  /* red-400 is the text for EVERY error panel/chip (#132). The previous #dc2626 gave only
+     3.77:1 over the bg-red-500/10 panel in light — below AA. #b91c1c goes up to 5.05. */
+  --color-red-400: #b91c1c;
+  /* Toast background: pale and nearly opaque, against the dark which is dark red/green. */
+  --sg-toast-error-bg: rgb(254 226 226 / 0.94);
+  --sg-toast-ok-bg: rgb(209 250 229 / 0.94);
+}
+
+body {
+  margin: 0;
+  background: var(--color-slate-950);
+  color: #e2e8f0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

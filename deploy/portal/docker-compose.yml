@@ -1,0 +1,24 @@
+# SeedGrid — Portal (React served by nginx).
+# Serves the SPA and proxies /api to the controller via the internal seedgrid-core network.
+#
+# Usage (on the Control Plane host):
+#   sh scripts/build-portal.sh        # generates dist + seedgrid/portal:dev image
+#   cd deploy/portal && docker compose up -d
+
+name: seedgrid-portal
+
+services:
+  portal:
+    image: seedgrid/portal:dev
+    container_name: seedgrid-portal
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - seedgrid-core
+
+networks:
+  # Network created by the Control Plane compose; here it is external (reuse).
+  seedgrid-core:
+    name: seedgrid-core
+    external: true

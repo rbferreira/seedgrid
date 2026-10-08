@@ -1,0 +1,135 @@
+{
+  "format": "seedgrid.tracker-profile",
+  "site": {
+    "name": "Samaritano",
+    "host": "samaritano.cc"
+  },
+  "family": "unit3d",
+  "schema_version": 1,
+  "taxonomy": {
+    "category": [
+      {
+        "id": 1,
+        "name": "Filmes",
+        "kind": "movie"
+      },
+      {
+        "id": 2,
+        "name": "Séries",
+        "kind": "tv"
+      },
+      {
+        "id": 3,
+        "name": "Animes",
+        "kind": "tv"
+      },
+      {
+        "id": 4,
+        "name": "Cursos"
+      },
+      {
+        "id": 5,
+        "name": "Games",
+        "kind": "game"
+      },
+      {
+        "id": 6,
+        "name": "Livros"
+      },
+      {
+        "id": 7,
+        "name": "HQs e Mangás"
+      },
+      {
+        "id": 8,
+        "name": "AudioBooks"
+      },
+      {
+        "id": 9,
+        "name": "Programas"
+      },
+      {
+        "id": 10,
+        "name": "Materiais de Apoio"
+      },
+      {
+        "id": 11,
+        "name": "Diversos"
+      },
+      {
+        "id": 12,
+        "name": "Músicas"
+      }
+    ],
+    "resolution": [
+      {
+        "id": 1,
+        "name": "4320p"
+      },
+      {
+        "id": 2,
+        "name": "2160p"
+      },
+      {
+        "id": 3,
+        "name": "1080p"
+      },
+      {
+        "id": 5,
+        "name": "720p"
+      },
+      {
+        "id": 8,
+        "name": "480p"
+      },
+      {
+        "id": 10,
+        "name": "Outra"
+      }
+    ],
+    "type": [
+      {
+        "id": 1,
+        "name": "Full Disc"
+      },
+      {
+        "id": 2,
+        "name": "Remux"
+      },
+      {
+        "id": 3,
+        "name": "Encode"
+      },
+      {
+        "id": 4,
+        "name": "WEB-DL"
+      },
+      {
+        "id": 5,
+        "name": "WEBRip"
+      },
+      {
+        "id": 6,
+        "name": "HDTV"
+      }
+    ]
+  },
+  "description": {
+    "media_blocks": [
+      "poster",
+      "synopsis",
+      "tags",
+      "screenshots",
+      "mediainfo"
+    ],
+    "game_blocks": [
+      "cover",
+      "title",
+      "about",
+      "genres",
+      "platforms"
+    ],
+    "media_info_tag": "mediainfo",
+    "language": "pt-BR"
+  }
+}

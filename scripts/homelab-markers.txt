@@ -1,0 +1,8 @@
+# Marks of the original development environment that must not come back into the repository.
+# Read by scripts/check-homelab.sh. One per line: <ERE regex><TAB><what to use instead>.
+# Empty lines and lines starting with # are ignored.
+172\.16\.[0-9]+\.[0-9]+	192.168.0.x (a typical home network range)
+2804:13c	2001:db8::/32 (documentation prefix, RFC 3849)
+(^|[^A-Za-z])CT ?1[0-9][0-9]([^0-9]|$)	"the Control Plane host" / "the Node" (no machine number)
+seedgrid-only	GitHub runner (ubuntu-latest); this repo has no runner of its own
+rafalab	controller.example (example host)

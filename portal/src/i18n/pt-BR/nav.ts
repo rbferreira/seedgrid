@@ -1,0 +1,15 @@
+export const nav = {
+  dashboard: "Dashboard",
+  downloaded: "Baixados",
+  analytics: "Analytics",
+  add: "Adicionar Torrent",
+  publish: "Publicar",
+  explore: "Explorar",
+  feed: "Feed",
+  alerts: "Alertas & Eventos",
+  health: "Saúde & Métricas",
+  audit: "Auditoria",
+  users: "Usuários",
+  settings: "Configurações",
+  openMenu: "Abrir menu",
+} as const;

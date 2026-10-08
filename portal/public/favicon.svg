@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="SeedGrid">
+  <title>SeedGrid</title>
+  <!-- Marca do SeedGrid: o Control Plane (nó central, maior) ligado a quatro Seed Nodes
+       numa grade — a topologia do produto vira o símbolo. Herda o quadrado arredondado
+       emerald da marca na sidebar (Layout.tsx). Fundo próprio de propósito: o ícone tem
+       o mesmo contraste em aba clara e escura, sem depender de prefers-color-scheme.
+       Formas cheias e sem texto porque em 16px letras e traços finos viram borrão. -->
+  <defs>
+    <linearGradient id="sg-bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10b981" />
+      <stop offset="1" stop-color="#046c4e" />
+    </linearGradient>
+  </defs>
+
+  <rect width="32" height="32" rx="7" fill="url(#sg-bg)" />
+
+  <!-- Malha: o CP alcança cada Node. As distâncias são deliberadas — os nós vão pros
+       cantos e o halo do CP é enxuto, senão a linha visível entre os dois some (a
+       diagonal mede ~11.3 e halo+nó comiam quase tudo) e vira um traço vestigial que
+       lê como defeito. Em 16px ela engrossa e funde com os nós; no ícone grande é malha. -->
+  <g stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity=".55">
+    <path d="M16 16 L8 8" />
+    <path d="M16 16 L24 8" />
+    <path d="M16 16 L8 24" />
+    <path d="M16 16 L24 24" />
+  </g>
+
+  <!-- Seed Nodes -->
+  <g fill="#ffffff" opacity=".92">
+    <circle cx="8" cy="8" r="2.6" />
+    <circle cx="24" cy="8" r="2.6" />
+    <circle cx="8" cy="24" r="2.6" />
+    <circle cx="24" cy="24" r="2.6" />
+  </g>
+
+  <!-- Control Plane: maior e destacado por um halo do próprio fundo, que o separa das
+       linhas e mantém o miolo nítido quando tudo encolhe. -->
+  <circle cx="16" cy="16" r="5.7" fill="#047857" />
+  <circle cx="16" cy="16" r="4.2" fill="#ffffff" />
+</svg>

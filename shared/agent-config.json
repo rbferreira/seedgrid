@@ -1,0 +1,17 @@
+{
+  "$comment": "CP<->Agent contract for the behavior configuration (ADR-039, #144). Lists the catalog keys (control-plane/internal/settings/catalog.go, PerNode=true) that the Control Plane delivers to the Agent in the heartbeat response, with the type and the equivalent environment variable on the Node. The two Go modules are independent and do not import each other; each side's tests compare ITS table with this file, so forgetting one side breaks CI instead of becoming a key that simply never arrives.",
+  "keys": [
+    { "key": "agent.heartbeat_interval", "kind": "duration", "env": "SEEDGRID_AGENT_HEARTBEAT_INTERVAL" },
+    { "key": "agent.command_poll_interval", "kind": "duration", "env": "SEEDGRID_AGENT_COMMAND_POLL_INTERVAL" },
+    { "key": "agent.log_level", "kind": "string", "env": "SEEDGRID_LOG_LEVEL" },
+    { "key": "engine.queueing_enabled", "kind": "bool", "env": "SEEDGRID_ENGINE_QUEUEING_ENABLED" },
+    { "key": "engine.max_active_downloads", "kind": "int", "env": "SEEDGRID_ENGINE_MAX_ACTIVE_DOWNLOADS" },
+    { "key": "engine.max_active_uploads", "kind": "int", "env": "SEEDGRID_ENGINE_MAX_ACTIVE_UPLOADS" },
+    { "key": "engine.max_active_torrents", "kind": "int", "env": "SEEDGRID_ENGINE_MAX_ACTIVE_TORRENTS" },
+    { "key": "engine.max_active_checking", "kind": "int", "env": "SEEDGRID_ENGINE_MAX_ACTIVE_CHECKING" },
+    { "key": "engine.dont_count_slow", "kind": "bool", "env": "SEEDGRID_ENGINE_DONT_COUNT_SLOW" },
+    { "key": "engine.slow_dl_threshold", "kind": "int", "env": "SEEDGRID_ENGINE_SLOW_DL_THRESHOLD" },
+    { "key": "engine.slow_ul_threshold", "kind": "int", "env": "SEEDGRID_ENGINE_SLOW_UL_THRESHOLD" },
+    { "key": "engine.slow_inactive_timer", "kind": "int", "env": "SEEDGRID_ENGINE_SLOW_INACTIVE_TIMER" }
+  ]
+}

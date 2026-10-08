@@ -1,0 +1,122 @@
+import type { Catalog } from "../types";
+
+export const publish: Catalog["publish"] = {
+  taxonomy: {
+    axes: {
+      category: "Category",
+      type: "Type",
+      resolution: "Resolution",
+    },
+    kinds: {
+      movie: "Movie",
+      tv: "Series",
+      game: "Game",
+    },
+    stopReasons: {
+      endOfCatalog: "reached the end of the catalog",
+      maxPages: "stopped at page limit — some catalog entries were not seen",
+      rateLimited: "tracker rate-limited requests — partial results",
+      timeBudget: "scan time budget exhausted — partial results",
+      error: "interrupted by an error — partial results",
+    },
+  },
+  taxonomySelects: {
+    noOptionsInProfile: "— no options in profile —",
+    selectPlaceholder: "— select —",
+    orphanOption: "#{value} (outside profile)",
+  },
+  trackerUploadPanel: {
+    cmdStage: {
+      pending: "Queued",
+      dispatched: "Running on the Node",
+    },
+    posterAlt: "poster",
+    actions: {
+      check: "Review what will be sent",
+      genSheet: "✨ Generate BBCode",
+      genSheetLoading: "Generating sheet…",
+      genSheetTitle: "Builds the full sheet: poster + synopsis + tags + clickable screenshots + MediaInfo. Edit afterwards. A complete sheet reduces 'postponed'.",
+      genScreenshots: "📸 Generate screenshots",
+      genScreenshotsLoading: "Generating screenshots…",
+      genScreenshotsTitle: "Extracts frames from the torrent (Agent) and uploads them to an image host (CP), inserting the BBCode at the start of the description (ADR-026).",
+      notNow: "Not now",
+      previewing: "Building preview…",
+      publish: "Publish to {tracker}",
+      submitting: "Submitting to tracker…",
+    },
+    dupes: {
+      ack: "Reviewed — publish anyway",
+      found: {
+        one: "{count} similar release on {tracker} for “{query}”",
+        other: "{count} similar releases on {tracker} for “{query}”",
+      },
+      sameYear: "same year",
+    },
+    errors: {
+      composeFailed: "failed to build the sheet",
+      composeFailedFull: "Could not build the sheet: {msg}. The description field was not changed.",
+      extractionFailed: "extraction failed on the Node",
+      sheetWithoutScreenshots: "{error} — sheet built without screenshots.",
+      gameDescFailed: "Could not build the game description: {msg}. The description field was not changed.",
+      igdbDisabled: "IGDB not configured in the Control Plane.",
+      igdbSearchFailed: "Failed to search IGDB.",
+      missingTaxonomy: "Choose a category and type.",
+      noTaxonomy: "The {name} profile has no categories or types yet. In Settings → Trackers, open the profile and use “Discover taxonomy”.",
+      previewFailed: "Failed to build the preview.",
+      publishFailed: "Failed to register on the tracker.",
+      requiredFields: "Name and description are required.",
+      screenshotsFailed: "failed to generate screenshots",
+      unknownFailure: "unknown failure",
+    },
+    fields: {
+      anonymous: "Anonymous upload",
+      description: "Description",
+      dualSuggest: "{count} audio tracks ({langs}) — mark as DUAL in the name",
+      dualTitle: "Detected in MediaInfo — adds DUAL before the group tag in the name",
+      episode: "Episode",
+      imdb: "IMDB (tt…)",
+      keywords: "Keywords (comma-separated)",
+      mediainfoAvailable: "MediaInfo (extracted on the Node)",
+      mediainfoMissing: "MediaInfo (not available — paste manually if needed)",
+      name: "Name",
+      season: "Season",
+      tmdb: "TMDB ID",
+      tvdb: "TVDB ID",
+    },
+    sheetSteps: {
+      compose: "Build sheet",
+      extract: "Extract screenshots (Node)",
+      host: "Host images",
+    },
+    game: {
+      noResults: "No games found.",
+      patternHint: "Tracker naming pattern for games: {code:Name.[version].[year].[group].[lang]} — e.g. {code:Elden.Ring.v1.12.2024.[FitGirl].[MULTI]}. Adjust the {strong:Name} field above to match this pattern (avoids rejection/postponed).",
+      placeholder: "Game name…",
+      searchBtn: "Search",
+      searchLabel: "Search game on IGDB",
+      selected: "Selected IGDB ID: {id}",
+    },
+    header: {
+      subtitle: "Fields pre-filled by automation (name → IDs + TMDB) and MediaInfo extracted on the Node. Review and adjust before sending — registration on the site only happens when you click publish.",
+      title: "Register on {tracker}",
+    },
+    loading: "Inferring metadata…",
+    preview: {
+      empty: "(empty)",
+      endpoint: "Will be sent to {endpoint}",
+      missing: "Missing: {fields}",
+      warning: "Editing any field discards this review — submission uses exactly what is shown above.",
+    },
+    result: {
+      registered: "Registered on {tracker}",
+      success: "Torrent uploaded successfully.",
+      torrentLink: "Site .torrent: {link}",
+    },
+    shots: {
+      hostedAt: "Images hosted on {host}",
+    },
+    warnings: {
+      noTaxonomy: "The {name} profile has no categories or types yet. In Settings → Trackers, open the profile and use “Discover taxonomy” (or add them manually).",
+    },
+  },
+};
