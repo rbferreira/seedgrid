@@ -16,7 +16,7 @@ echo "==> compiling binary (docker run)"
 # shellcheck disable=SC2086 # SEEDGRID_DOCKER_RUN_OPTS are multiple options, intentionally unquoted
 docker run --rm ${SEEDGRID_DOCKER_RUN_OPTS:-} \
   -v "$CP_DIR:/src" -w /src \
-  golang:1.23-alpine \
+  golang:1.26-alpine \
   sh -c "apk add --no-cache -q git && go mod download && CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -X main.version=${VERSION}' -o bin/seedgrid-controller ./cmd/seedgrid-controller"
 
 echo "==> building seedgrid/controller:dev image (Dockerfile.runtime, no RUN)"
