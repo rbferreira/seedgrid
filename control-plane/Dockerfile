@@ -1,7 +1,7 @@
 # SeedGrid Control Plane — build multi-stage
 # Builds a static binary and runs it in a minimal image.
 
-FROM golang:1.23-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 

@@ -360,7 +360,7 @@ func decodeError(err error) error {
 	var ute *json.UnmarshalTypeError
 	switch {
 	case errors.As(err, &ute):
-		path := ute.Field
+		path := jsonPath(ute.Field)
 		if path == "" {
 			path = "document"
 		}
@@ -370,6 +370,18 @@ func decodeError(err error) error {
 	default:
 		return invalid("document", "invalid JSON")
 	}
+}
+
+// jsonPath turns the decoder's field path into the document's own path. Since Go 1.24 the path
+// also names the embedded structs ("Profile.taxonomy.id" for the Profile embedded in Document); the
+// document's keys are lower case and Go type names are not, so the leading upper-case parts go.
+func jsonPath(field string) string {
+	parts := strings.Split(field, ".")
+	i := 0
+	for i < len(parts)-1 && parts[i] != "" && unicode.IsUpper(rune(parts[i][0])) {
+		i++
+	}
+	return strings.Join(parts[i:], ".")
 }
 
 func typeName(t reflect.Type) string {

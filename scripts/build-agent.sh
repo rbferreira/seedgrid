@@ -19,7 +19,7 @@ OUT="${OUT:-bin/seedgrid-agent}"
 docker run --rm ${SEEDGRID_DOCKER_RUN_OPTS:-} \
   -e "GOARCH=${GOARCH}" \
   -v "$AGENT_DIR:/src" -w /src \
-  golang:1.23-alpine \
+  golang:1.26-alpine \
   sh -c "CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -X main.version=${VERSION}' -o ${OUT} ./cmd/seedgrid-agent"
 
 echo "==> done: agent/${OUT}"
