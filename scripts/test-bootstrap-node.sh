@@ -176,7 +176,7 @@ assert_eq "dotted interface uses the slash form in sysctl.d" "1" \
 # ---------------------------------------------------------------------------
 # Deterministic IPv6 suffix (ADR-038, #202).
 # ---------------------------------------------------------------------------
-load index_for_port ipv6_expand ipv6_tail ipv6_global_addrs ipv6_has_token_addr ipv6_token_addr \
+load index_for_port ipv6_expand ipv6_tail ipv6_global_addrs ipv6_has_token_addr ipv6_prefer_public ipv6_token_addr \
   ipv6_token_valid_lft wait_ipv6_token_addr prune_stale_ipv6 networkd_manages apply_token_networkd \
   nm_manages nm_write_ipv6_token nm_loaded_token_ok apply_token_nm print_manual_ipv6_instructions \
   ipv6_dad_conflict configure_ipv6_suffix
@@ -279,6 +279,16 @@ ipv6_has_token_addr eth0 5 >/dev/null 2>&1; assert_eq "has_token_addr: Node 5 is
 ipv6_has_token_addr eth0 7 >/dev/null 2>&1; assert_eq "has_token_addr: address in DAD (tentative) does not count" "1" "$?"
 assert_eq "ipv6_token_addr returns the address without /len" "2001:db8:1:2::5eed:4" "$(ipv6_token_addr eth0 4)"
 assert_eq "ipv6_token_valid_lft returns the seconds" "7100" "$(ipv6_token_valid_lft eth0 4)"
+
+# With the same suffix on a ULA (fc00::/7, which Linux marks as scope global) listed BEFORE the
+# public address, the address to open in the firewall is still the public one.
+ULA4=$(addr_line fd12:3456:789a:1::5eed:4/64 'dynamic mngtmpaddr noprefixroute' 7100sec)
+FAKE_ADDRS=$(fixture "$ULA4" "$TOKEN4"); export FAKE_ADDRS
+assert_eq "ipv6_token_addr prefers the public address to the ULA" "2001:db8:1:2::5eed:4" "$(ipv6_token_addr eth0 4)"
+FAKE_ADDRS=$(fixture "$ULA4"); export FAKE_ADDRS
+assert_eq "ipv6_token_addr with no public address returns the ULA" "fd12:3456:789a:1::5eed:4" "$(ipv6_token_addr eth0 4)"
+assert_eq "ipv6_prefer_public puts fc/fd last" "2001:db8::1|fc00::1|fd12::2" \
+  "$(printf 'fc00::1\n2001:db8::1\nfd12::2\n' | ipv6_prefer_public | paste -sd'|' -)"
 
 # prune_stale_ipv6: only the dynamic residue of the SAME /64, and only with the token address standing.
 FAKE_ADDRS=$(fixture "$TOKEN4" "$EUI64" "$TEMP" "$STATIC" "$OTHERPFX"); export FAKE_ADDRS

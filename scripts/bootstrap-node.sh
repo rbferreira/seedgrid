@@ -561,14 +561,22 @@ ipv6_has_token_addr() {
   printf '%s\n' "$all" | grep -q ":$(ipv6_tail "$2")\$"
 }
 
-# ipv6_token_addr IFACE N prints the address (without /len) of Node N on the interface, if any.
+# ipv6_prefer_public reads IPv6 addresses (one per line) and prints the public ones first and the
+# ULAs (fc00::/7) last. Linux marks a ULA as `scope global`, but it takes no connection from the
+# outside: it is the wrong address to open in the firewall. The Agent already discards ULAs.
+ipv6_prefer_public() {
+  awk 'tolower($0) ~ /^f[cd]/ { ula[n++] = $0; next } { print } END { for (i = 0; i < n; i++) print ula[i] }'
+}
+
+# ipv6_token_addr IFACE N prints the address (without /len) of Node N on the interface, if any —
+# the public one, when the interface also has the same suffix on a ULA.
 ipv6_token_addr() {
   want=$(ipv6_tail "$2")
   ipv6_global_addrs "$1" | while read -r a _; do
     case "$(ipv6_expand "$a")" in
       *:"$want") echo "${a%%/*}" ;;
     esac
-  done | head -1
+  done | ipv6_prefer_public | head -1
 }
 
 # ipv6_token_valid_lft IFACE N prints the valid_lft (seconds, or `forever`) of Node N's
@@ -1003,10 +1011,11 @@ systemctl daemon-reload
 systemctl enable --now seedgrid-agent
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-# The address to allow is the token's, when it is up; otherwise, the first global one.
+# The address to allow is the token's, when it is up; otherwise, the first global one (public
+# before ULA).
 IP6=""
 if [ -n "${NODE_INDEX:-}" ] && [ -n "${MAIN_IF:-}" ]; then IP6=$(ipv6_token_addr "$MAIN_IF" "$NODE_INDEX"); fi
-[ -n "$IP6" ] || IP6=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6/{print $2}' | cut -d/ -f1 | head -1)
+[ -n "$IP6" ] || IP6=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6/{print $2}' | cut -d/ -f1 | ipv6_prefer_public | head -1)
 echo "==> done. The Node registered with the Control Plane on BitTorrent port $BT_PORT."
 if [ -n "$IP6" ]; then
   echo "    Node with a public IPv4: open the WAN PORT-FORWARD $BT_PORT -> ${IP:-<this-node-ip>}:$BT_PORT (TCP+UDP)."
