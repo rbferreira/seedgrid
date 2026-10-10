@@ -18,5 +18,5 @@ docker run --rm ${SEEDGRID_DOCKER_RUN_OPTS:-} \
   -e "SEEDGRID_TEST_DATABASE_URL=${SEEDGRID_TEST_DATABASE_URL:-}" \
   -v "$REPO_ROOT/control-plane:/src" \
   -w /src \
-  golang:1.23-alpine \
+  golang:1.26-alpine \
   sh -c "apk add --no-cache -q git && go mod tidy && go vet ./... && go test ./... -count=1 -p 1"

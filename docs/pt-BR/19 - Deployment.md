@@ -378,7 +378,7 @@ Os endereços são ilustrativos. O Control Plane e os Nodes só precisam se alca
 
 # **42. Fluxo de build**
 Não há imagem publicada num registry: as imagens são montadas no próprio host do Control Plane, pelos scripts `build-*.sh`, que o `bootstrap-controller.sh` chama. Cada um compila o artefato num container efêmero (`docker run`) e monta a imagem final com um Dockerfile **sem etapas `RUN`**:
-- `build-controller.sh` — compila o binário Go em `golang:1.23-alpine` (`CGO_ENABLED=0`) e monta `seedgrid/controller:dev` (`Dockerfile.runtime`).
+- `build-controller.sh` — compila o binário Go em `golang:1.26-alpine` (`CGO_ENABLED=0`) e monta `seedgrid/controller:dev` (`Dockerfile.runtime`).
 - `build-portal.sh` — roda `npm ci && npm run build` em `node:22-alpine` e monta `seedgrid/portal:dev` (nginx), já com os artefatos de Node em `/node/` (§50).
 - `build-agent.sh` — compila o binário estático do Agent (`agent/bin/seedgrid-agent`); `GOARCH=arm64` cross-compila para ARM.
 
