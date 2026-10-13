@@ -7,6 +7,10 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+### Added
+- Portal: **Downloaded** shows when each torrent was added, sorts by it and filters by period
+  (last 24 hours / 7 days / 30 days). The screen now opens newest first.
+
 ## [0.1.0] — 2026-10-08
 
 SeedGrid orchestrates a BitTorrent seeding infrastructure: a central **Control Plane**

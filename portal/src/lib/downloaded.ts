@@ -1,4 +1,4 @@
-import { getLang } from "../i18n";
+import { getLang, type TFn } from "../i18n";
 import type { Torrent } from "../api";
 
 /**
@@ -9,7 +9,16 @@ import type { Torrent } from "../api";
  * the DOM to be tested. The component only wires state to these functions.
  */
 
-export type SortKey = "name" | "status" | "size" | "node" | "up" | "seeds" | "uploaded" | "ratio";
+export type SortKey =
+  | "name"
+  | "status"
+  | "size"
+  | "node"
+  | "added"
+  | "up"
+  | "seeds"
+  | "uploaded"
+  | "ratio";
 export type SortDir = "asc" | "desc";
 export type Sort = { key: SortKey; dir: SortDir };
 
@@ -18,6 +27,8 @@ export type Filter = {
   node: string;
   status: string;
   minSize: number;
+  /** Only what was added from this instant (epoch ms) onwards; 0 turns the filter off. */
+  addedSince: number;
 };
 
 /** nameOf: the torrent's label. No name, the hash; neither present, empty string. */
@@ -40,7 +51,41 @@ export function ratioValue(t: Torrent): number {
 }
 
 /**
- * filterTorrents applies the screen's four filters. Search matches name OR hash — a
+ * addedValue returns the instant the torrent was added, in epoch ms, or 0 when it has no
+ * date (or the date does not parse). The 0 is deliberate: when sorting, "no date" goes
+ * after everything recent, and under the period filter it drops out — you can't claim
+ * it is recent.
+ */
+export function addedValue(t: Torrent): number {
+  if (!t.created_at) return 0;
+  const ms = new Date(t.created_at).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/**
+ * fmtAdded shows how long ago the torrent came in. Relative while that answers "is this
+ * the one I just downloaded?" (up to 30 days); past that, "412 d ago" would force the
+ * reader to do arithmetic, and the date is what they want. `now` is a parameter so the
+ * function stays pure.
+ */
+export function fmtAdded(t: TFn, item: Torrent, now: number): string {
+  const ms = addedValue(item);
+  if (!ms) return "—";
+  // A browser clock behind the server's would yield a negative age.
+  const age = Math.max(0, now - ms);
+  if (age < MINUTE) return t("torrents.downloaded.added.justNow");
+  if (age < HOUR) return t("torrents.downloaded.added.minutes", { count: Math.floor(age / MINUTE) });
+  if (age < DAY) return t("torrents.downloaded.added.hours", { count: Math.floor(age / HOUR) });
+  if (age < 30 * DAY) return t("torrents.downloaded.added.days", { count: Math.floor(age / DAY) });
+  return new Date(ms).toLocaleDateString(getLang());
+}
+
+/**
+ * filterTorrents applies the screen's filters. Search matches name OR hash — a
  * torrent without a name yet must still be findable by what the operator sees on screen.
  */
 export function filterTorrents(torrents: Torrent[], f: Filter): Torrent[] {
@@ -52,6 +97,7 @@ export function filterTorrents(torrents: Torrent[], f: Filter): Torrent[] {
     // Torrent without size_bytes counts as 0: with an active size filter it drops from the list,
     // which is the honest behavior — you can't claim it meets the minimum.
     if (f.minSize && (t.size_bytes ?? 0) < f.minSize) return false;
+    if (f.addedSince && addedValue(t) < f.addedSince) return false;
     return true;
   });
 }
@@ -82,6 +128,8 @@ export function sortTorrents(
         return t.size_bytes ?? 0;
       case "node":
         return nodeName(t.node_id);
+      case "added":
+        return addedValue(t);
       case "up":
         return t.up_speed ?? 0;
       case "seeds":

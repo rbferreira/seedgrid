@@ -385,12 +385,18 @@ Tags
 >   waiting, paused, rechecking, with error). Actions: prioritize in queue,
 >   download content, pause/resume, recheck, migrate, delete.
 > - **Downloaded** (`/downloaded`): the seeding collection, with **instant search
->   by name, filters (Node, status, minimum size) and sorting by all
->   data columns** — including the **Node** column. Actions: download content,
+>   by name, filters (Node, status, minimum size, when it was added) and sorting
+>   by all data columns** — including the **Node** column. It opens sorted by
+>   **Added**, newest first: whoever lands on the screen is usually looking for
+>   what just finished downloading. Actions: download content,
 >   pause/resume, recheck, migrate, delete.
 >
-> Columns in Downloaded: Name, Status, Size, Node, Speed, Seeds/Peers,
-> Downloaded/Uploaded, Ratio. Progress is left out (in SEEDING it is always 100%).
+> Columns in Downloaded: Name, Status, Size, Node, Added, Speed, Seeds/Peers,
+> Downloaded/Uploaded, Ratio. **Added** is the torrent's `created_at` in the
+> Control Plane — relative up to 30 days ("3 h ago"), a date after that, the full
+> instant on hover. Migration between Nodes keeps the date; a torrent *adopted*
+> from the Engine carries the instant of adoption, not when it entered the
+> Engine. The period filter uses rolling windows (last 24 hours / 7 days / 30 days). Progress is left out (in SEEDING it is always 100%).
 > Filters and sorting are client-side on `GET /api/v1/torrents` — the endpoint
 > has no pagination or filter, and at this order of magnitude it doesn't need it.
 > Multiple selection and pagination remain unimplemented (see §34).

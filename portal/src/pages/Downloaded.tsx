@@ -9,7 +9,7 @@ import {
   type Node,
   type Torrent,
 } from "../api";
-import { Badge, Panel, fmtBytes, fmtRatio, shortId, TRANSFER } from "../components/ui";
+import { Badge, Panel, fmtBytes, fmtRatio, fmtTime, shortId, TRANSFER } from "../components/ui";
 import { Spinner } from "../actions";
 import {
   ActionBtn,
@@ -23,6 +23,7 @@ import { MigratePicker, useMigrateTarget } from "../components/MigratePicker";
 import { nodeLabelById } from "../lib/node-label";
 import {
   filterTorrents,
+  fmtAdded,
   sortTorrents,
   type SortDir,
   type SortKey,
@@ -38,6 +39,16 @@ const SIZE_STEPS: { labelKey: Key; min: number }[] = [
   { labelKey: "torrents.downloaded.filters.size.gt1gb", min: 1024 ** 3 },
   { labelKey: "torrents.downloaded.filters.size.gt5gb", min: 5 * 1024 ** 3 },
   { labelKey: "torrents.downloaded.filters.size.gt20gb", min: 20 * 1024 ** 3 },
+];
+
+// Periods of the "Added" filter. Rolling windows (the last N hours), not calendar days:
+// "today" at 00:10 would hide what finished downloading at 23:50.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const ADDED_STEPS: { labelKey: Key; ms: number }[] = [
+  { labelKey: "torrents.downloaded.filters.added.any", ms: 0 },
+  { labelKey: "torrents.downloaded.filters.added.last24h", ms: DAY_MS },
+  { labelKey: "torrents.downloaded.filters.added.last7d", ms: 7 * DAY_MS },
+  { labelKey: "torrents.downloaded.filters.added.last30d", ms: 30 * DAY_MS },
 ];
 
 // Text columns start A→Z; numeric ones start from the largest, which is what you
@@ -67,7 +78,12 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
   const [fNode, setFNode] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fMinSize, setFMinSize] = useState(0);
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
+  const [fAdded, setFAdded] = useState(0);
+  // Opens newest first: whoever lands here is usually looking for what just finished.
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "added", dir: "desc" });
+  // A single "now" per load: the filter cutoff and the column's "N min ago" come from the
+  // same instant, and Date.now() stays out of render.
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +94,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
       setTorrents(ts.filter(isDone));
       setNodes(ns);
       setError("");
+      setNow(Date.now());
       setUpdatedAt(new Date().toLocaleTimeString(getLang()));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -119,19 +136,26 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
   const visible = useMemo(
     () =>
       sortTorrents(
-        filterTorrents(torrents, { q, node: fNode, status: fStatus, minSize: fMinSize }),
+        filterTorrents(torrents, {
+          q,
+          node: fNode,
+          status: fStatus,
+          minSize: fMinSize,
+          addedSince: fAdded ? now - fAdded : 0,
+        }),
         sort,
         nodeName,
       ),
-    [torrents, q, fNode, fStatus, fMinSize, sort, nodeName],
+    [torrents, q, fNode, fStatus, fMinSize, fAdded, now, sort, nodeName],
   );
 
-  const hasFilter = !!q || !!fNode || !!fStatus || fMinSize > 0;
+  const hasFilter = !!q || !!fNode || !!fStatus || fMinSize > 0 || fAdded > 0;
   const clearFilters = () => {
     setQ("");
     setFNode("");
     setFStatus("");
     setFMinSize(0);
+    setFAdded(0);
   };
 
   const toggleSort = (key: SortKey) =>
@@ -236,6 +260,18 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
             </option>
           ))}
         </select>
+        <select
+          value={fAdded}
+          onChange={(e) => setFAdded(Number(e.target.value))}
+          title={t("torrents.downloaded.filters.addedTitle")}
+          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+        >
+          {ADDED_STEPS.map((s) => (
+            <option key={s.ms} value={s.ms}>
+              {t(s.labelKey)}
+            </option>
+          ))}
+        </select>
         {hasFilter && (
           <button onClick={clearFilters} className="text-sm text-slate-400 underline hover:text-slate-200">
             {t("torrents.downloaded.filters.clear")}
@@ -254,6 +290,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
               <Th label={t("torrents.downloaded.table.colStatus")} k="status" />
               <Th label={t("torrents.downloaded.table.colSize")} k="size" align="right" />
               <Th label={t("torrents.downloaded.table.colNode")} k="node" />
+              <Th label={t("torrents.downloaded.table.colAdded")} k="added" />
               <Th label={t("torrents.downloaded.table.colSpeed")} k="up" />
               <Th label={t("torrents.downloaded.table.colSeedsPeers")} k="seeds" align="center" />
               <Th label={t("torrents.downloaded.table.colTransferred")} k="uploaded" />
@@ -274,6 +311,9 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
                   {item.size_bytes != null ? fmtBytes(item.size_bytes) : "—"}
                 </td>
                 <td className="px-3 py-2.5 text-slate-300">{nodeName(item.node_id)}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-300" title={fmtTime(item.created_at)}>
+                  {fmtAdded(t, item, now)}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-xs">
                   <SpeedPair dl={item.dl_speed} up={item.up_speed} />
                 </td>
@@ -368,7 +408,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
                   {!loaded ? (
                     t("common.loading")
                   ) : torrents.length === 0 ? (
