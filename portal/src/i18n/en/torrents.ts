@@ -14,6 +14,7 @@ export const torrents: Catalog["torrents"] = {
       allNodes: "All Nodes",
       allStatuses: "All statuses",
       minSizeTitle: "Minimum size",
+      addedTitle: "Added",
       clear: "clear filters",
       seedingCount: "{visible} of {total} seeding",
       size: {
@@ -23,6 +24,18 @@ export const torrents: Catalog["torrents"] = {
         gt5gb: "> 5 GB",
         gt20gb: "> 20 GB",
       },
+      added: {
+        any: "Any date",
+        last24h: "Last 24 hours",
+        last7d: "Last 7 days",
+        last30d: "Last 30 days",
+      },
+    },
+    added: {
+      justNow: "just now",
+      minutes: "{count} min ago",
+      hours: "{count} h ago",
+      days: "{count} d ago",
     },
     panelTitle: "Library ({count})",
     table: {
@@ -31,6 +44,7 @@ export const torrents: Catalog["torrents"] = {
       colStatus: "Status",
       colSize: "Size",
       colNode: "Node",
+      colAdded: "Added",
       colSpeed: "Speed",
       colSeedsPeers: "Seeds/Peers",
       colTransferred: "Downloaded / Uploaded",

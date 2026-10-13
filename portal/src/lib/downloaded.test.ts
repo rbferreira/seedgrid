@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Torrent } from "../api";
-import { cmpName, filterTorrents, ratioValue, sortTorrents } from "./downloaded";
+import { translate, type TFn } from "../i18n";
+import { addedValue, cmpName, filterTorrents, fmtAdded, ratioValue, sortTorrents } from "./downloaded";
 
 // Minimal Torrent: only the fields the Downloaded logic looks at. The cast exists because the
 // API type is wide and filling it entirely would hide what each test actually varies.
@@ -58,7 +59,7 @@ describe("filterTorrents", () => {
     t({ name: "Beta", node_id: "n2", status: "SEEDING", size_bytes: 50_000 }),
     t({ name: undefined, hash: "cafe", node_id: "n2", status: "PAUSED" }),
   ];
-  const empty = { q: "", node: "", status: "", minSize: 0 };
+  const empty = { q: "", node: "", status: "", minSize: 0, addedSince: 0 };
 
   it("without filter returns everything", () => {
     expect(filterTorrents(collection, empty)).toHaveLength(3);
@@ -87,6 +88,63 @@ describe("filterTorrents", () => {
 
   it("whitespace in the search does not filter anything", () => {
     expect(filterTorrents(collection, { ...empty, q: "   " })).toHaveLength(3);
+  });
+
+  it("filters by when it was added, boundary included", () => {
+    const ts = [
+      t({ name: "old", created_at: "2026-10-01T00:00:00Z" }),
+      t({ name: "onTheEdge", created_at: "2026-10-10T00:00:00Z" }),
+      t({ name: "fresh", created_at: "2026-10-12T08:00:00Z" }),
+    ];
+    const since = Date.parse("2026-10-10T00:00:00Z");
+    expect(names(filterTorrents(ts, { ...empty, addedSince: since }))).toEqual(["onTheEdge", "fresh"]);
+  });
+
+  it("a torrent with no added date drops out under the period filter", () => {
+    // Same rule as size: without the data you can't claim it is recent.
+    const ts = [t({ name: "noDate" }), t({ name: "garbage", created_at: "not a date" })];
+    expect(filterTorrents(ts, { ...empty, addedSince: 1 })).toHaveLength(0);
+    expect(filterTorrents(ts, empty)).toHaveLength(2);
+  });
+});
+
+describe("addedValue / fmtAdded", () => {
+  const en: TFn = (key, params) => translate("en", key, params);
+  const ptBR: TFn = (key, params) => translate("pt-BR", key, params);
+  const now = Date.parse("2026-10-13T12:00:00Z");
+  const ago = (ms: number) => t({ created_at: new Date(now - ms).toISOString() });
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  it("a missing or invalid date is worth 0 and renders as a dash", () => {
+    expect(addedValue(t({}))).toBe(0);
+    expect(addedValue(t({ created_at: "not a date" }))).toBe(0);
+    expect(fmtAdded(en, t({}), now)).toBe("—");
+  });
+
+  it("is relative up to 30 days, in the largest whole unit", () => {
+    expect(fmtAdded(en, ago(20_000), now)).toBe("just now");
+    expect(fmtAdded(en, ago(59 * MINUTE), now)).toBe("59 min ago");
+    expect(fmtAdded(en, ago(HOUR), now)).toBe("1 h ago");
+    expect(fmtAdded(en, ago(23 * HOUR + 59 * MINUTE), now)).toBe("23 h ago");
+    expect(fmtAdded(en, ago(DAY), now)).toBe("1 d ago");
+    expect(fmtAdded(en, ago(29 * DAY), now)).toBe("29 d ago");
+  });
+
+  it("follows the Portal language", () => {
+    expect(fmtAdded(ptBR, ago(20_000), now)).toBe("agora");
+    expect(fmtAdded(ptBR, ago(3 * HOUR), now)).toBe("há 3 h");
+  });
+
+  it("past 30 days shows the date, not a day count", () => {
+    const old = t({ created_at: "2026-03-05T15:00:00Z" });
+    expect(fmtAdded(en, old, now)).toMatch(/2026|26/);
+    expect(fmtAdded(en, old, now)).not.toMatch(/ago/);
+  });
+
+  it("a browser clock behind the server does not produce a negative age", () => {
+    expect(fmtAdded(en, ago(-5 * MINUTE), now)).toBe("just now");
   });
 });
 
@@ -136,6 +194,21 @@ describe("sortTorrents", () => {
     const labelOf = (id: string) => ({ n1: "zulu", n2: "alfa" })[id] ?? id;
     const ts = [t({ name: "A", node_id: "n1" }), t({ name: "B", node_id: "n2" })];
     expect(names(sortTorrents(ts, { key: "node", dir: "asc" }, labelOf))).toEqual(["B", "A"]);
+  });
+
+  it("sorts by added: newest first, no date last", () => {
+    const ts = [
+      t({ name: "noDate" }),
+      t({ name: "yesterday", created_at: "2026-10-12T10:00:00Z" }),
+      t({ name: "today", created_at: "2026-10-13T10:00:00Z" }),
+      t({ name: "lastMonth", created_at: "2026-09-13T10:00:00Z" }),
+    ];
+    expect(names(sortTorrents(ts, { key: "added", dir: "desc" }, withoutNode))).toEqual([
+      "today",
+      "yesterday",
+      "lastMonth",
+      "noDate",
+    ]);
   });
 
   it("treats missing numeric fields as 0", () => {

@@ -12,6 +12,7 @@ export const torrents = {
       allNodes: "Todos os Nodes",
       allStatuses: "Todos os status",
       minSizeTitle: "Tamanho mínimo",
+      addedTitle: "Adicionado",
       clear: "limpar filtros",
       seedingCount: "{visible} de {total} semeando",
       size: {
@@ -21,6 +22,18 @@ export const torrents = {
         gt5gb: "> 5 GB",
         gt20gb: "> 20 GB",
       },
+      added: {
+        any: "Qualquer data",
+        last24h: "Últimas 24 h",
+        last7d: "Últimos 7 dias",
+        last30d: "Últimos 30 dias",
+      },
+    },
+    added: {
+      justNow: "agora",
+      minutes: "há {count} min",
+      hours: "há {count} h",
+      days: "há {count} d",
     },
     panelTitle: "Acervo ({count})",
     table: {
@@ -29,6 +42,7 @@ export const torrents = {
       colStatus: "Status",
       colSize: "Tamanho",
       colNode: "Node",
+      colAdded: "Adicionado",
       colSpeed: "Velocidade",
       colSeedsPeers: "Seeds/Peers",
       colTransferred: "Baixado / Enviado",

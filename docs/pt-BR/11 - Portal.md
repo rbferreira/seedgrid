@@ -385,12 +385,18 @@ Tags
 >   aguardando, pausado, em recheck, com erro). Ações: priorizar na fila,
 >   baixar conteúdo, pausar/retomar, reverificar, migrar, excluir.
 > - **Baixados** (`/downloaded`): o acervo semeando, com **pesquisa instantânea
->   por nome, filtros (Node, status, tamanho mínimo) e ordenação por todas as
->   colunas de dado** — inclusive a coluna **Node**. Ações: baixar conteúdo,
+>   por nome, filtros (Node, status, tamanho mínimo, período de adição) e
+>   ordenação por todas as colunas de dado** — inclusive a coluna **Node**. Abre
+>   ordenada por **Adicionado**, mais recentes primeiro: quem chega à tela em
+>   geral procura o que acabou de baixar. Ações: baixar conteúdo,
 >   pausar/retomar, reverificar, migrar, excluir.
 >
-> Colunas em Baixados: Nome, Status, Tamanho, Node, Velocidade, Seeds/Peers,
-> Baixado/Enviado, Ratio. Progresso fica de fora (em SEEDING é sempre 100%).
+> Colunas em Baixados: Nome, Status, Tamanho, Node, Adicionado, Velocidade,
+> Seeds/Peers, Baixado/Enviado, Ratio. **Adicionado** é o `created_at` do torrent
+> no Control Plane — relativo até 30 dias ("há 3 h"), data depois disso, instante
+> completo no hover. A migração entre Nodes preserva a data; um torrent *adotado*
+> do Engine carrega o instante da adoção, não o de quando entrou no Engine. O
+> filtro de período usa janelas móveis (últimas 24 h / 7 dias / 30 dias). Progresso fica de fora (em SEEDING é sempre 100%).
 > Filtros e ordenação são client-side sobre `GET /api/v1/torrents` — o endpoint
 > não tem paginação nem filtro, e nesta ordem de grandeza não precisa.
 > Seleção múltipla e paginação seguem não implementadas (ver §34).
