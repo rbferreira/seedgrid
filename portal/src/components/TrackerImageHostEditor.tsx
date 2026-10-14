@@ -27,9 +27,9 @@ const EXAMPLE = {
 // only those who can write (trackers:write) see the edit controls.
 
 const btnCls =
-  "rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
-const inputCls =
-  "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white outline-none focus:border-emerald-500";
+  "rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
+// Form-control base classes (#22).
+const inputCls = "sg-field w-full";
 
 export function TrackerImageHostEditor({
   tracker,

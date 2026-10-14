@@ -117,8 +117,8 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
     }
   }
 
-  const inputCls =
-    "w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500";
+  // Form-control base classes (#22).
+  const inputCls = "sg-field w-full";
 
   return (
     <div className="max-w-2xl space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
@@ -281,7 +281,7 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
               type="checkbox"
               checked={form.isDefault}
               onChange={(e) => set("isDefault")(e.target.checked)}
-              className="accent-emerald-500"
+              className="sg-check"
             />
             {t("trackers.trackersPanel.form.setDefault")}
           </label>

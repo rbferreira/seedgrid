@@ -237,7 +237,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
             type="file"
             accept=".torrent"
             multiple
-            className="hidden"
+            className="sg-field hidden"
             onChange={(e) => {
               addFiles(Array.from(e.target.files ?? []));
               e.target.value = ""; // allows re-selecting the same file
@@ -275,7 +275,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
             onChange={(e) => setMagnet(e.target.value)}
             placeholder={"magnet:?xt=urn:btih:…\nmagnet:?xt=urn:btih:…"}
             rows={3}
-            className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-white outline-none focus:border-emerald-500"
+            className="sg-textarea text-xs w-full resize-y font-mono"
           />
         </div>
 
@@ -569,7 +569,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
             ref={inputRef}
             type="file"
             multiple
-            className="hidden"
+            className="sg-field hidden"
             onChange={(e) => {
               addFiles(Array.from(e.target.files ?? []));
               e.target.value = "";
@@ -603,7 +603,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t("torrents.addTorrent.torrentNamePlaceholder")}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+            className="sg-field w-full"
           />
           {selTracker?.source && (
             <p className="mt-1 text-xs text-sky-300/80">
@@ -618,7 +618,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
             <select
               value={trackerId}
               onChange={(e) => setTrackerId(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+              className="sg-field sg-select w-full"
             >
               <option value="public">{t("torrents.addTorrent.optionPublic")}</option>
               {trackers.map((tr) => (
@@ -634,7 +634,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
             <select
               value={forceNode}
               onChange={(e) => setForceNode(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+              className="sg-field sg-select w-full"
             >
               <option value="">{t("torrents.addTorrent.optionSchedulerChooses")}</option>
               {nodes

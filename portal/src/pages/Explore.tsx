@@ -253,7 +253,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
               <select
                 value={trackerId}
                 onChange={(e) => setTrackerId(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field sg-select w-full"
               >
                 {integ.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -279,7 +279,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && doSearch()}
                   placeholder={t("explore.explore.search.placeholder")}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white outline-none focus:border-emerald-500"
+                  className="sg-field w-full text-base"
                 />
                 <button
                   onClick={doSearch}
@@ -294,7 +294,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
                 value={fType}
                 onChange={(e) => setFType(e.target.value as MediaType | "")}
                 title={t("explore.explore.filters.typeTitle")}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field sg-select"
               >
                 <option value="">{t("explore.explore.filters.allTypes")}</option>
                 <option value="movie">🎬 {t("explore.explore.media.moviePlural")}</option>
@@ -308,7 +308,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
                 value={fSize}
                 onChange={(e) => setFSize(Number(e.target.value))}
                 title={t("explore.explore.filters.sizeTitle")}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field sg-select"
               >
                 <option value={0}>{t("explore.explore.filters.anySize")}</option>
                 <option value={104857600}>{"> 100 MB"}</option>
@@ -322,13 +322,13 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
                 onChange={(e) => setFSeeds(Number(e.target.value) || 0)}
                 placeholder={t("explore.explore.filters.minSeedsPlaceholder")}
                 title={t("explore.explore.filters.minSeedsTitle")}
-                className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field w-28"
               />
               <select
                 value={fStatus}
                 onChange={(e) => setFStatus(e.target.value as "all" | "avail" | "have")}
                 title={t("explore.explore.filters.statusTitle")}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field sg-select"
               >
                 <option value="all">{t("explore.explore.filters.statusAll")}</option>
                 <option value="avail">{t("explore.explore.filters.statusAvail")}</option>

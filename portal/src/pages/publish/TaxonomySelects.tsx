@@ -38,7 +38,7 @@ export function TaxonomySelects({
               aria-label={t(labelKey)}
               value={value}
               onChange={(e) => onChange(axis, Number(e.target.value))}
-              className={inputCls}
+              className={`${inputCls} sg-select`}
             >
               {/* Resolution is optional in UNIT3D; category and type are not, but 0 is also the
                   state "not yet chosen" — better than a default that no one checked. */}

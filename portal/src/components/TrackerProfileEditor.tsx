@@ -109,8 +109,8 @@ const ORIGIN_BADGE: Record<TermOrigin, OriginBadgeDef> = {
   },
 };
 
-const inputCls =
-  "w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white outline-none focus:border-emerald-500";
+// Form-control base classes (#22).
+const inputCls = "sg-field w-full";
 
 export function TrackerProfileEditor({
   tracker,
@@ -303,7 +303,7 @@ export function TrackerProfileEditor({
                     onChange={(e) => patchRow(axis, r.key, { kind: e.target.value as DraftTerm["kind"] })}
                     aria-label={t("trackers.trackerProfileEditor.rows.kindAria")}
                     title={t("trackers.trackerProfileEditor.rows.kindTitle")}
-                    className={`${inputCls} w-24 shrink-0 text-xs`}
+                    className={`${inputCls} sg-select w-24 shrink-0 text-xs`}
                   >
                     <option value="">—</option>
                     {(Object.keys(KIND_LABEL_KEY) as TermKind[]).map((k) => (
@@ -515,7 +515,7 @@ function Proposal({
                     disabled={!ok}
                     onChange={() => onToggle(key)}
                     aria-label={t("trackers.trackerProfileEditor.proposal.applyAria", { label: t(labelKey), id: it.id })}
-                    className="accent-sky-500"
+                    className="sg-check"
                   />
                   <span className="w-12 shrink-0 font-mono text-slate-400">{it.id}</span>
                   <input
