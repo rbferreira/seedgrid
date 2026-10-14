@@ -33,7 +33,7 @@ const LANGUAGE_NAME_KEY = {
 } as const;
 
 const btnCls =
-  "rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
+  "rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
 const stepCls =
   "rounded px-1.5 py-0.5 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-sky-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400";
 

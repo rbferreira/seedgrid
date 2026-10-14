@@ -39,7 +39,7 @@ import { useT, rich } from "../i18n";
 //     overwritten without them asking, and asking is term by term.
 
 const btnCls =
-  "rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
+  "rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-sky-600 hover:text-sky-200 disabled:opacity-40";
 
 export function TrackerProfileExchange({
   tracker,
