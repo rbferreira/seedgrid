@@ -79,6 +79,16 @@ describe("catalog parity", () => {
     }
   });
 
+  // "(ADR-032)" or "(#112)" means something to whoever reads the code, not to the operator — and
+  // an issue number may point to a tracker the reader has no access to. Comments keep theirs.
+  it("no leaf cites an ADR or an issue number", () => {
+    for (const [key, val] of [...ptEntries, ...enEntries]) {
+      for (const text of typeof val === "string" ? [val] : Object.values(val)) {
+        expect(text, key).not.toMatch(/ADR-\d+|#\d+/);
+      }
+    }
+  });
+
   it("every plural leaf has `other` in both languages", () => {
     for (const [key, ptVal] of ptEntries) {
       if (typeof ptVal !== "string") {

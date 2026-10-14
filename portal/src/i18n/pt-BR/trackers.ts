@@ -105,7 +105,7 @@ export const trackers = {
     title: "Host de imagem do tracker",
     statusConfigured: "configurado",
     statusImgbbOnly: "só o imgbb",
-    description: "O host próprio do site para hospedar screenshots. Entra na cadeia de upload (ADR-040): o host do tracker é tentado primeiro; se falhar, o imgbb assume. A chave do operador é cadastrada por rota própria e fica presa ao host do upload_url.",
+    description: "O host próprio do site para hospedar screenshots. Entra na cadeia de upload: o host do tracker é tentado primeiro; se falhar, o imgbb assume. A chave do operador é cadastrada por rota própria e fica presa ao host do upload_url.",
     labelName: "Nome",
     placeholderName: "ex.: Host do site",
     ariaName: "nome do host",

@@ -24,7 +24,7 @@ var (
 	storageOKDesc = prometheus.NewDesc(
 		"seedgrid_node_storage_ok", "Node storage (/data) mounted and writable: 1=ok, 0=failed. Only emitted when known.", []string{"node"}, nil)
 	admissionHoldDesc = prometheus.NewDesc(
-		"seedgrid_admission_hold", "Number of torrents on hold by the download admission controller (#21).", nil, nil)
+		"seedgrid_admission_hold", "Number of torrents on hold by the download admission controller.", nil, nil)
 	connectableDesc = prometheus.NewDesc(
 		"seedgrid_node_connectable",
 		"Node receives inbound BitTorrent connections: 1=yes, 0=firewalled. Only emitted when known (Agent reporting connection_status).",

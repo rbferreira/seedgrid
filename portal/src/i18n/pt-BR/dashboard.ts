@@ -23,7 +23,7 @@ export const dashboard = {
     },
     admission: {
       label: "Admissão",
-      title: "Modo de operação da admissão do cluster (ADR-024)",
+      title: "Modo de operação da admissão do cluster",
     },
     defaultCreds: {
       title: "Senha padrão em uso (admin/admin)",

@@ -333,7 +333,7 @@ func migrationError(w http.ResponseWriter, d Deps, err error) {
 	case errors.Is(err, migration.ErrAlreadyMigrating):
 		httpx.WriteError(w, http.StatusConflict, "already_migrating", "a migration is already in progress for this torrent")
 	case errors.Is(err, migration.ErrDestNoSpace):
-		httpx.WriteError(w, http.StatusConflict, "dest_no_space", "destination Node does not have disk space for this torrent (ADR-032)")
+		httpx.WriteError(w, http.StatusConflict, "dest_no_space", "destination Node does not have disk space for this torrent")
 	default:
 		d.Logger.Error("migration", "error", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to start migration")
@@ -519,9 +519,9 @@ func noEligibleNodeParams(err error) map[string]any {
 func noNodeWithSpaceMessage(err error) string {
 	var noSpace *scheduler.NoNodeWithSpaceError
 	if !errors.As(err, &noSpace) {
-		return "no Seed Node with disk space for this torrent (ADR-032) — free up space or migrate torrents between Nodes"
+		return "no Seed Node with disk space for this torrent — free up space or migrate torrents between Nodes"
 	}
-	return fmt.Sprintf("no Seed Node can accommodate this torrent: it is %s and the free disk margin is %s (ADR-032), but the Node with the most free space has %s free. "+
+	return fmt.Sprintf("no Seed Node can accommodate this torrent: it is %s and the free disk margin is %s, but the Node with the most free space has %s free. "+
 		"Free up space, migrate torrents between Nodes, or adjust \"Free disk margin\" in Settings",
 		capacity.HumanBytes(noSpace.NeedBytes), capacity.HumanBytes(noSpace.MinFreeBytes), capacity.HumanBytes(noSpace.BestFreeBytes))
 }

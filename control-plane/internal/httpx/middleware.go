@@ -408,7 +408,7 @@ func RequireIntegrationToken(token string, logger *slog.Logger) Middleware {
 			if token == "" {
 				integrationWarnOnce.Do(func() {
 					if logger != nil {
-						logger.Warn("integration webhooks WITHOUT token — configure SEEDGRID_INTEGRATION_TOKEN (#116)")
+						logger.Warn("integration webhooks WITHOUT token — configure SEEDGRID_INTEGRATION_TOKEN")
 					}
 				})
 				next.ServeHTTP(w, r)

@@ -25,7 +25,7 @@ export const dashboard: Catalog["dashboard"] = {
     },
     admission: {
       label: "Admission",
-      title: "Cluster admission operation mode (ADR-024)",
+      title: "Cluster admission operation mode",
     },
     defaultCreds: {
       title: "Default password in use (admin/admin)",

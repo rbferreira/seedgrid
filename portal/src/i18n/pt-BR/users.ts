@@ -50,7 +50,7 @@ export const users = {
       disable: "Falha ao desabilitar usuário.",
     },
     footer: {
-      roles: "Papéis de sistema (ADR-035): {roles}",
+      roles: "Papéis de sistema: {roles}",
     },
   },
 } as const;
