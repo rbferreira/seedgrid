@@ -107,7 +107,7 @@ export const trackers: Catalog["trackers"] = {
     title: "Tracker image host",
     statusConfigured: "configured",
     statusImgbbOnly: "imgbb only",
-    description: "The site's own host for storing screenshots. Part of the upload chain (ADR-040): the tracker host is tried first; if it fails, imgbb takes over. The operator key is registered via its own route and is bound to the upload_url host.",
+    description: "The site's own host for storing screenshots. Part of the upload chain: the tracker host is tried first; if it fails, imgbb takes over. The operator key is registered via its own route and is bound to the upload_url host.",
     labelName: "Name",
     placeholderName: "e.g. Site host",
     ariaName: "host name",

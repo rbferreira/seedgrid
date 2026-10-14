@@ -75,7 +75,7 @@ export const health = {
       nodeDiskWr: "Disco — Escrita por Node",
       nodeDiskUtil: "Disco — Utilização por Node",
     },
-    footer: "Saúde de domínio e recursos correntes vêm da API do Control Plane; as séries de tendência vêm do Prometheus, servidas pelo CP (ADR-016). Janela {range}.",
+    footer: "Saúde de domínio e recursos correntes vêm da API do Control Plane; as séries de tendência vêm do Prometheus, servidas pelo CP. Janela {range}.",
   },
   nodeCard: {
     title: {

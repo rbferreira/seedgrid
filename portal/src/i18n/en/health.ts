@@ -77,7 +77,7 @@ export const health: Catalog["health"] = {
       nodeDiskWr: "Disk — Write per Node",
       nodeDiskUtil: "Disk — Utilization per Node",
     },
-    footer: "Domain health and current resources come from the Control Plane API; trend series come from Prometheus, served by the CP (ADR-016). Window {range}.",
+    footer: "Domain health and current resources come from the Control Plane API; trend series come from Prometheus, served by the CP. Window {range}.",
   },
   nodeCard: {
     title: {

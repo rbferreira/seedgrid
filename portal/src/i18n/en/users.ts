@@ -52,7 +52,7 @@ export const users: Catalog["users"] = {
       disable: "Failed to disable user.",
     },
     footer: {
-      roles: "System roles (ADR-035): {roles}",
+      roles: "System roles: {roles}",
     },
   },
 };

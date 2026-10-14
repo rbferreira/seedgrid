@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"regexp"
 	"testing"
 	"time"
 )
@@ -15,6 +16,27 @@ func TestCatalogDefaultsValid(t *testing.T) {
 		}
 		if s.Label == "" || s.Description == "" {
 			t.Errorf("%s: label/description required in panel", s.Key)
+		}
+	}
+}
+
+// internalRef matches design-record and issue references ("ADR-032", "#112"). They mean
+// something to whoever reads the code, not to the operator reading the panel — and an issue
+// number may point to a tracker the reader has no access to.
+var internalRef = regexp.MustCompile(`ADR-\d+|#\d+`)
+
+// TestCatalogTextHasNoInternalRefs keeps references out of what the panel shows. Comments in the
+// code keep theirs.
+func TestCatalogTextHasNoInternalRefs(t *testing.T) {
+	for _, s := range Specs() {
+		texts := []string{s.Label, s.Description}
+		for _, c := range s.Choices {
+			texts = append(texts, c.Label)
+		}
+		for _, text := range texts {
+			if ref := internalRef.FindString(text); ref != "" {
+				t.Errorf("%s: user-facing text cites %q: %q", s.Key, ref, text)
+			}
 		}
 	}
 }

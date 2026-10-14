@@ -38,7 +38,7 @@ export const publish: Catalog["publish"] = {
       genSheetTitle: "Builds the full sheet: poster + synopsis + tags + clickable screenshots + MediaInfo. Edit afterwards. A complete sheet reduces 'postponed'.",
       genScreenshots: "📸 Generate screenshots",
       genScreenshotsLoading: "Generating screenshots…",
-      genScreenshotsTitle: "Extracts frames from the torrent (Agent) and uploads them to an image host (CP), inserting the BBCode at the start of the description (ADR-026).",
+      genScreenshotsTitle: "Extracts frames from the torrent (Agent) and uploads them to an image host (CP), inserting the BBCode at the start of the description.",
       notNow: "Not now",
       previewing: "Building preview…",
       publish: "Publish to {tracker}",

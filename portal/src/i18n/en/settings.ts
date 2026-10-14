@@ -49,7 +49,7 @@ export const settings: Catalog["settings"] = {
         },
         imgbb: {
           title: "imgbb",
-          blurb: "Image host for publish screenshots (ADR-030).",
+          blurb: "Image host for publish screenshots.",
         },
         googleBooks: {
           title: "Google Books",
@@ -123,7 +123,7 @@ export const settings: Catalog["settings"] = {
       },
       disk_min_free: {
         label: "Free disk margin",
-        description: "Disk space never committed on a Node (ADR-032). A torrent only enters or migrates to a Node if the projected free space (current free minus what existing torrents still need to download) fits the torrent's TOTAL SIZE plus this margin. Below it, the Node triggers the \"disk full\" alert. Default 5 GiB.",
+        description: "Disk space never committed on a Node. A torrent only enters or migrates to a Node if the projected free space (current free minus what existing torrents still need to download) fits the torrent's TOTAL SIZE plus this margin. Below it, the Node triggers the \"disk full\" alert. Default 5 GiB.",
       },
       slow_grace: {
         label: "Slow grace period",
@@ -175,7 +175,7 @@ export const settings: Catalog["settings"] = {
       },
       max_active_downloads: {
         label: "Simultaneous downloads per Node",
-        description: "Maximum downloads the Engine keeps active at once on a Node; the rest wait in the queue. Each concurrent download costs piece hashing and I/O: weaker hardware (Atom, USB HDD) needs a lower number than the fleet — set it with an override on that Node, don't lower the Cluster value. The admission controller enforces the tracker slot limit across the whole Cluster (ADR-021); this is the per-machine safety net.",
+        description: "Maximum downloads the Engine keeps active at once on a Node; the rest wait in the queue. Each concurrent download costs piece hashing and I/O: weaker hardware (Atom, USB HDD) needs a lower number than the fleet — set it with an override on that Node, don't lower the Cluster value. The admission controller enforces the tracker slot limit across the whole Cluster; this is the per-machine safety net.",
       },
       max_active_uploads: {
         label: "Simultaneous uploads per Node",
@@ -209,11 +209,11 @@ export const settings: Catalog["settings"] = {
     integrations: {
       tmdb_api_key: {
         label: "TMDB — API key (v3)",
-        description: "Your TMDB (themoviedb.org) v3 API key to enrich metadata on publish (ADR-020). Empty disables enrichment. This is YOUR key — register at themoviedb.org.",
+        description: "Your TMDB (themoviedb.org) v3 API key to enrich metadata on publish. Empty disables enrichment. This is YOUR key — register at themoviedb.org.",
       },
       igdb_client_id: {
         label: "IGDB — Client ID (Twitch)",
-        description: "Twitch app Client ID used by IGDB (game metadata, #17). Without the ID+Secret pair, game publishing is disabled.",
+        description: "Twitch app Client ID used by IGDB (game metadata). Without the ID+Secret pair, game publishing is disabled.",
       },
       igdb_client_secret: {
         label: "IGDB — Client Secret (Twitch)",
@@ -221,11 +221,11 @@ export const settings: Catalog["settings"] = {
       },
       imgbb_api_key: {
         label: "imgbb — API key",
-        description: "imgbb.com API key to host publish screenshots (ADR-030; replaces ptpimg, which went offline). Create yours free at api.imgbb.com. Empty disables screenshot generation.",
+        description: "imgbb.com API key to host publish screenshots. Create yours free at api.imgbb.com. Empty disables screenshot generation.",
       },
       google_books_api_key: {
         label: "Google Books — API key",
-        description: "Google Books API key, used as the SECOND book/audiobook metadata provider in the catalog (#110) — Open Library doesn't index much of the PT-BR collection or recent releases. PRACTICALLY REQUIRED: without a key the API returns 429 (Too Many Requests) after very few lookups, and a single catalog page already exceeds that — measured, not estimated. Empty = the provider stays idle and the book relies only on what Open Library confirms. Create yours at console.cloud.google.com (enable the Books API).",
+        description: "Google Books API key, used as the SECOND book/audiobook metadata provider in the catalog — Open Library doesn't index much of the PT-BR collection or recent releases. PRACTICALLY REQUIRED: without a key the API returns 429 (Too Many Requests) after very few lookups, and a single catalog page already exceeds that — measured, not estimated. Empty = the provider stays idle and the book relies only on what Open Library confirms. Create yours at console.cloud.google.com (enable the Books API).",
       },
     },
     notify: {
@@ -247,7 +247,7 @@ export const settings: Catalog["settings"] = {
       },
       alerts_min_severity: {
         label: "Alerts — minimum severity",
-        description: "Which alerts (ADR-008: Node offline, storage, disk saturated) get notified. OFF disables the alert pipeline without touching channels. CRITICAL = only what needs immediate action; WARNING includes degradation; INFO sends everything.",
+        description: "Which alerts (Node offline, storage, disk saturated) get notified. OFF disables the alert pipeline without touching channels. CRITICAL = only what needs immediate action; WARNING includes degradation; INFO sends everything.",
       },
       alerts_on_resolve: {
         label: "Alerts — notify on resolve",
@@ -319,63 +319,63 @@ export const settings: Catalog["settings"] = {
     commands: {
       redispatch_after: {
         label: "Orphan command redelivery",
-        description: "Age after which a DISPATCHED command with no Agent confirmation is redelivered on the next poll (#111 — Agent died between claim and result). Must be GREATER than the longest expected command: the Agent runs the batch serially and a large migrate_pull holds up the queue while copying data (#87; recheck wait was moved out of the command, except for Agents prior to #87). 0 disables redelivery.",
+        description: "Age after which a DISPATCHED command with no Agent confirmation is redelivered on the next poll (the Agent died between claiming it and reporting the result). Must be GREATER than the longest expected command: the Agent runs the batch serially and a large migrate_pull holds up the queue while copying data. 0 disables redelivery.",
       },
       max_attempts: {
         label: "Max command deliveries",
-        description: "How many Agent deliveries a command can receive before being marked FAILED as abandoned (#111) — prevents infinite redelivery loops for commands that always crash the Agent.",
+        description: "How many Agent deliveries a command can receive before being marked FAILED as abandoned — prevents infinite redelivery loops for commands that always crash the Agent.",
       },
     },
     workers: {
       maintenance_interval: {
         label: "Maintenance Worker interval",
-        description: "Interval for retention pruning (#112): terminal commands, events, activities, audit, and expired sessions.",
+        description: "Interval for retention pruning: terminal commands, events, activities, audit, and expired sessions.",
       },
       reconciler_interval: {
         label: "Migration Reconciler interval",
-        description: "Interval for the reconciler that advances/finalizes in-flight torrent migrations (ADR-018).",
+        description: "Interval for the reconciler that advances/finalizes in-flight torrent migrations.",
       },
       prom_writer_interval: {
         label: "Prometheus Targets Writer interval",
-        description: "Rewrite period for the Prometheus targets file (file_sd) with active Nodes (ADR-017).",
+        description: "Rewrite period for the Prometheus targets file (file_sd) with active Nodes.",
       },
     },
     retention: {
       commands: {
         label: "Command retention",
-        description: "How long DONE/FAILED commands stay in the database before pruning (#112). PENDING/DISPATCHED are never pruned. 0 disables.",
+        description: "How long DONE/FAILED commands stay in the database before pruning. PENDING/DISPATCHED are never pruned. 0 disables.",
       },
       events: {
         label: "Event retention",
-        description: "How long events stay in the database before pruning (#112). 0 disables.",
+        description: "How long events stay in the database before pruning. 0 disables.",
       },
       activities: {
         label: "Activity feed retention",
-        description: "How long the orchestration trail (ADR-022) stays in the database before pruning (#112). 0 disables.",
+        description: "How long the orchestration trail stays in the database before pruning. 0 disables.",
       },
       audit: {
         label: "Audit retention",
-        description: "How long the audit trail (ADR-025) stays in the database before pruning (#112). Longer retention for accountability. 0 disables.",
+        description: "How long the audit trail stays in the database before pruning. Longer retention for accountability. 0 disables.",
       },
     },
     migration: {
       max_concurrent: {
         label: "Concurrent migrations",
-        description: "How many torrent migrations can transfer data at once (ADR-031). Others wait in queue. Keep low: each migration is a heavy disk copy, and draining an entire Node at once saturates the I/O of the very machine in trouble.",
+        description: "How many torrent migrations can transfer data at once. Others wait in queue. Keep low: each migration is a heavy disk copy, and draining an entire Node at once saturates the I/O of the very machine in trouble.",
       },
       recheck_stall_window: {
         label: "Migration recheck stall",
-        description: "How long the recheck on the target Node can make no progress before the migration is aborted as stalled (#79/#87). This is what matters: while progress increases, waiting continues regardless of disk speed—only a stall fails it. Monitored by the Control Plane on each reconciler pass.",
+        description: "How long the recheck on the target Node can make no progress before the migration is aborted as stalled. This is what matters: while progress increases, waiting continues regardless of disk speed—only a stall fails it. Monitored by the Control Plane on each reconciler pass.",
       },
       recheck_max_wait: {
         label: "Migration recheck ceiling",
-        description: "Absolute ceiling, counted from copy completion, for the destination to verify it has what the source had (#87). Only catches an Engine reporting oscillating progress forever; stagnation (above) is the real safeguard. Since the wait no longer blocks the Node command queue, the ceiling can be generous — the cost of a high ceiling is that a migration.max_concurrent slot stays occupied.",
+        description: "Absolute ceiling, counted from copy completion, for the destination to verify it has what the source had. Only catches an Engine reporting oscillating progress forever; stagnation (above) is the real safeguard. Since the wait no longer blocks the Node command queue, the ceiling can be generous — the cost of a high ceiling is that a migration.max_concurrent slot stays occupied.",
       },
     },
     metrics: {
       torrent_sample_interval: {
         label: "Per-torrent sample interval",
-        description: "Minimum interval between time-series sample batches per Node (#113). The Agent syncs every ~15s; writing a sample on every sync is the biggest source of database growth. 0 = sample on every sync.",
+        description: "Minimum interval between time-series sample batches per Node. The Agent syncs every ~15s; writing a sample on every sync is the biggest source of database growth. 0 = sample on every sync.",
       },
       cluster_sample_interval: {
         label: "Cluster sample interval",

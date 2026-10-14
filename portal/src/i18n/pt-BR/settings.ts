@@ -47,7 +47,7 @@ export const settings = {
         },
         imgbb: {
           title: "imgbb",
-          blurb: "Host das imagens dos screenshots da publicação (ADR-030).",
+          blurb: "Host das imagens dos screenshots da publicação.",
         },
         googleBooks: {
           title: "Google Books",
@@ -121,7 +121,7 @@ export const settings = {
       },
       disk_min_free: {
         label: "Margem de disco livre",
-        description: "Folga de disco que nunca se compromete num Node (ADR-032). Um torrent só entra/migra para um Node se o espaço projetado livre (livre atual menos o que os torrents já presentes ainda vão baixar) comportar o TAMANHO TOTAL do torrent mais esta margem. Abaixo dela, o Node dispara o alerta \"disco cheio\". Default 5 GiB.",
+        description: "Folga de disco que nunca se compromete num Node. Um torrent só entra/migra para um Node se o espaço projetado livre (livre atual menos o que os torrents já presentes ainda vão baixar) comportar o TAMANHO TOTAL do torrent mais esta margem. Abaixo dela, o Node dispara o alerta \"disco cheio\". Default 5 GiB.",
       },
       slow_grace: {
         label: "Carência de lentidão",
@@ -173,7 +173,7 @@ export const settings = {
       },
       max_active_downloads: {
         label: "Downloads simultâneos por Node",
-        description: "Teto de downloads que o Engine mantém ativos ao mesmo tempo num Node; o excedente espera em fila. Cada download concorrente custa hashing de peças e I/O: máquina fraca (Atom, HD USB) pede um número menor que a frota — ajuste com um override naquele Node, não baixando o valor de cluster. Quem garante o limite de slots do tracker no cluster inteiro é o controlador de admissão (ADR-021); este é o cinto-e-suspensório por máquina.",
+        description: "Teto de downloads que o Engine mantém ativos ao mesmo tempo num Node; o excedente espera em fila. Cada download concorrente custa hashing de peças e I/O: máquina fraca (Atom, HD USB) pede um número menor que a frota — ajuste com um override naquele Node, não baixando o valor de cluster. Quem garante o limite de slots do tracker no cluster inteiro é o controlador de admissão; este é o cinto-e-suspensório por máquina.",
       },
       max_active_uploads: {
         label: "Uploads simultâneos por Node",
@@ -207,11 +207,11 @@ export const settings = {
     integrations: {
       tmdb_api_key: {
         label: "TMDB — API key (v3)",
-        description: "Chave v3 da API do TMDB (themoviedb.org) para enriquecer metadados na publicação (ADR-020). Vazio desabilita o enriquecimento. É a SUA chave — cadastre em themoviedb.org.",
+        description: "Chave v3 da API do TMDB (themoviedb.org) para enriquecer metadados na publicação. Vazio desabilita o enriquecimento. É a SUA chave — cadastre em themoviedb.org.",
       },
       igdb_client_id: {
         label: "IGDB — Client ID (Twitch)",
-        description: "Client ID do app do Twitch usado pelo IGDB (metadados de jogos, #17). Sem o par ID+Secret, a publicação de jogos fica desabilitada.",
+        description: "Client ID do app do Twitch usado pelo IGDB (metadados de jogos). Sem o par ID+Secret, a publicação de jogos fica desabilitada.",
       },
       igdb_client_secret: {
         label: "IGDB — Client Secret (Twitch)",
@@ -219,11 +219,11 @@ export const settings = {
       },
       imgbb_api_key: {
         label: "imgbb — API key",
-        description: "Chave da API do imgbb.com para hospedar os screenshots da publicação (ADR-030; substitui o ptpimg, que saiu do ar). Crie a sua grátis em api.imgbb.com. Vazio desabilita a geração de screenshots.",
+        description: "Chave da API do imgbb.com para hospedar os screenshots da publicação. Crie a sua grátis em api.imgbb.com. Vazio desabilita a geração de screenshots.",
       },
       google_books_api_key: {
         label: "Google Books — API key",
-        description: "Chave da API do Google Books, usada como SEGUNDO provedor de metadados de livro/audiolivro no catálogo (#110) — a Open Library não indexa boa parte do acervo em PT-BR nem lançamento recente. NECESSÁRIA na prática: sem chave a API responde 429 (Too Many Requests) depois de pouquíssimas buscas, e uma página do catálogo já passa disso — medido, não estimado. Vazio = o provedor fica inerte e o livro segue só com o que a Open Library confirmar. Crie a sua em console.cloud.google.com (habilite a Books API).",
+        description: "Chave da API do Google Books, usada como SEGUNDO provedor de metadados de livro/audiolivro no catálogo — a Open Library não indexa boa parte do acervo em PT-BR nem lançamento recente. NECESSÁRIA na prática: sem chave a API responde 429 (Too Many Requests) depois de pouquíssimas buscas, e uma página do catálogo já passa disso — medido, não estimado. Vazio = o provedor fica inerte e o livro segue só com o que a Open Library confirmar. Crie a sua em console.cloud.google.com (habilite a Books API).",
       },
     },
     notify: {
@@ -245,7 +245,7 @@ export const settings = {
       },
       alerts_min_severity: {
         label: "Alertas — severidade mínima",
-        description: "Quais alertas (ADR-008: Node offline, storage, disco saturado) são notificados. OFF desliga a trilha de alertas sem mexer nos canais. CRITICAL = só o que exige ação imediata; WARNING inclui degradação; INFO manda tudo.",
+        description: "Quais alertas (Node offline, storage, disco saturado) são notificados. OFF desliga a trilha de alertas sem mexer nos canais. CRITICAL = só o que exige ação imediata; WARNING inclui degradação; INFO manda tudo.",
       },
       alerts_on_resolve: {
         label: "Alertas — avisar quando resolver",
@@ -317,63 +317,63 @@ export const settings = {
     commands: {
       redispatch_after: {
         label: "Re-entrega de comando órfão",
-        description: "Idade a partir da qual um comando DISPATCHED sem confirmação do Agent é re-entregue no próximo poll (#111 — Agent morreu entre o claim e o resultado). Deve ser MAIOR que o comando mais longo esperado: o Agent executa a leva em série e um migrate_pull grande segura a fila enquanto copia os dados (#87; a espera do recheck deixou de ficar no comando, exceto em Agent anterior à #87). 0 desliga a re-entrega.",
+        description: "Idade a partir da qual um comando DISPATCHED sem confirmação do Agent é re-entregue no próximo poll (o Agent morreu entre pegar o comando e devolver o resultado). Deve ser MAIOR que o comando mais longo esperado: o Agent executa a leva em série e um migrate_pull grande segura a fila enquanto copia os dados. 0 desliga a re-entrega.",
       },
       max_attempts: {
         label: "Entregas máximas de um comando",
-        description: "Quantas entregas ao Agent um comando pode receber antes de ser marcado FAILED como abandonado (#111) — evita loop infinito de re-entrega de um comando que sempre derruba o Agent.",
+        description: "Quantas entregas ao Agent um comando pode receber antes de ser marcado FAILED como abandonado — evita loop infinito de re-entrega de um comando que sempre derruba o Agent.",
       },
     },
     workers: {
       maintenance_interval: {
         label: "Intervalo do Maintenance Worker",
-        description: "Período da poda de retenção (#112): comandos terminais, events, activities, audit e sessões expiradas.",
+        description: "Período da poda de retenção: comandos terminais, events, activities, audit e sessões expiradas.",
       },
       reconciler_interval: {
         label: "Intervalo do Migration Reconciler",
-        description: "Período do reconciler que avança/finaliza migrações de torrent em voo (ADR-018).",
+        description: "Período do reconciler que avança/finaliza migrações de torrent em voo.",
       },
       prom_writer_interval: {
         label: "Intervalo do Prometheus Targets Writer",
-        description: "Período de reescrita do arquivo de targets (file_sd) do Prometheus com os Nodes ativos (ADR-017).",
+        description: "Período de reescrita do arquivo de targets (file_sd) do Prometheus com os Nodes ativos.",
       },
     },
     retention: {
       commands: {
         label: "Retenção de comandos",
-        description: "Por quanto tempo comandos DONE/FAILED ficam no banco antes da poda (#112). PENDING/DISPATCHED nunca são podados. 0 desliga.",
+        description: "Por quanto tempo comandos DONE/FAILED ficam no banco antes da poda. PENDING/DISPATCHED nunca são podados. 0 desliga.",
       },
       events: {
         label: "Retenção de eventos",
-        description: "Por quanto tempo eventos ficam no banco antes da poda (#112). 0 desliga.",
+        description: "Por quanto tempo eventos ficam no banco antes da poda. 0 desliga.",
       },
       activities: {
         label: "Retenção do feed de atividade",
-        description: "Por quanto tempo a trilha de orquestração (ADR-022) fica no banco antes da poda (#112). 0 desliga.",
+        description: "Por quanto tempo a trilha de orquestração fica no banco antes da poda. 0 desliga.",
       },
       audit: {
         label: "Retenção da auditoria",
-        description: "Por quanto tempo a trilha de auditoria (ADR-025) fica no banco antes da poda (#112). Retenção maior por accountability. 0 desliga.",
+        description: "Por quanto tempo a trilha de auditoria fica no banco antes da poda. Retenção maior por accountability. 0 desliga.",
       },
     },
     migration: {
       max_concurrent: {
         label: "Migrações simultâneas",
-        description: "Quantas migrações de torrent podem transferir dados ao mesmo tempo (ADR-031). As demais aguardam na fila. Manter baixo: cada migração é uma cópia pesada de disco, e drenar um Node inteiro de uma vez satura o I/O justamente da máquina em apuros.",
+        description: "Quantas migrações de torrent podem transferir dados ao mesmo tempo. As demais aguardam na fila. Manter baixo: cada migração é uma cópia pesada de disco, e drenar um Node inteiro de uma vez satura o I/O justamente da máquina em apuros.",
       },
       recheck_stall_window: {
         label: "Estagnação do recheck da migração",
-        description: "Quanto tempo o recheck no Node destino pode ficar sem avançar antes de a migração ser abortada como travada (#79/#87). É o que importa: enquanto o progresso sobe, a espera continua, por mais lento que seja o disco — só a estagnação reprova. Quem observa é o Control Plane, a cada passada do reconciler.",
+        description: "Quanto tempo o recheck no Node destino pode ficar sem avançar antes de a migração ser abortada como travada. É o que importa: enquanto o progresso sobe, a espera continua, por mais lento que seja o disco — só a estagnação reprova. Quem observa é o Control Plane, a cada passada do reconciler.",
       },
       recheck_max_wait: {
         label: "Teto do recheck da migração",
-        description: "Teto absoluto, contado do fim da cópia, para o destino comprovar ter o que a origem tinha (#87). Só pega um Engine que reporte progresso oscilante para sempre; a estagnação (acima) é a proteção de verdade. Como a espera deixou de segurar a fila de comandos do Node, o teto pode ser folgado — o custo de um teto alto é a vaga de migration.max_concurrent ficar ocupada.",
+        description: "Teto absoluto, contado do fim da cópia, para o destino comprovar ter o que a origem tinha. Só pega um Engine que reporte progresso oscilante para sempre; a estagnação (acima) é a proteção de verdade. Como a espera deixou de segurar a fila de comandos do Node, o teto pode ser folgado — o custo de um teto alto é a vaga de migration.max_concurrent ficar ocupada.",
       },
     },
     metrics: {
       torrent_sample_interval: {
         label: "Intervalo de amostra por torrent",
-        description: "Intervalo mínimo entre levas de amostras de série temporal por Node (#113). O Agent sincroniza a cada ~15s; gravar amostra em todo sync é a maior fonte de crescimento do banco. 0 = amostra a cada sync.",
+        description: "Intervalo mínimo entre levas de amostras de série temporal por Node. O Agent sincroniza a cada ~15s; gravar amostra em todo sync é a maior fonte de crescimento do banco. 0 = amostra a cada sync.",
       },
       cluster_sample_interval: {
         label: "Intervalo de amostra do cluster",

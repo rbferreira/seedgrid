@@ -36,7 +36,7 @@ export const publish = {
       genSheetTitle: "Monta a ficha completa: pôster + sinopse + tags + screenshots (clicáveis) + MediaInfo. Edite depois. Ficha completa reduz 'postponed'.",
       genScreenshots: "📸 Gerar screenshots",
       genScreenshotsLoading: "Gerando screenshots…",
-      genScreenshotsTitle: "Extrai frames do torrent (Agent) e sobe num host de imagem (CP), inserindo o BBCode no início da descrição (ADR-026).",
+      genScreenshotsTitle: "Extrai frames do torrent (Agent) e sobe num host de imagem (CP), inserindo o BBCode no início da descrição.",
       notNow: "Agora não",
       previewing: "Montando o preview…",
       publish: "Publicar no {tracker}",

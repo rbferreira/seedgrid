@@ -14,6 +14,9 @@ the configuration; each release says how to upgrade.
 ### Fixed
 - Portal: **Catalog** and **Add Torrent** sent you to Profile to register a tracker; they now
   point to Settings › Trackers, where trackers are registered.
+- Portal and Control Plane: user-facing text no longer cites internal design records (ADRs)
+  or issue numbers — Users, Dashboard, Health & Metrics, Publish, trackers and most setting
+  descriptions did. A catalog test now rejects them.
 
 ## [0.1.0] — 2026-10-08
 
