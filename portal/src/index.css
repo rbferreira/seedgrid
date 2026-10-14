@@ -88,6 +88,32 @@
   --sg-toast-ok-bg: rgb(209 250 229 / 0.94);
 }
 
+/* Scrollbars (page and inner scroll areas): thin, transparent track, rounded thumb in the border
+   shade — the browser default is a wide grey bar that ignores the theme. scrollbar-color covers
+   Firefox and current Chromium; the ::-webkit-scrollbar rules cover Safari and older Chromium. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-700) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: var(--color-slate-700) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-600) padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   margin: 0;
   background: var(--color-slate-950);
@@ -128,6 +154,11 @@ body {
     @apply cursor-pointer appearance-none truncate bg-no-repeat pr-8;
     background-image: var(--sg-chevron);
     background-position: right 0.8rem center;
+  }
+  /* The compact list sits in tight rows (the sidebar language list): less room for the chevron. */
+  .sg-field-sm.sg-select {
+    @apply pr-6 pl-2.5;
+    background-position: right 0.55rem center;
   }
   .sg-textarea {
     @apply rounded-2xl px-3.5 py-2 text-sm;

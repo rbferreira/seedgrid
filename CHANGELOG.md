@@ -24,6 +24,8 @@ the configuration; each release says how to upgrade.
   the Portal now uses the same fields.
 
 ### Fixed
+- Portal: the sidebar language list no longer truncates in English, and scrollbars follow the
+  theme (thin, transparent track) instead of the browser's wide grey bar.
 - Portal: the language selector no longer spills out of the sidebar; it sits on its own row
   under the theme switch.
 - Portal: **Catalog** and **Add Torrent** sent you to Profile to register a tracker; they now

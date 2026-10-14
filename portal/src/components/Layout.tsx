@@ -74,7 +74,7 @@ export function Layout({
       <select
         value={lang}
         onChange={(e) => setLang(e.target.value as Lang)}
-        className="sg-field-sm sg-select min-w-0"
+        className="sg-field-sm sg-select min-w-0 flex-1"
       >
         <option value="pt-BR">Português</option>
         <option value="en">English</option>
