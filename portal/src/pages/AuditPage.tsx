@@ -127,11 +127,16 @@ export function AuditPage({ onLogout }: { onLogout: () => void }) {
                     {fmtAgo(t, e.created_at)}
                   </span>
                 </div>
-                <p className="mt-0.5 truncate font-mono text-[11px] text-slate-600">
-                  {e.method ? `${e.method} ` : ""}
-                  {e.path ?? ""}
-                  {e.source_ip ? ` · ${e.source_ip}` : ""}
-                </p>
+                {/* The request (method + API path) is technical detail: it stays in the tooltip, out of
+                    the line the operator reads. The source address stays visible. */}
+                {e.source_ip && (
+                  <p
+                    className="mt-0.5 truncate font-mono text-[11px] text-slate-600"
+                    title={e.path ? `${e.method ?? ""} ${e.path}`.trim() : undefined}
+                  >
+                    {e.source_ip}
+                  </p>
+                )}
               </div>
             </li>
           ))}

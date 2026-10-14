@@ -176,6 +176,7 @@ var Registry = []Message{
 
 	// Audit actions. The route_* ones are derived from the route (no data), when the handler hasn't
 	// fixed its own.
+	{Kind: Audit, Code: "agent_update_requested", Payload: []string{"node", "from", "to"}},
 	{Kind: Audit, Code: "cluster_mode_changed", Payload: []string{"mode"}, Variant: "mode", Variants: []string{"full_auto", "flex"}},
 	{Kind: Audit, Code: "enroll_token_created", Payload: []string{"name"}},
 	{Kind: Audit, Code: "login", Payload: []string{}},
@@ -231,6 +232,7 @@ var Registry = []Message{
 	{Kind: Audit, Code: "torrent_rechecked", Payload: []string{"name"}},
 	{Kind: Audit, Code: "torrent_removed", Payload: []string{"name"}},
 	{Kind: Audit, Code: "torrent_resumed", Payload: []string{"name"}},
+	{Kind: Audit, Code: "torrent_seeded_from_tracker", Payload: []string{"name", "tracker"}},
 	{Kind: Audit, Code: "torrent_unprioritized", Payload: []string{"name"}},
 	{Kind: Audit, Code: "tracker_description_edited", Payload: []string{"tracker"}},
 	{Kind: Audit, Code: "tracker_description_reset", Payload: []string{"tracker"}},
