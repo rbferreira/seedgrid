@@ -285,7 +285,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
                   onClick={doSearch}
                   disabled={loading}
                   title={t("explore.explore.search.buttonTitle")}
-                  className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
                 >
                   {t("explore.explore.search.button")}
                 </button>
@@ -380,7 +380,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
               <button
                 onClick={() => load(trackerId, cursor, true, activeQ)}
                 disabled={loading}
-                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {loading ? t("common.loading") : t("explore.explore.loadMore")}
               </button>
@@ -520,7 +520,7 @@ function CatalogCard({
                 <button
                   onClick={onSeed}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
                 >
                   {busy ? <Spinner /> : "⬇"} {t("explore.explore.card.seedButton")}
                 </button>

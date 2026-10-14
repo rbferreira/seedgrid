@@ -156,7 +156,7 @@ export function Users() {
         <h1 className="text-lg font-semibold text-white">{t("users.users.title")}</h1>
         <button
           onClick={() => setCreating((v) => !v)}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
+          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
         >
           {creating ? t("common.cancel") : t("users.users.actions.new")}
         </button>
@@ -174,7 +174,7 @@ export function Users() {
               <input
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field w-full"
               />
             </div>
             <div>
@@ -182,7 +182,7 @@ export function Users() {
               <input
                 value={form.display_name}
                 onChange={(e) => setForm({ ...form, display_name: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field w-full"
               />
             </div>
             <div>
@@ -190,7 +190,7 @@ export function Users() {
               <input
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field w-full"
               />
             </div>
             <div>
@@ -199,7 +199,7 @@ export function Users() {
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                className="sg-field w-full"
               />
             </div>
             <div className="sm:col-span-2">
@@ -218,7 +218,7 @@ export function Users() {
                             : form.roles.filter((x) => x !== r),
                         })
                       }
-                      className="accent-emerald-500"
+                      className="sg-check"
                     />
                     {r}
                   </label>
@@ -230,7 +230,7 @@ export function Users() {
           <button
             onClick={submitCreate}
             disabled={saving}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {saving ? t("users.users.actions.creating") : t("users.users.actions.create")}
           </button>
@@ -271,7 +271,7 @@ export function Users() {
                                 e.target.checked ? [...editRoles, r] : editRoles.filter((x) => x !== r),
                               )
                             }
-                            className="accent-emerald-500"
+                            className="sg-check"
                           />
                           {r}
                         </label>
@@ -286,7 +286,7 @@ export function Users() {
                     <select
                       value={editStatus}
                       onChange={(e) => setEditStatus(e.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white outline-none"
+                      className="sg-field-sm sg-select"
                     >
                       {USER_STATUSES.map((st) => (
                         <option key={st} value={st}>
@@ -317,18 +317,18 @@ export function Users() {
                         placeholder={t("users.users.edit.passwordPlaceholder")}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-44 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white outline-none focus:border-emerald-500"
+                        className="sg-field-sm w-44"
                       />
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => saveEdit(u)}
-                          className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                          className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
                         >
                           {t("common.save")}
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className="rounded-md bg-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-600"
+                          className="rounded-full bg-slate-700 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-600"
                         >
                           {t("common.cancel")}
                         </button>
@@ -339,14 +339,14 @@ export function Users() {
                       {me && u.username !== me.username && u.status === "ACTIVE" && (
                         <button
                           onClick={() => remove(u)}
-                          className="rounded-md bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-inset ring-red-500/30 transition hover:ring-red-500/70"
+                          className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-inset ring-red-500/30 transition hover:ring-red-500/70"
                         >
                           {t("users.users.actions.disable")}
                         </button>
                       )}
                       <button
                         onClick={() => openEdit(u)}
-                        className="rounded-md bg-slate-700/60 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-600"
+                        className="rounded-full bg-slate-700/60 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-600"
                       >
                         {t("users.users.actions.edit")}
                       </button>

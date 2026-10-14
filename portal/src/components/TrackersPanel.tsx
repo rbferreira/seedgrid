@@ -168,21 +168,21 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
                     <button
                       onClick={() => setProfileOpen(profileOpen === tracker.id ? null : tracker.id)}
                       title={t("trackers.trackersPanel.tooltips.profileButton")}
-                      className="rounded px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-sky-300"
+                      className="rounded-full px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-sky-300"
                     >
                       {profileOpen === tracker.id ? t("trackers.trackersPanel.actions.profileOpen") : t("trackers.trackersPanel.actions.profileClosed")}
                     </button>
                   )}
                   <button
                     onClick={() => startEdit(tracker)}
-                    className="rounded px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-sky-300"
+                    className="rounded-full px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-sky-300"
                   >
                     {t("trackers.trackersPanel.actions.edit")}
                   </button>
                   {!tracker.is_default && (
                     <button
                       onClick={() => makeDefault(tracker.id)}
-                      className="rounded px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
+                      className="rounded-full px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
                     >
                       {t("trackers.trackersPanel.actions.makeDefault")}
                     </button>
@@ -190,7 +190,7 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
                   <button
                     onClick={() => remove(tracker.id, tracker.name)}
                     title={t("trackers.trackersPanel.actions.removeTitle")}
-                    className="rounded px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-red-400"
+                    className="rounded-full px-2 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-red-400"
                   >
                     🗑
                   </button>
@@ -290,7 +290,7 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
         <button
           onClick={submit}
           disabled={busy}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {busy ? t("common.saving") : editing ? t("trackers.trackersPanel.actions.saveChanges") : t("trackers.trackersPanel.actions.addTracker")}
         </button>

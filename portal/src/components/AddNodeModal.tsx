@@ -69,13 +69,13 @@ export function AddNodeModal({ onClose, onLogout }: { onClose: () => void; onLog
               placeholder={t("health.addNodeModal.namePlaceholder")}
               autoFocus
               autoComplete="off"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+              className="sg-field mt-1 w-full"
             />
             {err && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{err}</p>}
             <button
               type="submit"
               disabled={busy}
-              className="mt-4 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+              className="mt-4 w-full rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
             >
               {busy ? t("health.addNodeModal.generating") : t("health.addNodeModal.generateBtn")}
             </button>
@@ -104,7 +104,7 @@ export function AddNodeModal({ onClose, onLogout }: { onClose: () => void; onLog
                 </code>
                 <button
                   onClick={() => copy(cmd, "cmd")}
-                  className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-white transition hover:bg-slate-800"
+                  className="shrink-0 rounded-full border border-slate-700 px-2.5 py-2 text-xs text-white transition hover:bg-slate-800"
                 >
                   {copied === "cmd" ? t("health.addNodeModal.copiedCheck") : t("health.addNodeModal.copy")}
                 </button>
@@ -120,7 +120,7 @@ export function AddNodeModal({ onClose, onLogout }: { onClose: () => void; onLog
                   </code>
                   <button
                     onClick={() => copy(tok.token, "token")}
-                    className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-white transition hover:bg-slate-800"
+                    className="shrink-0 rounded-full border border-slate-700 px-2.5 py-2 text-xs text-white transition hover:bg-slate-800"
                   >
                     {copied === "token" ? "✓" : t("health.addNodeModal.copy")}
                   </button>
@@ -142,7 +142,7 @@ export function AddNodeModal({ onClose, onLogout }: { onClose: () => void; onLog
 
         <button
           onClick={onClose}
-          className="mt-4 w-full rounded-lg px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
+          className="mt-4 w-full rounded-full px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
         >
           {t("common.close")}
         </button>

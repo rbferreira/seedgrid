@@ -71,21 +71,21 @@ export function RenameNodeModal({
           placeholder={node.hostname}
           autoFocus
           autoComplete="off"
-          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field mt-1 w-full"
         />
         {err && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{err}</p>}
         <div className="mt-4 flex gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
+            className="flex-1 rounded-full px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
           >
             {t("common.cancel")}
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            className="flex-1 rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {busy ? t("common.saving") : t("common.save")}
           </button>

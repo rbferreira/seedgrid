@@ -19,8 +19,8 @@ const REFRESH_MS = 10_000;
 // /nodes/{id}/settings/{key}. Dedicated function so the test can check which permission is requested.
 export const canWriteNodeConfig = (can: (perm: string) => boolean): boolean => can("nodes:write");
 
-const inputCls =
-  "rounded-lg border border-slate-700 bg-slate-950/60 px-2.5 py-1 text-sm text-slate-100 outline-none transition focus:border-emerald-500 disabled:opacity-50";
+// Form-control base classes (#22): sg-field, plus sg-select on the lists.
+const inputCls = "sg-field";
 
 const TONE: Record<"ok" | "warn" | "muted", string> = {
   ok: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
@@ -78,7 +78,7 @@ function ValueInput({
   const t = useT();
   if (item.type === "bool") {
     return (
-      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-32 ${inputCls}`}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-32 ${inputCls} sg-select`}>
         <option value="true">{t("nodes.nodeConfigPanel.boolOn")}</option>
         <option value="false">{t("nodes.nodeConfigPanel.boolOff")}</option>
       </select>
@@ -86,7 +86,7 @@ function ValueInput({
   }
   if (item.options && item.options.length > 0) {
     return (
-      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-32 ${inputCls}`}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={`w-32 ${inputCls} sg-select`}>
         {item.options.map((o) => (
           <option key={o} value={o}>
             {o}
@@ -186,14 +186,14 @@ function ConfigRow({
               <button
                 onClick={save}
                 disabled={busy}
-                className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
               >
                 {t("common.save")}
               </button>
               <button
                 onClick={() => setEditing(false)}
                 disabled={busy}
-                className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {t("common.cancel")}
               </button>
@@ -208,7 +208,7 @@ function ConfigRow({
                     ? t("nodes.nodeConfigPanel.editTitleNode")
                     : t("nodes.nodeConfigPanel.editTitleCluster")
                 }
-                className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {item.source === "node" ? t("nodes.nodeConfigPanel.actionEdit") : t("nodes.nodeConfigPanel.actionOverride")}
               </button>
@@ -217,7 +217,7 @@ function ConfigRow({
                   onClick={reset}
                   disabled={busy}
                   title={t("nodes.nodeConfigPanel.resetTitle")}
-                  className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
+                  className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
                 >
                   {t("nodes.nodeConfigPanel.actionReset")}
                 </button>

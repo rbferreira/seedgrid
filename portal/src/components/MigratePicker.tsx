@@ -112,7 +112,7 @@ export function MigratePicker({
         </div>
         <button
           onClick={onClose}
-          className="mt-4 w-full rounded-lg px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
+          className="mt-4 w-full rounded-full px-3 py-2 text-xs text-slate-400 transition hover:bg-slate-800"
         >
           {t("common.cancel")}
         </button>

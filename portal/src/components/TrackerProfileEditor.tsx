@@ -326,7 +326,7 @@ export function TrackerProfileEditor({
                 <button
                   onClick={() => removeRow(axis, r.key)}
                   title={t("trackers.trackerProfileEditor.rows.removeTitle")}
-                  className="shrink-0 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-red-400"
+                  className="shrink-0 rounded-full px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-red-400"
                 >
                   ✕
                 </button>
@@ -343,7 +343,7 @@ export function TrackerProfileEditor({
         <button
           onClick={save}
           disabled={saving || !dirty}
-          className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
         >
           {saving ? t("common.saving") : t("trackers.trackerProfileEditor.actions.save")}
         </button>
@@ -400,7 +400,7 @@ export function TrackerProfileEditor({
               onClick={discover}
               disabled={discovering || dirty}
               title={dirty ? t("trackers.trackerProfileEditor.discovery.dirtyTitle") : undefined}
-              className="rounded-lg bg-sky-700 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-40"
+              className="rounded-full bg-sky-700 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-40"
             >
               {discovering ? t("trackers.trackerProfileEditor.discovery.scanning") : t("trackers.trackerProfileEditor.discovery.button")}
             </button>
@@ -548,7 +548,7 @@ function Proposal({
         <button
           onClick={onApply}
           disabled={applying || count === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
         >
           {applying ? t("trackers.trackerProfileEditor.proposal.applying") : t("trackers.trackerProfileEditor.proposal.applyButton", { count })}
         </button>

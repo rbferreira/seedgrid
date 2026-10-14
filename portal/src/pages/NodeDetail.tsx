@@ -152,7 +152,7 @@ export function NodeDetail({
             <button
               onClick={() => setRenaming(true)}
               title={t("nodes.nodeDetail.renameTitle")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
             >
               ✎ {t("nodes.nodeDetail.rename")}
             </button>
@@ -162,7 +162,7 @@ export function NodeDetail({
               onClick={onRestartEngine}
               disabled={running.size > 0}
               title={t("nodes.nodeDetail.restartEngineTitle")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
             >
               {running.has(node.id) ? <Spinner /> : "⟳"} {t("nodes.nodeDetail.restartEngine")}
             </button>

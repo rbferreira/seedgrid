@@ -190,7 +190,7 @@ export function Layout({
           <button
             onClick={() => setOpen(true)}
             aria-label={t("nav.openMenu")}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300"
+            className="rounded-full border border-slate-700 px-3 py-1.5 text-slate-300"
           >
             ☰
           </button>

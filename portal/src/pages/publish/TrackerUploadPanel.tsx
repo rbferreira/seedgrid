@@ -450,7 +450,7 @@ export function TrackerUploadPanel({
             })}
           </p>
         )}
-        <button onClick={onClose} className="rounded-lg bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-600">
+        <button onClick={onClose} className="rounded-full bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-600">
           {t("common.close")}
         </button>
       </div>
@@ -526,7 +526,7 @@ export function TrackerUploadPanel({
                   type="button"
                   onClick={runGameSearch}
                   disabled={gameBusy}
-                  className="shrink-0 rounded-lg bg-fuchsia-600 px-3 py-2 text-sm text-white transition hover:bg-fuchsia-500 disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-fuchsia-600 px-3 py-2 text-sm text-white transition hover:bg-fuchsia-500 disabled:opacity-40"
                 >
                   {gameBusy ? "…" : t("publish.trackerUploadPanel.game.searchBtn")}
                 </button>
@@ -609,7 +609,7 @@ export function TrackerUploadPanel({
                   onClick={handleGenerateScreenshots}
                   disabled={genLoading}
                   title={t("publish.trackerUploadPanel.actions.genScreenshotsTitle")}
-                  className="rounded border border-slate-700 px-2 py-0.5 text-xs text-sky-300 transition hover:bg-slate-800 disabled:opacity-40"
+                  className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-sky-300 transition hover:bg-slate-800 disabled:opacity-40"
                 >
                   {genLoading ? t("publish.trackerUploadPanel.actions.genScreenshotsLoading") : t("publish.trackerUploadPanel.actions.genScreenshots")}
                 </button>
@@ -619,7 +619,7 @@ export function TrackerUploadPanel({
                     onClick={handleGenerateCard}
                     disabled={genLoading}
                     title={t("publish.trackerUploadPanel.actions.genSheetTitle")}
-                    className="rounded border border-slate-700 px-2 py-0.5 text-xs text-sky-300 transition hover:bg-slate-800 disabled:opacity-50"
+                    className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-sky-300 transition hover:bg-slate-800 disabled:opacity-50"
                   >
                     {genLoading ? t("publish.trackerUploadPanel.actions.genSheetLoading") : t("publish.trackerUploadPanel.actions.genSheet")}
                   </button>
@@ -742,7 +742,7 @@ export function TrackerUploadPanel({
             <button
               onClick={preview ? publish : openPreview}
               disabled={busy || (!!dupes && dupes.candidates.length > 0 && !dupeAck)}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
+              className="rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
             >
               {busy
                 ? preview
@@ -752,7 +752,7 @@ export function TrackerUploadPanel({
                   ? t("publish.trackerUploadPanel.actions.publish", { tracker: tracker.source || tracker.name })
                   : t("publish.trackerUploadPanel.actions.check")}
             </button>
-            <button onClick={onClose} disabled={busy} className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">
+            <button onClick={onClose} disabled={busy} className="rounded-full px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">
               {t("publish.trackerUploadPanel.actions.notNow")}
             </button>
           </div>

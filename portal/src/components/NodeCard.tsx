@@ -143,7 +143,7 @@ export function NodeCard({
                 onClick={onRename}
                 disabled={busy}
                 title={t("health.nodeCard.actions.renameTitle")}
-                className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {t("health.nodeCard.actions.rename")}
               </button>
@@ -151,7 +151,7 @@ export function NodeCard({
                 onClick={onDrain}
                 disabled={busy || torrents.length === 0}
                 title={t("health.nodeCard.actions.drainTitle")}
-                className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-blue-400 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-blue-400 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {t("health.nodeCard.actions.drain")}
               </button>
@@ -159,7 +159,7 @@ export function NodeCard({
                 onClick={onRestartEngine}
                 disabled={busy || running.size > 0}
                 title={t("health.nodeCard.actions.restartEngineTitle")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {running.has(n.id) ? <Spinner /> : "⟳"} {t("health.nodeCard.actions.restartEngine")}
               </button>
@@ -167,7 +167,7 @@ export function NodeCard({
                 onClick={onDelete}
                 disabled={busy}
                 title={t("health.nodeCard.actions.removeTitle")}
-                className="rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-red-400 transition hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-red-400 transition hover:bg-slate-800 disabled:opacity-40"
               >
                 {t("health.nodeCard.actions.remove")}
               </button>

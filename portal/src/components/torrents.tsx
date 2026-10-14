@@ -137,7 +137,7 @@ export function ActionBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded px-2 py-1 text-xs hover:bg-slate-800 disabled:opacity-40 ${TONES[tone] ?? TONES.slate}`}
+      className={`rounded-full px-2 py-1 text-xs hover:bg-slate-800 disabled:opacity-40 ${TONES[tone] ?? TONES.slate}`}
     >
       {children}
     </button>

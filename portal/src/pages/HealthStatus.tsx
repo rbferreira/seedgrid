@@ -205,7 +205,7 @@ export function HealthStatus({ can, onLogout }: { can: (perm: string) => boolean
         {can("enroll:write") && (
           <button
             onClick={() => setAddOpen(true)}
-            className="rounded-lg border border-emerald-600/40 bg-emerald-600/15 px-3 py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/25"
+            className="rounded-full border border-emerald-600/40 bg-emerald-600/15 px-3 py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/25"
           >
             {t("health.healthStatus.actions.addNode")}
           </button>
