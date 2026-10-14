@@ -240,8 +240,8 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
       {integ.length === 0 ? (
         <div className="max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-sm text-slate-400">
           {t("explore.explore.noIntegration")}{" "}
-          <a href="#/profile" className="text-emerald-400 hover:underline">
-            {t("explore.explore.profileLink")}
+          <a href="#/settings" className="text-emerald-400 hover:underline">
+            {t("explore.explore.trackersLink")}
           </a>
           .
         </div>
