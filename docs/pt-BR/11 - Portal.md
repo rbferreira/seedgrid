@@ -734,14 +734,15 @@ Novos idiomas poderão ser adicionados sem alteração da arquitetura do Portal.
 # **40. Personalização**
 O Portal poderá permitir preferências individuais do operador.
 Exemplos:
-Tema claro ou escuro.
+Tema: claro, escuro ou o do sistema operacional (o padrão, acompanhado em tempo real).
 Quantidade de itens por página.
 Página inicial.
 Ordenação padrão.
 Colunas visíveis.
 Essas preferências não deverão alterar o comportamento global da plataforma.
 
-> **Estado (ago/2026).** Só o tema é persistido (`localStorage`). Os filtros e a
+> **Estado (ago/2026).** Só o tema é persistido (`localStorage`, `sg-theme`: `light`, `dark` ou
+> `system`; nada salvo = `system`). Os filtros e a
 > ordenação da tela Baixados valem apenas enquanto a página está aberta: o
 > roteador é por hash puro (sem query string para deep-link) e filtro persistido
 > costuma virar armadilha — dias depois a lista aparece "vazia" sem explicação.

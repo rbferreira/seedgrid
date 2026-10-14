@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getUsername, hasPermission, type Me } from "../api";
 import { useRoute, href } from "../router";
 import { Logo } from "./ui";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { applyTheme, readThemePref, saveThemePref, watchSystemTheme, type ThemePref } from "../lib/theme";
 import { useT, useLang, type Key, type Lang } from "../i18n";
 
 // match: extra routes that highlight the item. The Node detail (/nodes/{id}) still
@@ -48,41 +50,30 @@ export function Layout({
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
-  // Light/dark theme (backlog #10): toggles `data-theme` on <html> and persists. The
-  // initial value comes from the inline script in index.html (applied before paint).
-  const [theme, setTheme] = useState<"dark" | "light">(() =>
-    typeof document !== "undefined" && document.documentElement.dataset.theme === "light" ? "light" : "dark",
-  );
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem("sg-theme", next);
-    } catch {
-      /* localStorage unavailable — the theme only applies for this session */
-    }
-    setTheme(next);
+  // Theme (backlog #10, #17): light, dark or follow the operating system. The inline script in
+  // index.html already applied it before the first paint; here it is re-applied on change and,
+  // under "system", whenever the operating system switches.
+  const [themePref, setThemePref] = useState<ThemePref>(() => readThemePref());
+  useEffect(() => {
+    applyTheme(themePref);
+    if (themePref !== "system") return;
+    return watchSystemTheme(() => applyTheme("system"));
+  }, [themePref]);
+  const chooseTheme = (pref: ThemePref) => {
+    saveThemePref(pref);
+    setThemePref(pref);
   };
-  const themeBtn = (
-    <button
-      onClick={toggleTheme}
-      title={theme === "dark" ? t("theme.toLight") : t("theme.toDark")}
-      aria-label={t("theme.ariaLabel")}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200"
-    >
-      <span aria-hidden className="w-6 text-center text-base">{theme === "dark" ? "☀" : "🌙"}</span>
-      {theme === "dark" ? t("theme.light") : t("theme.dark")}
-    </button>
-  );
 
-  // Language selector (ADR-041): next to the theme, in the same visual style. Language names
+  // Language selector (ADR-041): a list, not a switch — more languages are expected. On its own
+  // row and as wide as the sidebar, so a longer language name never pushes it out. Language names
   // are kept in their own language (do not translate "Português" or "English").
   const langSelect = (
     <select
       value={lang}
       onChange={(e) => setLang(e.target.value as Lang)}
       aria-label={t("lang.label")}
-      className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-300 outline-none focus:border-emerald-500"
+      title={t("lang.label")}
+      className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-300 outline-none focus:border-blue-500"
     >
       <option value="pt-BR">Português</option>
       <option value="en">English</option>
@@ -120,8 +111,8 @@ export function Layout({
       </a>
       {nav}
       <div className="mt-auto border-t border-slate-800 pt-4">
-        <div className="flex items-center gap-2">
-          {themeBtn}
+        <div className="mb-2 space-y-2 px-1">
+          <ThemeSwitch value={themePref} onChange={chooseTheme} wide />
           {langSelect}
         </div>
         <a
@@ -187,14 +178,9 @@ export function Layout({
             ☰
           </button>
           <span className="font-semibold text-white">SeedGrid</span>
-          <button
-            onClick={toggleTheme}
-            aria-label={t("theme.ariaLabel")}
-            title={theme === "dark" ? t("theme.toLight") : t("theme.toDark")}
-            className="ml-auto rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300"
-          >
-            {theme === "dark" ? "☀" : "🌙"}
-          </button>
+          <div className="ml-auto">
+            <ThemeSwitch value={themePref} onChange={chooseTheme} />
+          </div>
         </header>
         {/* max-w-[2000px]: takes advantage of ultrawide screens (used to cap at 1536px and end up
             squished in the middle) without stretching too much to the point of hindering readability. */}

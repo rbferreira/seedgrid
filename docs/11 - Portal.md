@@ -735,14 +735,15 @@ New languages can be added without changing the Portal architecture.
 # **40. Personalization**
 The Portal may allow individual operator preferences.
 Examples:
-Light or dark theme.
+Theme: light, dark or the operating system's (the default, followed live).
 Number of items per page.
 Home page.
 Default sorting.
 Visible columns.
 These preferences must not change the global behavior of the platform.
 
-> **Status (ago/2026).** Only the theme is persisted (`localStorage`). The filters and
+> **Status (ago/2026).** Only the theme is persisted (`localStorage`, `sg-theme`: `light`, `dark` or
+> `system`; nothing saved = `system`). The filters and
 > sorting on the Downloaded screen are only valid while the page is open: the
 > router uses pure hash (no query string for deep-linking) and persisted filters
 > often become a trap — days later the list appears "empty" with no explanation.

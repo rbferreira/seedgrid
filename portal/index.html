@@ -7,13 +7,21 @@
     <meta name="theme-color" content="#047857" />
     <title>SeedGrid</title>
     <script>
-      // Applies the saved theme (dark by default) before the first paint, avoiding a flash (backlog #10).
-      try {
-        var t = localStorage.getItem("sg-theme") || "dark";
-        document.documentElement.dataset.theme = t;
-      } catch (e) {
-        document.documentElement.dataset.theme = "dark";
-      }
+      // Applies the theme before the first paint, avoiding a flash (backlog #10). Mirrors
+      // readThemePref + resolveTheme in src/lib/theme.ts: keep the two in sync. No choice saved
+      // = follow the operating system; data-theme always gets the resolved "light" or "dark".
+      (function () {
+        var pref = "system";
+        try {
+          var saved = localStorage.getItem("sg-theme");
+          if (saved === "light" || saved === "dark" || saved === "system") pref = saved;
+        } catch (e) {}
+        var dark = true;
+        try {
+          dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        } catch (e) {}
+        document.documentElement.dataset.theme = pref === "system" ? (dark ? "dark" : "light") : pref;
+      })();
     </script>
   </head>
   <body>
