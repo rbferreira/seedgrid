@@ -1,7 +1,6 @@
 export const theme = {
-  ariaLabel: "Alternar tema",
-  toLight: "Mudar para tema claro",
-  toDark: "Mudar para tema escuro",
+  label: "Tema",
   light: "Tema claro",
+  system: "Tema do sistema",
   dark: "Tema escuro",
 } as const;

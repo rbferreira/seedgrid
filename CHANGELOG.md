@@ -10,8 +10,15 @@ the configuration; each release says how to upgrade.
 ### Added
 - Portal: **Downloaded** shows when each torrent was added, sorts by it and filters by period
   (last 24 hours / 7 days / 30 days). The screen now opens newest first.
+- Portal: the theme can follow the operating system — a light / system / dark switch in the
+  sidebar and the mobile header. **System** is now the default for anyone who never chose; a
+  saved light or dark choice is kept.
+- Portal: the Dashboard **Admission** switch and the per-Node **SG / Manual** switch use the same
+  pill, with the knob amber while a Node is in Manual.
 
 ### Fixed
+- Portal: the language selector no longer spills out of the sidebar; it sits on its own row
+  under the theme switch.
 - Portal: **Catalog** and **Add Torrent** sent you to Profile to register a tracker; they now
   point to Settings › Trackers, where trackers are registered.
 - Portal and Control Plane: user-facing text no longer cites internal design records (ADRs)

@@ -1,9 +1,8 @@
 import type { Catalog } from "../types";
 
 export const theme: Catalog["theme"] = {
-  ariaLabel: "Toggle theme",
-  toLight: "Switch to light theme",
-  toDark: "Switch to dark theme",
+  label: "Theme",
   light: "Light theme",
+  system: "System theme",
   dark: "Dark theme",
 };
