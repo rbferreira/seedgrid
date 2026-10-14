@@ -4,8 +4,8 @@ export const explore: Catalog["explore"] = {
   explore: {
     title: "Catalog",
     description: "Tracker showcase with poster, Portuguese title and basic info. The \"already have\" match is by name (approximate); duplicates are blocked on download. Metadata comes from TMDB (movie/series), IGDB (game) and Open Library (book/audiobook) — when the provider has no key, the card falls back to simple mode.",
-    noIntegration: "No tracker with API integration. Register one (source + token) in your",
-    profileLink: "Profile",
+    noIntegration: "No tracker with API integration. Register one (source + token) in",
+    trackersLink: "Settings › Trackers",
     confirmDuplicate: "Download a second copy anyway (on another Node)?",
     loadMore: "Load more",
     error: {

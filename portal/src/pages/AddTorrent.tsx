@@ -651,8 +651,8 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
         {trackers.length === 0 && (
           <p className="text-xs text-slate-500">
             {t("torrents.addTorrent.noTrackersHintPrefix")}{" "}
-            <a href="#/profile" className="text-emerald-400 hover:underline">
-              {t("torrents.addTorrent.profileLink")}
+            <a href="#/settings" className="text-emerald-400 hover:underline">
+              {t("torrents.addTorrent.trackersLink")}
             </a>{" "}
             {t("torrents.addTorrent.noTrackersHintSuffix")}
           </p>

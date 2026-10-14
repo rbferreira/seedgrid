@@ -2,8 +2,8 @@ export const explore = {
   explore: {
     title: "Catálogo",
     description: "Vitrine do tracker com pôster, título em português e ficha básica. O casamento \"já tenho\" é por nome (aproximado); duplicados são bloqueados no download. Metadados vêm do TMDB (filme/série), IGDB (jogo) e Open Library (livro/audiolivro) — quando o provider está sem chave, o card cai no modo simples.",
-    noIntegration: "Nenhum tracker com integração de API. Cadastre um (source + token) no",
-    profileLink: "Perfil",
+    noIntegration: "Nenhum tracker com integração de API. Cadastre um (source + token) em",
+    trackersLink: "Configurações › Trackers",
     confirmDuplicate: "Baixar mesmo assim uma 2ª cópia (em outro Node)?",
     loadMore: "Carregar mais",
     error: {
