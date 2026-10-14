@@ -306,6 +306,16 @@ func handleSeedFromTracker(d Deps) http.HandlerFunc {
 			d.Logger.Error("seed from tracker", "error", err)
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", fmt.Sprintf("failed to add torrent: %s", err))
 		default:
+			// The audit says which torrent and which tracker: the route alone only carries the tracker
+			// UUID. The name goes through AuditLabel, which never lets a passkey-like run through.
+			var trackerName string
+			_ = d.Pool.QueryRow(r.Context(), `SELECT name FROM trackers WHERE id = $1`, r.PathValue("id")).Scan(&trackerName)
+			name := ""
+			if t.Name != nil {
+				name = *t.Name
+			}
+			params, text := seedAudit(name, trackerName)
+			httpx.SetAudit(r.Context(), "torrent_seeded_from_tracker", params, text)
 			httpx.WriteJSON(w, http.StatusCreated, t)
 		}
 	}

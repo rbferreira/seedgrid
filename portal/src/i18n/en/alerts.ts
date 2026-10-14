@@ -125,6 +125,7 @@ export const alerts: Catalog["alerts"] = {
       seeding: "Finished downloading and started seeding",
     },
     audit: {
+      agent_update_requested: "Requested an Agent update on Node «{node}» ({from} → {to})",
       cluster_mode_changed: {
         full_auto: "Set the cluster to Full auto mode (admission)",
         flex: "Set the cluster to Flex mode (admission)",
@@ -204,6 +205,7 @@ export const alerts: Catalog["alerts"] = {
       torrent_rechecked: "Rechecked torrent «{name}»",
       torrent_removed: "Removed torrent «{name}»",
       torrent_resumed: "Resumed torrent «{name}»",
+      torrent_seeded_from_tracker: "Seeded torrent «{name}» from tracker «{tracker}»",
       torrent_unprioritized: "Removed the priority of torrent «{name}»",
       tracker_description_edited: "Edited the description layout of tracker «{tracker}»",
       tracker_description_reset: "Reset the description layout of tracker «{tracker}» to its default",

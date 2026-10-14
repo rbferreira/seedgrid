@@ -123,6 +123,7 @@ export const alerts = {
       seeding: "Completou o download e começou a seedar",
     },
     audit: {
+      agent_update_requested: "Pediu a atualização do Agent no Node «{node}» ({from} → {to})",
       cluster_mode_changed: {
         full_auto: "Colocou o cluster em modo Full auto (admissão)",
         flex: "Colocou o cluster em modo Flex (admissão)",
@@ -202,6 +203,7 @@ export const alerts = {
       torrent_rechecked: "Reverificou o torrent «{name}»",
       torrent_removed: "Removeu o torrent «{name}»",
       torrent_resumed: "Retomou o torrent «{name}»",
+      torrent_seeded_from_tracker: "Semeou o torrent «{name}» do tracker «{tracker}»",
       torrent_unprioritized: "Removeu a prioridade do torrent «{name}»",
       tracker_description_edited: "Editou a composição da descrição do tracker «{tracker}»",
       tracker_description_reset: "Restaurou ao padrão a composição da descrição do tracker «{tracker}»",

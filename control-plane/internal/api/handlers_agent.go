@@ -418,11 +418,15 @@ func handleUpdateAgent(d Deps) http.HandlerFunc {
 			return
 		}
 		// Node OFFLINE is not an error: the queue is durable (ADR-014) and it executes when it comes back online.
+		node := d.Nodes.Label(r.Context(), nodeID)
 		if d.Events != nil {
 			_ = d.Events.Emit(r.Context(), "AGENT_UPDATE", "INFO", nodeID,
 				"Agent update requested ("+current+" → "+target.Version+")",
-				map[string]any{"hostname": d.Nodes.Label(r.Context(), nodeID), "from": current, "to": target.Version})
+				map[string]any{"hostname": node, "from": current, "to": target.Version})
 		}
+		// The audit says which Node and which versions: the route alone only carries the Node UUID.
+		params, text := agentUpdateAudit(node, current, target.Version)
+		httpx.SetAudit(r.Context(), "agent_update_requested", params, text)
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{
 			"status": "ok", "command_id": cmdID, "version": target.Version,
 		})

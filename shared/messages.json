@@ -721,6 +721,15 @@
   },
   {
     "kind": "audit",
+    "code": "agent_update_requested",
+    "payload": [
+      "node",
+      "from",
+      "to"
+    ]
+  },
+  {
+    "kind": "audit",
     "code": "cluster_mode_changed",
     "payload": [
       "mode"
@@ -1083,6 +1092,14 @@
     "code": "torrent_resumed",
     "payload": [
       "name"
+    ]
+  },
+  {
+    "kind": "audit",
+    "code": "torrent_seeded_from_tracker",
+    "payload": [
+      "name",
+      "tracker"
     ]
   },
   {
