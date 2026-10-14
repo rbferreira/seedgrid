@@ -7,6 +7,7 @@ export const alerts: Catalog["alerts"] = {
     updatedAt: "updated {time}",
     filter: {
       all: "All",
+      severity: "Severity",
       openOnly: "Open alerts only",
     },
     status: {

@@ -15,6 +15,9 @@ the configuration; each release says how to upgrade.
   saved light or dark choice is kept.
 - Portal: the Dashboard **Admission** switch and the per-Node **SG / Manual** switch use the same
   pill, with the knob amber while a Node is in Manual.
+- Portal: form controls follow the same pill language — text inputs, selects and checkboxes on the
+  filter screens (Dashboard, Downloaded, Analytics, Alerts), the chart range and alert severity as
+  pill switches, and the Feed and Audit filters as chips.
 
 ### Fixed
 - Portal: the language selector no longer spills out of the sidebar; it sits on its own row

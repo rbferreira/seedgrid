@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PillSwitch } from "./PillSwitch";
 import { getClusterThroughput, type MetricSeries } from "../api";
 import { Chart, transferKind } from "./Chart";
 import { getLang, useT, type Key } from "../i18n";
@@ -73,18 +74,14 @@ export function ClusterThroughput({ refreshMs = 15_000 }: { refreshMs?: number }
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-white">{t("dashboard.clusterThroughput.title")}</h2>
-        <div className="flex flex-wrap gap-1">
-          {RANGES.map((r) => (
-            <button
-              key={r.val}
-              onClick={() => setRange(r.val)}
-              className={`rounded px-2 py-1 text-xs ${
-                range === r.val ? "bg-emerald-600 text-white" : "text-slate-400 hover:bg-slate-800"
-              }`}
-            >
-              {t(r.labelKey)}
-            </button>
-          ))}
+        {/* Scrolls sideways on a phone instead of spilling: six options do not fit 360px. */}
+        <div className="max-w-full overflow-x-auto p-1">
+          <PillSwitch
+            label={t("dashboard.clusterThroughput.title")}
+            value={range}
+            onChange={setRange}
+            options={RANGES.map((r) => ({ value: r.val, content: t(r.labelKey) }))}
+          />
         </div>
       </div>
       <Chart

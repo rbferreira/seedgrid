@@ -103,14 +103,14 @@ export function Feed({ onLogout }: { onLogout: () => void }) {
         {t("feed.feed.description")}
       </p>
 
-      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1">
+      <div className="flex flex-wrap items-center gap-1.5">
         {FILTERS.map((f) => (
           <button
             key={f.key}
+            type="button"
             onClick={() => setFilter(f.key)}
-            className={`rounded-md px-3 py-1 text-xs transition ${
-              filter === f.key ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-            }`}
+            aria-pressed={filter === f.key}
+            className="sg-chip"
           >
             {t(f.labelKey)}
           </button>

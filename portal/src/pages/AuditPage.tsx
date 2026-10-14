@@ -76,23 +76,12 @@ export function AuditPage({ onLogout }: { onLogout: () => void }) {
       <p className="text-xs text-slate-500">{t("audit.log.description")}</p>
 
       {actors.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1">
-          <button
-            onClick={() => setActor("")}
-            className={`rounded-md px-3 py-1.5 text-xs transition ${
-              actor === "" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => setActor("")} aria-pressed={actor === ""} className="sg-chip">
             {t("audit.log.filter.all")}
           </button>
           {actors.map((a) => (
-            <button
-              key={a}
-              onClick={() => setActor(a)}
-              className={`rounded-md px-3 py-1.5 text-xs transition ${
-                actor === a ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
+            <button key={a} type="button" onClick={() => setActor(a)} aria-pressed={actor === a} className="sg-chip">
               {a}
             </button>
           ))}

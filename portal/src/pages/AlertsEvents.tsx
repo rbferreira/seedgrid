@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { PillSwitch } from "../components/PillSwitch";
 import {
   getNodes,
   getAlerts,
@@ -203,25 +204,18 @@ export function AlertsEvents({ can, onLogout }: { can: (perm: string) => boolean
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1">
-          {SEVERITIES.map((s) => (
-            <button
-              key={s}
-              onClick={() => setSev(s)}
-              className={`rounded-md px-3 py-1.5 text-xs transition ${
-                sev === s ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {s === "ALL" ? t("alerts.alertsEvents.filter.all") : s}
-            </button>
-          ))}
-        </div>
-        <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-300">
+        <PillSwitch
+          label={t("alerts.alertsEvents.filter.severity")}
+          value={sev}
+          onChange={setSev}
+          options={SEVERITIES.map((s) => ({ value: s, content: s === "ALL" ? t("alerts.alertsEvents.filter.all") : s }))}
+        />
+        <label className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-300">
           <input
             type="checkbox"
             checked={openOnly}
             onChange={(e) => setOpenOnly(e.target.checked)}
-            className="accent-emerald-500"
+            className="sg-check"
           />
           {t("alerts.alertsEvents.filter.openOnly")}
         </label>

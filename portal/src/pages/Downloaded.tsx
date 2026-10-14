@@ -218,13 +218,13 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("torrents.downloaded.filters.searchPlaceholder")}
-          className="min-w-[240px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field min-w-[240px] flex-1"
         />
         <select
           value={fNode}
           onChange={(e) => setFNode(e.target.value)}
           title="Node"
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           <option value="">{t("torrents.downloaded.filters.allNodes")}</option>
           {nodeOptions.map((n) => (
@@ -238,7 +238,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
             value={fStatus}
             onChange={(e) => setFStatus(e.target.value)}
             title={t("torrents.downloaded.filters.statusTitle")}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+            className="sg-field sg-select"
           >
             <option value="">{t("torrents.downloaded.filters.allStatuses")}</option>
             {statusOptions.map((s) => (
@@ -252,7 +252,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
           value={fMinSize}
           onChange={(e) => setFMinSize(Number(e.target.value))}
           title={t("torrents.downloaded.filters.minSizeTitle")}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           {SIZE_STEPS.map((s) => (
             <option key={s.min} value={s.min}>
@@ -264,7 +264,7 @@ export function Downloaded({ can, onLogout }: { can: (perm: string) => boolean; 
           value={fAdded}
           onChange={(e) => setFAdded(Number(e.target.value))}
           title={t("torrents.downloaded.filters.addedTitle")}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           {ADDED_STEPS.map((s) => (
             <option key={s.ms} value={s.ms}>
