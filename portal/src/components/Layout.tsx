@@ -64,20 +64,34 @@ export function Layout({
     setThemePref(pref);
   };
 
-  // Language selector (ADR-041): a list, not a switch — more languages are expected. On its own
-  // row and as wide as the sidebar, so a longer language name never pushes it out. Language names
-  // are kept in their own language (do not translate "Português" or "English").
+  // Language selector (ADR-041): a list, not a switch — more languages are expected. Same row
+  // shape as the theme: label on the left, control on the right; the list takes what is left of
+  // the row and truncates instead of pushing past the sidebar edge. Language names are kept in
+  // their own language (do not translate "Português" or "English").
   const langSelect = (
-    <select
-      value={lang}
-      onChange={(e) => setLang(e.target.value as Lang)}
-      aria-label={t("lang.label")}
-      title={t("lang.label")}
-      className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-300 outline-none focus:border-blue-500"
-    >
-      <option value="pt-BR">Português</option>
-      <option value="en">English</option>
-    </select>
+    <label className="flex items-center justify-between gap-2 px-1">
+      <span className="shrink-0 text-xs uppercase tracking-wide text-slate-500">{t("lang.label")}</span>
+      <span className="relative min-w-0">
+        <select
+          value={lang}
+          onChange={(e) => setLang(e.target.value as Lang)}
+          className="w-full min-w-0 cursor-pointer appearance-none truncate rounded-full border border-slate-700 bg-slate-950 py-1 pl-3 pr-7 text-xs text-slate-300 outline-none transition-colors hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+        >
+          <option value="pt-BR">Português</option>
+          <option value="en">English</option>
+        </select>
+        <svg
+          aria-hidden="true"
+          fill="none"
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500"
+        >
+          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    </label>
   );
 
   const nav = (
@@ -111,8 +125,11 @@ export function Layout({
       </a>
       {nav}
       <div className="mt-auto border-t border-slate-800 pt-4">
-        <div className="mb-2 space-y-2 px-1">
-          <ThemeSwitch value={themePref} onChange={chooseTheme} wide />
+        <div className="mb-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-xs uppercase tracking-wide text-slate-500">{t("theme.label")}</span>
+            <ThemeSwitch value={themePref} onChange={chooseTheme} />
+          </div>
           {langSelect}
         </div>
         <a
