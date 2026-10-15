@@ -149,7 +149,7 @@ export function TrackerDescriptionEditor({
               value={draft.tag}
               onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))}
               aria-label={t("trackers.trackerDescriptionEditor.mediaInfoTagAria")}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white outline-none focus:border-emerald-500"
+              className="sg-field-sm sg-select"
             >
               {MEDIAINFO_TAGS.map((tag) => (
                 <option key={tag} value={tag}>
@@ -164,7 +164,7 @@ export function TrackerDescriptionEditor({
               value={draft.lang}
               onChange={(e) => setDraft((d) => ({ ...d, lang: e.target.value }))}
               aria-label={t("trackers.trackerDescriptionEditor.languageLabel")}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-white outline-none focus:border-emerald-500"
+              className="sg-field-sm sg-select"
             >
               {CONTENT_LANGUAGES.map((lang) => (
                 <option key={lang} value={lang}>
@@ -245,7 +245,7 @@ function BlockList({
               checked={b.on}
               onChange={() => onToggle(i)}
               aria-label={t("trackers.trackerDescriptionEditor.includeBlockAria", { label: blockLabel(t, b.id), kind: t(KIND_TITLE_KEY[kind]) })}
-              className="accent-emerald-500"
+              className="sg-check"
             />
             <span className={`w-24 shrink-0 ${b.on ? "text-slate-200" : "text-slate-500 line-through"}`}>{blockLabel(t, b.id)}</span>
             <span className="min-w-0 flex-1 truncate text-slate-500" title={blockHint(t, b.id)}>

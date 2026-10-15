@@ -180,7 +180,7 @@ export function TrackerProfileExchange({
               accept=".json,application/json"
               onChange={onPick}
               aria-label={t("trackers.trackerProfileExchange.fileAria")}
-              className="hidden"
+              className="sg-field hidden"
             />
           </>
         )}
@@ -303,7 +303,7 @@ export function ImportPreviewView({
                             checked={overwrite.has(key)}
                             onChange={() => onToggle(key)}
                             aria-label={t("trackers.trackerProfileExchange.useFileItemAria", { label: t(labelKey), id: it.id })}
-                            className="accent-emerald-500"
+                            className="sg-check"
                           />
                           <span className="text-slate-400">{t("trackers.trackerProfileExchange.useFromFile")}</span>
                         </label>
@@ -389,7 +389,7 @@ function DescriptionImportRow({ item, asked, onToggle }: { item: ImportDescripti
               checked={asked}
               onChange={onToggle}
               aria-label={t("trackers.trackerProfileExchange.descUseFileAria")}
-              className="accent-emerald-500"
+              className="sg-check"
             />
             <span className="text-slate-400">{t("trackers.trackerProfileExchange.useFromFile")}</span>
           </label>
@@ -451,7 +451,7 @@ function ImageHostImportRow({ item, asked, onToggle }: { item: ImportImageHost; 
               checked={asked}
               onChange={onToggle}
               aria-label={t("trackers.trackerProfileExchange.imageHostUseFileAria")}
-              className="accent-emerald-500"
+              className="sg-check"
             />
             <span className="text-slate-400">{t("trackers.trackerProfileExchange.useFromFile")}</span>
           </label>

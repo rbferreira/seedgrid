@@ -342,8 +342,8 @@ export function TrackerUploadPanel({
     setTimeout(() => setFormSteps(null), 5000); // disappears on its own after the operator sees it
   }
 
-  const inputCls =
-    "w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500";
+  // Form-control base classes (#22).
+  const inputCls = "sg-field w-full";
   const num = (v: string) => (v === "" ? 0 : Number(v) || 0);
   // The category role comes from the profile (kind), not the number: the "Games" category ID is 5
   // on one site and another on another. Category without role = no special fields.
@@ -644,7 +644,7 @@ export function TrackerUploadPanel({
                 )}
               </div>
             )}
-            <textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={6} className={`${inputCls} resize-y font-mono text-xs`} />
+            <textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={6} className="sg-textarea w-full resize-y font-mono text-xs" />
           </div>
 
           {!isGame && (
@@ -652,7 +652,7 @@ export function TrackerUploadPanel({
               <label className="mb-1 block text-xs text-slate-400">
                 {mediaInfo ? t("publish.trackerUploadPanel.fields.mediainfoAvailable") : t("publish.trackerUploadPanel.fields.mediainfoMissing")}
               </label>
-              <textarea value={form.mediainfo} onChange={(e) => set("mediainfo", e.target.value)} rows={5} className={`${inputCls} resize-y font-mono text-xs`} />
+              <textarea value={form.mediainfo} onChange={(e) => set("mediainfo", e.target.value)} rows={5} className="sg-textarea w-full resize-y font-mono text-xs" />
             </div>
           )}
 
@@ -662,7 +662,7 @@ export function TrackerUploadPanel({
               <input value={form.keywords} onChange={(e) => set("keywords", e.target.value)} className={inputCls} />
             </div>
             <label className="mt-4 flex items-center gap-2 text-xs text-slate-300">
-              <input type="checkbox" checked={form.anonymous} onChange={(e) => set("anonymous", e.target.checked)} className="accent-emerald-500" />
+              <input type="checkbox" checked={form.anonymous} onChange={(e) => set("anonymous", e.target.checked)} className="sg-check" />
               {t("publish.trackerUploadPanel.fields.anonymous")}
             </label>
           </div>
@@ -696,7 +696,7 @@ export function TrackerUploadPanel({
                 ))}
               </ul>
               <label className="mt-3 flex items-center gap-2 text-xs text-amber-200">
-                <input type="checkbox" checked={dupeAck} onChange={(e) => setDupeAck(e.target.checked)} className="accent-amber-500" />
+                <input type="checkbox" checked={dupeAck} onChange={(e) => setDupeAck(e.target.checked)} className="sg-check" />
                 {t("publish.trackerUploadPanel.dupes.ack")}
               </label>
             </div>

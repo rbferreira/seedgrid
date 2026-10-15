@@ -20,6 +20,8 @@ the configuration; each release says how to upgrade.
   pill switches, and the Feed and Audit filters as chips.
 - Portal: forms (users, login, profile, settings, Node configuration, the Node dialogs) use the
   same fields, and every action button is rounded to match.
+- Portal: the tracker editors, Publish, Add Torrent and Explore follow too — every form control in
+  the Portal now uses the same fields.
 
 ### Fixed
 - Portal: the language selector no longer spills out of the sidebar; it sits on its own row
