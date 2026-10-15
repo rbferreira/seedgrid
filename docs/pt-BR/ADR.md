@@ -1839,6 +1839,94 @@ Não há preferência de usuário no servidor: o Portal guarda o tema no navegad
 4. `notify.language`, catálogo no Control Plane e `error.params` (#34).
 5. Ações da Auditoria como código + dados (#57).
 
+# **ADR-042**
+
+**Título:** Control Plane instalado a partir de imagens publicadas e de um único arquivo Compose; o build no host fica como caminho de quem contribui
+
+**Estado:** Aprovada — implementação em fatias (#30)
+
+**Contexto**
+Hoje o Control Plane é instalado clonando o repositório e rodando `scripts/bootstrap-controller.sh`. O script compila as imagens no próprio host (`seedgrid/controller:dev`, `seedgrid/portal:dev`, Deployment §42) e sobe três projetos Compose — `deploy/control-plane`, `deploy/observability` e `deploy/portal` — que só funcionam juntos porque o script os prepara antes:
+
+- cria o volume externo `seedgrid-prom-targets` e o entrega ao usuário do controller;
+- a rede `seedgrid-core` é criada por um projeto e declarada externa pelos outros dois;
+- gera a senha do banco, o token de registro dos Agents, a senha do admin e o token do webhook interno, grava no `.env` e copia o token do webhook para um arquivo que o Alertmanager lê;
+- exporta `VERSION` a partir do git, porque o Compose não roda git.
+
+O node-exporter do host do Control Plane escuta em `172.18.0.1`, o gateway da `seedgrid-core`. O projeto de observabilidade fixa essa rede em `172.18.0.0/16`, mas a declara externa, e o Compose não aplica o plano de endereços de uma rede que ele não criou. O endereço só existe quando o Docker, por acaso, dá essa faixa à `seedgrid-core`: um host limpo dá, um host que já roda outras redes (um NAS com uma dúzia de containers) não dá.
+
+Quem hospeda os próprios serviços em unRAID, ZimaOS, TrueNAS, Portainer ou numa VM simples espera outra coisa: um arquivo Compose que baixa imagens publicadas. O primeiro pedido sobre o SeedGrid num fórum da comunidade foi exatamente esse ("só de ter um compose file pra rodar já ficaria ótimo").
+
+**Problema**
+(a) Sem imagem publicada, toda instalação compila Go e o SPA no host, o que exige `git`, um clone, rede para baixar os módulos e minutos de CPU; num NAS nada disso é garantido. (b) Três projetos colados por um script não cabem numa interface de NAS que recebe um arquivo Compose. (c) Os segredos vêm do script, então sem ele o operador precisa inventar quatro valores, dois dos quais (senha do banco, token do webhook) ele nunca mais usa. (d) A imagem do Portal também é o servidor de download dos Nodes (ADR-017, ADR-027): uma imagem compilada em outro lugar continua tendo de levar os binários do Agent da mesma versão.
+
+**Alternativas consideradas**
+1. **Status quo, mais bem documentado.** Mantém o build no host. Não responde nem (a) nem (b). Rejeitada.
+2. **Publicar imagens, manter os três projetos e o script.** Responde (a), não (b): o script continua colando tudo.
+3. **Uma imagem tudo-em-um** (Postgres, controller, nginx, Prometheus e Alertmanager sob um supervisor). O formato de que os templates de NAS mais gostam. Rejeitada: esconde cinco processos atrás de um único estado de saúde, transforma atualizar o Postgres numa release do SeedGrid e quebra o modelo de um processo por container que o resto do deploy segue. Um template de NAS pode ser escrito em cima do arquivo Compose.
+4. **Publicar no Docker Hub.** Limite de pull para usuário anônimo e uma segunda conta para administrar. O GHCR mora ao lado do repositório e do CI que compila as imagens.
+5. **Imagens publicadas + um arquivo Compose (adotada).**
+
+**Decisão**
+
+1. **Imagens no GHCR, compiladas pelo CI a cada tag de release.**
+   - `ghcr.io/rbferreira/seedgrid-controller` e `ghcr.io/rbferreira/seedgrid-portal`, multi-arquitetura (`linux/amd64`, `linux/arm64`).
+   - Tags: a versão exata (`0.2.0`), a minor (`0.2`) e `latest`. Nada é publicado a partir de branch; uma tag de release é o único jeito de uma imagem passar a existir.
+   - O Go faz cross-compile na plataforma do build (`GOARCH` vindo da plataforma de destino), sem emulação.
+   - A versão vem da tag e é a mesma no controller, no Portal e nos binários do Agent que o Portal carrega.
+
+2. **A imagem do Portal carrega os artefatos dos Nodes.** `/node/` serve os binários do Agent das duas arquiteturas, o `agents.json` e o `bootstrap-node.sh` exatamente como hoje (ADR-017, ADR-027), compilados na mesma execução do CI que o controller. Atualizar as imagens do Control Plane, portanto, também publica o Agent daquela versão para o self-update.
+
+3. **Um arquivo Compose, `deploy/compose.yaml`, anexado a cada release do GitHub com as imagens fixadas naquela release.**
+   - Um projeto (`seedgrid`): Postgres, controller, Portal, Prometheus, Alertmanager e o node-exporter do host.
+   - A configuração do Prometheus e do Alertmanager vai embutida (`configs` do Compose com `content`), então o arquivo roda sozinho, sem um clone ao lado. Isso exige Docker Compose 2.23.1 ou mais novo.
+   - A rede e os volumes pertencem ao projeto: nada para criar à mão. Os nomes dos volumes continuam os de hoje, então uma instalação existente pode passar para o arquivo novo e manter o banco e as métricas.
+   - A porta do Portal é `SEEDGRID_HTTP_PORT` (padrão `80`): no unRAID e em vários sistemas de NAS a porta `80` é da interface web do próprio sistema.
+   - As imagens dos outros serviços (Postgres, Prometheus, Alertmanager, node-exporter) ficam fixadas numa versão, não em `latest`.
+
+4. **Segredos: o operador só escolhe o que ele digita.**
+   - `SEEDGRID_ADMIN_PASSWORD` é o único valor obrigatório. É o que o operador digita no Portal.
+   - A senha do banco, o token de registro dos Agents e o token do webhook interno são gerados na primeira subida por um serviço `init` de execução única (uma imagem pública que já existe, sem build), num volume próprio. O mesmo serviço entrega o volume de targets ao usuário do controller. Ele nunca sobrescreve um valor que já existe.
+   - O Postgres lê a senha do arquivo (`POSTGRES_PASSWORD_FILE`). O controller ganha a forma `_FILE` das variáveis de segredo, a convenção do Docker: `SEEDGRID_X` vence quando definida, senão `SEEDGRID_X_FILE`. Uma instalação feita pelo `bootstrap-controller.sh` tem os valores no `.env` e não percebe mudança.
+
+5. **Nenhum endereço fixado à mão.** O node-exporter do host do Control Plane sai da rede do host e entra na rede do projeto, lendo `/proc`, `/sys` e `/` do host em modo somente leitura, sem publicar porta. O endereço de escuta `172.18.0.1` e o plano de endereços fixo da rede deixam de existir.
+   Custo aceito: os contadores de rede desse host passam a ser os do container. As métricas de rede que o Portal mostra são as dos Seed Nodes, que mantêm o node-exporter na rede do host.
+
+6. **Atualizar é `docker compose pull && docker compose up -d`.** As migrations já rodam quando o controller sobe. Depois os Agents são atualizados pelo Portal, como antes (ADR-027).
+
+7. **O build no host continua.** `bootstrap-controller.sh`, os scripts `build-*.sh` e o `Dockerfile.runtime` continuam funcionando para quem contribui, para quem roda um commit ainda sem release e para Docker dentro de container de sistema (LXC), onde `docker build` com `RUN` falha. Baixar uma imagem publicada também é uma saída para esse último caso: rodar uma imagem não esbarra na restrição do AppArmor em que o build esbarra.
+
+**Fora do escopo**
+- **O Agent em container.** Ele lê as métricas do disco do Node, mexe direto nos arquivos dos torrents e troca o próprio binário. Os motivos que a ADR-027 deu para mantê-lo como binário no systemd continuam valendo; um Agent em container é uma decisão própria.
+- **Templates de NAS** (Community Applications do unRAID, ZimaOS, TrueNAS). Eles embrulham o arquivo Compose e as imagens, então vêm depois deles.
+- **Adotar o qBittorrent que o Node já roda** (#32) e **outros Engines** (#31). Eles mudam o lado do Node; esta ADR só muda como o Control Plane é instalado.
+
+**Consequências**
+
+*Positivas*
+- Instalar o Control Plane exige Docker e um arquivo. Sem clone, sem Go, sem Node.js, sem tempo de build na CPU de um NAS.
+- As imagens são as mesmas em todo lugar: um relato de bug cita uma versão, e essa versão é um único conjunto de bytes.
+- Um Control Plane `arm64` (um Raspberry Pi 4/5, um NAS ARM) passa a ser possível sem compilar nele.
+- Some a dependência de `172.18.0.1`, que falha em qualquer host cujas redes do Docker não começaram nessa faixa.
+
+*Custos e limites aceitos*
+- **A release depende do CI e do GHCR.** Um workflow de release quebrado significa nenhuma imagem para aquela tag; o build no host continua lá.
+- **O volume de segredos passa a fazer parte do backup.** Se ele se perder e o volume do Postgres não, o controller não consegue mais abrir o próprio banco. O guia de implantação diz isso junto das instruções de backup.
+- **Compose 2.23.1 ou mais novo** para a configuração embutida. Num Compose mais antigo, o build no host continua funcionando.
+- **Dois caminhos de instalação para manter funcionando.** Um job do CI sobe a pilha a partir do arquivo Compose e confere o `/healthz`, para o caminho publicado não se afastar em silêncio do que os desenvolvedores usam.
+- Uma instalação que sai do `bootstrap-controller.sh` para o arquivo Compose precisa antes de `docker compose down` nos três projetos antigos: os nomes dos containers são os mesmos, e o Docker não cria um segundo container com um nome já em uso.
+
+**Relação com outras ADRs**
+- A **ADR-015** escolheu Docker e Compose para o empacotamento; esta ADR decide de onde vêm as imagens.
+- **ADR-017** e **ADR-027**: a imagem do Portal continua servindo o onboarding e o self-update, agora compilada pelo CI.
+- A **ADR-029** levou toda credencial de terceiro para o Portal; o que sobra no `.env` é a infraestrutura do próprio deploy, e esta ADR reduz o que o operador preenche à senha do admin.
+
+**Implementação (fatias)**
+1. Esta ADR.
+2. Workflow de release: imagens multi-arquitetura no GHCR a cada tag, com os artefatos dos Nodes na imagem do Portal.
+3. `deploy/compose.yaml` com o serviço `init`, as variáveis `_FILE` do controller, o node-exporter sem endereço fixo e o job do CI que sobe a pilha.
+4. Guia de implantação e README: o arquivo Compose vira o Quick start; o build no host vai para uma seção de quem contribui.
+
 # **10. Template Oficial**
 Toda ADR deverá seguir uma estrutura padronizada.
 Campos mínimos:
