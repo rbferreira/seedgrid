@@ -5,6 +5,7 @@ export const alerts = {
     updatedAt: "atualizado {time}",
     filter: {
       all: "Todas",
+      severity: "Severidade",
       openOnly: "Só alertas abertos",
     },
     status: {

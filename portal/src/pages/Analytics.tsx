@@ -227,13 +227,13 @@ export function Analytics({ onLogout }: { onLogout: () => void }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("analytics.analytics.searchPlaceholder")}
-          className="min-w-[240px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field min-w-[240px] flex-1"
         />
         <select
           value={fNode}
           onChange={(e) => setFNode(e.target.value)}
           title={t("analytics.analytics.nodeFilterTitle")}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           <option value="">{t("analytics.analytics.allNodes")}</option>
           {nodeOptions.map((n) => (
@@ -246,7 +246,7 @@ export function Analytics({ onLogout }: { onLogout: () => void }) {
           value={fMinSize}
           onChange={(e) => setFMinSize(Number(e.target.value))}
           title={t("analytics.analytics.minSizeTitle")}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           {SIZE_STEPS.map((s) => (
             <option key={s.min} value={s.min}>
@@ -258,7 +258,7 @@ export function Analytics({ onLogout }: { onLogout: () => void }) {
           value={order}
           onChange={(e) => setOrder(e.target.value as Order)}
           title={t("analytics.analytics.sortTitle")}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field sg-select"
         >
           <option value="size">{t("analytics.analytics.sort.size")}</option>
           <option value="age">{t("analytics.analytics.sort.age")}</option>

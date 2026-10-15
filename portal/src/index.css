@@ -95,3 +95,55 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Form controls (#22): one look for selection, filters and text entry, in the language of the
+   pill switch (#17) — rounded, inset background, thin border, emerald focus ring. A screen only
+   swaps its class string for these; width, margin and font tweaks stay as utilities on the element
+   and win over the layer. Colours come from the slate ramp, so both themes follow on their own.
+
+   sg-field     single-line input or select (text-sm); sg-field-sm is the compact variant (text-xs)
+   sg-select    adds the chevron and room for it (use together with sg-field)
+   sg-textarea  several lines: same treatment, rounded corners instead of a pill
+   sg-check     checkbox in the brand emerald */
+:root {
+  --sg-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme="light"] {
+  --sg-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' stroke='%235d746a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+@layer components {
+  .sg-field,
+  .sg-field-sm,
+  .sg-textarea {
+    @apply rounded-full border border-slate-700 bg-slate-950 text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-slate-500 hover:border-slate-600 focus:border-emerald-500/70 focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .sg-field {
+    @apply px-3.5 py-1.5 text-sm;
+  }
+  .sg-field-sm {
+    @apply px-3 py-1 text-xs;
+  }
+  .sg-select {
+    @apply cursor-pointer appearance-none truncate bg-no-repeat pr-8;
+    background-image: var(--sg-chevron);
+    background-position: right 0.8rem center;
+  }
+  .sg-textarea {
+    @apply rounded-2xl px-3.5 py-2 text-sm;
+  }
+  .sg-check {
+    @apply size-4 shrink-0 cursor-pointer appearance-none rounded-[5px] border border-slate-600 bg-slate-950 bg-center bg-no-repeat transition-colors outline-none checked:border-emerald-600 checked:bg-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* sg-chip: one option of an open filter list (audit actor, Feed kind) — wraps, unlike the
+     pill switch. The selected one says so with aria-pressed. */
+  .sg-chip {
+    @apply rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-400 transition-colors outline-none hover:border-slate-600 hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900;
+  }
+  .sg-chip[aria-pressed="true"] {
+    @apply border-emerald-600 bg-emerald-600 text-[#fff] hover:text-[#fff];
+  }
+  .sg-check:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2 4.1 7.2 8 2.8' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}

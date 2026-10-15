@@ -143,7 +143,7 @@ function RankList({
           onChange={(e) => setLimit(Number(e.target.value))}
           title={t("dashboard.dashboard.rank.howMany")}
           aria-label={t("dashboard.dashboard.rank.itemsIn", { title })}
-          className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300 outline-none focus:border-emerald-500"
+          className="sg-field-sm sg-select"
         >
           {TOP_STEPS.map((n) => (
             <option key={n} value={n}>
