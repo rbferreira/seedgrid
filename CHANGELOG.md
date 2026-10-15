@@ -13,6 +13,8 @@ the configuration; each release says how to upgrade.
 - Portal: the theme can follow the operating system — a light / system / dark switch in the
   sidebar and the mobile header. **System** is now the default for anyone who never chose; a
   saved light or dark choice is kept.
+- Portal: the Dashboard **Admission** switch and the per-Node **SG / Manual** switch use the same
+  pill, with the knob amber while a Node is in Manual.
 
 ### Fixed
 - Portal: the language selector no longer spills out of the sidebar; it sits on its own row

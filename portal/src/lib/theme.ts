@@ -59,16 +59,6 @@ export function watchSystemTheme(onChange: () => void): () => void {
   return () => q.removeEventListener("change", onChange);
 }
 
-// nextThemePref is the keyboard behaviour of the switch (radiogroup): arrows move the selection
-// and wrap around; any other key changes nothing (null).
-export function nextThemePref(current: ThemePref, key: string): ThemePref | null {
-  const i = THEME_PREFS.indexOf(current);
-  const n = THEME_PREFS.length;
-  if (key === "ArrowRight" || key === "ArrowDown") return THEME_PREFS[(i + 1) % n];
-  if (key === "ArrowLeft" || key === "ArrowUp") return THEME_PREFS[(i - 1 + n) % n];
-  return null;
-}
-
 function safeStorage(): Storage | undefined {
   try {
     return typeof localStorage === "undefined" ? undefined : localStorage;

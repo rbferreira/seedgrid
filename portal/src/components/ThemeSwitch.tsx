@@ -1,6 +1,7 @@
-import { useRef, type KeyboardEvent, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useT, type Key } from "../i18n";
-import { nextThemePref, THEME_PREFS, type ThemePref } from "../lib/theme";
+import { THEME_PREFS, type ThemePref } from "../lib/theme";
+import { PillSwitch } from "./PillSwitch";
 
 const LABEL: Record<ThemePref, Key> = {
   light: "theme.light",
@@ -46,63 +47,19 @@ function MoonIcon() {
 
 const ICON: Record<ThemePref, () => ReactElement> = { light: SunIcon, system: MonitorIcon, dark: MoonIcon };
 
-// Each option is a 24px slot; the knob slides one slot per position.
-const KNOB_SHIFT: Record<ThemePref, string> = {
-  light: "translate-x-0",
-  system: "translate-x-6",
-  dark: "translate-x-12",
-};
-
-// ThemeSwitch is the light / system / dark switch: a small pill with a knob that slides to the
-// chosen option. A radiogroup: only the selected option is in the Tab order, and the arrow keys
-// move the selection (roving tabindex); the focus ring goes on the whole pill.
+// ThemeSwitch is the light / system / dark switch: the Portal's PillSwitch with icons.
 export function ThemeSwitch({ value, onChange }: { value: ThemePref; onChange: (pref: ThemePref) => void }) {
   const t = useT();
-  const refs = useRef<Partial<Record<ThemePref, HTMLButtonElement | null>>>({});
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    const next = nextThemePref(value, e.key);
-    if (!next) return;
-    e.preventDefault();
-    onChange(next);
-    refs.current[next]?.focus();
-  };
-
   return (
-    <div
-      role="radiogroup"
-      aria-label={t("theme.label")}
-      onKeyDown={onKeyDown}
-      className="relative inline-flex shrink-0 rounded-full border border-slate-700 bg-slate-950 p-0.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/70 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-slate-900"
-    >
-      <span
-        aria-hidden="true"
-        className={`pointer-events-none absolute left-1 top-1 h-5 w-5 rounded-full bg-emerald-600 shadow-sm shadow-black/30 transition-transform duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] ${KNOB_SHIFT[value]}`}
-      />
-      {THEME_PREFS.map((p) => {
+    <PillSwitch
+      label={t("theme.label")}
+      iconOnly
+      value={value}
+      onChange={onChange}
+      options={THEME_PREFS.map((p) => {
         const Icon = ICON[p];
-        const on = value === p;
-        return (
-          <button
-            key={p}
-            ref={(el) => {
-              refs.current[p] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            aria-label={t(LABEL[p])}
-            title={t(LABEL[p])}
-            tabIndex={on ? 0 : -1}
-            onClick={() => onChange(p)}
-            className={`relative z-10 grid h-6 w-6 place-items-center rounded-full transition-colors duration-200 focus:outline-none ${
-              on ? "text-[#fff]" : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            <Icon />
-          </button>
-        );
+        return { value: p, content: <Icon />, name: t(LABEL[p]) };
       })}
-    </div>
+    />
   );
 }

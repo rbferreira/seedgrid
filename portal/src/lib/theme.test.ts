@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextThemePref, readThemePref, resolveTheme, saveThemePref, systemPrefersDark, THEME_KEY } from "./theme";
+import { readThemePref, resolveTheme, saveThemePref, systemPrefersDark, THEME_KEY } from "./theme";
 
 function memory(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -76,20 +76,5 @@ describe("systemPrefersDark", () => {
 
   it("without matchMedia assumes dark", () => {
     expect(systemPrefersDark(undefined)).toBe(true);
-  });
-});
-
-describe("nextThemePref", () => {
-  it("arrows move through light → system → dark and wrap around", () => {
-    expect(nextThemePref("light", "ArrowRight")).toBe("system");
-    expect(nextThemePref("system", "ArrowDown")).toBe("dark");
-    expect(nextThemePref("dark", "ArrowRight")).toBe("light");
-    expect(nextThemePref("light", "ArrowLeft")).toBe("dark");
-    expect(nextThemePref("system", "ArrowUp")).toBe("light");
-  });
-
-  it("other keys change nothing", () => {
-    expect(nextThemePref("system", "Enter")).toBeNull();
-    expect(nextThemePref("system", "Tab")).toBeNull();
   });
 });

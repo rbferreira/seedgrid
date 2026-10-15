@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { PillSwitch } from "../components/PillSwitch";
 import {
   getNodesAndMode,
   setClusterMode,
@@ -340,25 +341,19 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
           <div className="flex items-center gap-2" title={t("dashboard.dashboard.admission.title")}>
             <span className="text-xs uppercase tracking-wide text-slate-500">{t("dashboard.dashboard.admission.label")}</span>
             {canMode ? (
-              <div className="inline-flex overflow-hidden rounded-lg border border-slate-700 text-xs">
-                {(["full_auto", "flex"] as ClusterMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => changeGate(m)}
-                    disabled={modeBusy || gate === m}
-                    className={`px-3 py-1.5 font-medium transition disabled:cursor-default ${
-                      gate === m
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    {m === "full_auto" ? "Full auto" : "Flex"}
-                  </button>
-                ))}
-              </div>
+              <PillSwitch<ClusterMode>
+                label={t("dashboard.dashboard.admission.title")}
+                value={gate}
+                onChange={changeGate}
+                busy={modeBusy}
+                options={[
+                  { value: "full_auto", content: "Full auto" },
+                  { value: "flex", content: "Flex" },
+                ]}
+              />
             ) : (
               // Without nodes:operation-mode the operator still needs to KNOW the mode — just doesn't change it.
-              <span className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300">
+              <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs font-medium text-slate-300">
                 {gate === "flex" ? "Flex" : "Full auto"}
               </span>
             )}
@@ -485,31 +480,20 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
                 </td>
                 <td className="px-3 py-2.5">
                   {gate === "flex" && canMode ? (
-                    <div className="inline-flex overflow-hidden rounded-md border border-slate-700 text-xs">
-                      {(["sg", "manual"] as NodeMode[]).map((m) => {
-                        const active = (n.operation_mode ?? "sg") === m;
-                        return (
-                          <button
-                            key={m}
-                            onClick={() => changeNodeMode(n.id, m)}
-                            disabled={modeBusy || active}
-                            className={`px-2 py-1 font-medium transition disabled:cursor-default ${
-                              active
-                                ? m === "manual"
-                                  ? "bg-amber-600 text-white"
-                                  : "bg-blue-600 text-white"
-                                : "bg-slate-900 text-slate-400 hover:text-slate-200"
-                            }`}
-                          >
-                            {m === "sg" ? "SG" : "Manual"}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <PillSwitch<NodeMode>
+                      label={t("dashboard.dashboard.seedNodes.colMode")}
+                      value={n.operation_mode ?? "sg"}
+                      onChange={(m) => changeNodeMode(n.id, m)}
+                      busy={modeBusy}
+                      options={[
+                        { value: "sg", content: "SG" },
+                        { value: "manual", content: "Manual", tone: "amber" },
+                      ]}
+                    />
                   ) : gate === "flex" ? (
                     // Flex without nodes:operation-mode: each Node's mode remains in view, without the toggle.
                     <span
-                      className={`rounded-md px-2 py-1 text-xs ${
+                      className={`rounded-full px-2.5 py-1 text-xs ${
                         n.operation_mode === "manual" ? "bg-amber-600/20 text-amber-300" : "bg-slate-800 text-slate-400"
                       }`}
                       title={t("dashboard.dashboard.seedNodes.modeReadOnly")}
@@ -518,7 +502,7 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
                     </span>
                   ) : (
                     <span
-                      className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400"
+                      className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-400"
                       title={t("dashboard.dashboard.seedNodes.fullAutoHint")}
                     >
                       SG
