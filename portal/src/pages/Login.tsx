@@ -40,7 +40,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
 
         <label className="mb-1 block text-sm text-slate-300">{t("login.username")}</label>
         <input
-          className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field mb-4 w-full"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoFocus
@@ -49,7 +49,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         <label className="mb-1 block text-sm text-slate-300">{t("login.password")}</label>
         <input
           type="password"
-          className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+          className="sg-field mb-4 w-full"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -59,7 +59,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         <button
           type="submit"
           disabled={loading || !username || !password}
-          className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="w-full rounded-full bg-emerald-600 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? t("login.submitting") : t("login.submit")}
         </button>

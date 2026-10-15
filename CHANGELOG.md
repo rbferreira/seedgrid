@@ -18,6 +18,8 @@ the configuration; each release says how to upgrade.
 - Portal: form controls follow the same pill language — text inputs, selects and checkboxes on the
   filter screens (Dashboard, Downloaded, Analytics, Alerts), the chart range and alert severity as
   pill switches, and the Feed and Audit filters as chips.
+- Portal: forms (users, login, profile, settings, Node configuration, the Node dialogs) use the
+  same fields, and every action button is rounded to match.
 
 ### Fixed
 - Portal: the language selector no longer spills out of the sidebar; it sits on its own row

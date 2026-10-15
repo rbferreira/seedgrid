@@ -203,7 +203,7 @@ export function TorrentDetail({
                   onClick={onDownload}
                   disabled={downloading || running.size > 0 || busy}
                   title={t("torrents.torrentDetail.downloadTitle")}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs transition hover:bg-slate-800 disabled:opacity-40 ${TRANSFER.down.text}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-3 py-1.5 text-xs transition hover:bg-slate-800 disabled:opacity-40 ${TRANSFER.down.text}`}
                 >
                   {downloading ? <Spinner /> : "⬇"} {t("torrents.torrentDetail.download")}
                 </button>
@@ -213,7 +213,7 @@ export function TorrentDetail({
                   <button
                     onClick={() => act(t("torrents.torrentDetail.resumeVerb"), resumeTorrent)}
                     disabled={running.size > 0 || busy}
-                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-emerald-400 transition hover:bg-slate-800 disabled:opacity-40"
+                    className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-emerald-400 transition hover:bg-slate-800 disabled:opacity-40"
                   >
                     ▶ {t("torrents.torrentDetail.resume")}
                   </button>
@@ -221,7 +221,7 @@ export function TorrentDetail({
                   <button
                     onClick={() => act(t("torrents.torrentDetail.pauseVerb"), pauseTorrent)}
                     disabled={running.size > 0 || busy}
-                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
+                    className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
                   >
                     ⏸ {t("torrents.torrentDetail.pause")}
                   </button>
@@ -231,7 +231,7 @@ export function TorrentDetail({
                   onClick={() => act(t("torrents.torrentDetail.recheckVerb"), recheckTorrent)}
                   disabled={running.size > 0 || busy}
                   title={t("torrents.torrentDetail.recheckTitle")}
-                  className={`rounded-lg border border-slate-700 px-3 py-1.5 text-xs transition hover:bg-slate-800 disabled:opacity-40 ${
+                  className={`rounded-full border border-slate-700 px-3 py-1.5 text-xs transition hover:bg-slate-800 disabled:opacity-40 ${
                     tor.status === "ERROR" ? "text-red-400" : "text-slate-300"
                   }`}
                 >
@@ -242,7 +242,7 @@ export function TorrentDetail({
                 <button
                   onClick={onRemove}
                   disabled={running.size > 0 || busy}
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-red-400 transition hover:bg-slate-800 disabled:opacity-40"
+                  className="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-red-400 transition hover:bg-slate-800 disabled:opacity-40"
                 >
                   🗑 {t("torrents.torrentDetail.remove")}
                 </button>

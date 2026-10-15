@@ -255,7 +255,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
                   onClick={() => removeFile(i)}
                   disabled={running}
                   title={t("torrents.addTorrent.removeFile")}
-                  className="shrink-0 rounded px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-red-400 disabled:opacity-40"
+                  className="shrink-0 rounded-full px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-red-400 disabled:opacity-40"
                 >
                   ✕
                 </button>
@@ -315,7 +315,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={running || totalPending === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {running
             ? t("torrents.addTorrent.btnAdding")
@@ -527,7 +527,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
                       onClick={() => resumePending(p)}
                       disabled={!p.has_file || running || pendingBusy === p.id}
                       title={p.has_file ? t("torrents.addTorrent.resumeTitleReady") : t("torrents.addTorrent.resumeTitleWaiting")}
-                      className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-500 disabled:opacity-40"
+                      className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-500 disabled:opacity-40"
                     >
                       {t("torrents.addTorrent.btnReviewPublish")}
                     </button>
@@ -535,7 +535,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
                       onClick={() => abandonPending(p)}
                       disabled={running || pendingBusy === p.id}
                       title={t("torrents.addTorrent.abandonTitle")}
-                      className="rounded-lg border border-red-700/50 px-3 py-1 text-xs font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-40"
+                      className="rounded-full border border-red-700/50 px-3 py-1 text-xs font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-40"
                     >
                       {pendingBusy === p.id ? t("torrents.addTorrent.btnRemoving") : t("torrents.addTorrent.btnAbandon")}
                     </button>
@@ -588,7 +588,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
                   onClick={() => removeFile(i)}
                   disabled={running}
                   title={t("torrents.addTorrent.removeFile")}
-                  className="shrink-0 rounded px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-red-400 disabled:opacity-40"
+                  className="shrink-0 rounded-full px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-red-400 disabled:opacity-40"
                 >
                   ✕
                 </button>
@@ -679,7 +679,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={running || files.length === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {phase === "uploading"
             ? t("torrents.addTorrent.progressUploading", { pct })

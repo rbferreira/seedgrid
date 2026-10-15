@@ -342,7 +342,7 @@ export function ImportPreviewView({
         <button
           onClick={onApply}
           disabled={applying || !changes}
-          className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
         >
           {applying ? t("trackers.trackerProfileExchange.applying") : t("trackers.trackerProfileExchange.apply")}
         </button>

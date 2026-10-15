@@ -104,7 +104,7 @@ export function CancelMigrationButton({
       onClick={onCancel}
       disabled={busy}
       title={t("alerts.alertsEvents.cancelMigration.title")}
-      className="rounded-md border border-red-500/40 px-2 py-0.5 text-[11px] text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-full border border-red-500/40 px-2 py-0.5 text-[11px] text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {busy ? t("alerts.alertsEvents.cancelMigration.cancelling") : t("alerts.alertsEvents.cancelMigration.label")}
     </button>

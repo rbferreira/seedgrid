@@ -181,8 +181,8 @@ function SettingField({
     [onSaved, onLogout, t],
   );
 
-  const inputCls =
-    "rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm text-slate-100 outline-none transition focus:border-emerald-500 disabled:opacity-50";
+  // Form-control base classes (#22): sg-field, plus sg-select on the lists.
+  const inputCls = "sg-field";
 
   // CLUSTER value of an Agent/Engine tunable (ADR-039) reaches ALL Nodes without their
   // own value on the next heartbeat — it's the broadest change on this screen, and the one #144
@@ -228,7 +228,7 @@ function SettingField({
                   checked={sel.has(c.value)}
                   onChange={() => toggle(c.value)}
                   disabled={busy}
-                  className="h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-950 accent-emerald-500"
+                  className="sg-check shrink-0"
                 />
                 {choiceLabel(item.key, c.value, c.label)}
               </label>
@@ -238,7 +238,7 @@ function SettingField({
             <button
               onClick={() => run(() => updateSetting(item.key, value))}
               disabled={busy || !dirty}
-              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("common.save")}
             </button>
@@ -246,7 +246,7 @@ function SettingField({
               <button
                 onClick={() => setValue("")}
                 disabled={busy}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800/60 disabled:opacity-40"
+                className="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800/60 disabled:opacity-40"
               >
                 {t("settings.settings.actions.clear")}
               </button>
@@ -264,12 +264,12 @@ function SettingField({
       ) : (
       <div className="mt-1 flex flex-wrap items-center gap-2">
         {item.type === "bool" ? (
-          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={`w-40 ${inputCls}`}>
+          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={`w-40 ${inputCls} sg-select`}>
             <option value="true">{t("settings.settings.field.optionOn")}</option>
             <option value="false">{t("settings.settings.field.optionOff")}</option>
           </select>
         ) : item.options && item.options.length > 0 ? (
-          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={`w-40 ${inputCls}`}>
+          <select value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={`w-40 ${inputCls} sg-select`}>
             {item.options.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -305,7 +305,7 @@ function SettingField({
             }
           }}
           disabled={busy || !dirty}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("common.save")}
         </button>
@@ -317,7 +317,7 @@ function SettingField({
               }
             }}
             disabled={busy}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800/60 disabled:opacity-40"
+            className="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-slate-800/60 disabled:opacity-40"
             title={t("settings.settings.actions.resetDefaultTitle")}
           >
             {t("settings.settings.actions.resetDefault")}
@@ -420,7 +420,7 @@ function ChannelTestButton({
       <button
         onClick={send}
         disabled={busy || !enabled}
-        className="rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3 py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-full border border-emerald-600/40 bg-emerald-600/10 px-3 py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-600/20 disabled:cursor-not-allowed disabled:opacity-40"
         title={enabled ? t("settings.settings.actions.testEnabledTitle") : t("settings.settings.actions.testDisabledTitle")}
       >
         {busy ? t("settings.settings.actions.sending") : t("settings.settings.actions.test")}

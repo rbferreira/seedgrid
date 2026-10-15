@@ -205,7 +205,7 @@ export function Analytics({ onLogout }: { onLogout: () => void }) {
               type="button"
               onClick={() => setFilter(isActive ? "todos" : c.id)}
               title={t("analytics.analytics.filterTitle", { label: t(c.labelKey) })}
-              className={`rounded-xl border px-3 py-2 text-left transition ${
+              className={`rounded-lg border px-3 py-2 text-left transition ${
                 isActive
                   ? "border-emerald-500 bg-emerald-500/10"
                   : "border-slate-800 bg-slate-950/40 hover:border-slate-700"

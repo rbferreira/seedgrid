@@ -52,7 +52,7 @@ export function Profile({ onLogout }: { onLogout: () => void }) {
         type="password"
         value={val}
         onChange={(e) => set(e.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+        className="sg-field w-full"
       />
     </div>
   );
@@ -75,7 +75,7 @@ export function Profile({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={loading || !current || !next}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? t("profile.changePassword.submitting") : t("profile.changePassword.submit")}
         </button>
