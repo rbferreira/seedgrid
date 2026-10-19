@@ -138,6 +138,13 @@ O contrato tem duas propriedades deliberadas, e as duas existem porque a busca �
 
 O Portal exibe os candidatos e exige um "publicar mesmo assim" explícito antes de liberar o botão — o mesmo padrão do `allow_duplicate` na duplicata de cluster (#11). A decisão continua sendo do operador; o endpoint só garante que ela seja informada.
 
+**Semear do catálogo do tracker (#12, #35).** `POST /api/v1/trackers/{id}/seed` — exige `trackers:seed`. Corpo `{"torrent_id": "…", "allow_duplicate": false}`. Baixa o `.torrent` do item, usando o `download_link` guardado pelo browse ou, sem ele, a consulta a `/api/torrents/{id}`, e o adiciona ao cluster pelo Scheduler. Responde `201` com o torrent. A conversa com o tracker tem prazo de **25 s**, o mesmo orçamento da ADR-040 §4: fica abaixo dos 30 s do `WriteTimeout` e dos 60 s do proxy no `/api/`, para que o operador receba o motivo, e não o erro do proxy. Erros:
+- `504 tracker_timeout`, com `error.params.seconds`: o tracker não respondeu no prazo. Não há segunda tentativa com o `api_token`, porque o token não acelera um tracker lento e a repetição só dobraria a carga sobre ele.
+- `502 fetch_failed`: o tracker recusou o download, limitou a taxa (`429`) ou entregou algo que não é `.torrent`. A mensagem diz qual dos três.
+- `409 duplicate`: o torrent já está no cluster; o Portal confirma e reenvia com `allow_duplicate`.
+- `409 no_eligible_node` / `409 no_node_with_space`: o Scheduler não achou Node elegível ou com espaço.
+- `400 tracker_without_api`: o tracker não tem `api_url` e token cadastrados.
+
 **Preview congelado do payload (#188).** `POST /api/v1/torrents/{id}/publish-tracker/preview` — exige `torrents:publish`. Recebe **o mesmo corpo** do `publish-tracker` e devolve o payload exato que o submit enviaria, sem tocar na rede: `{"endpoint", "tracker", "fields": {…}, "torrent_name", "torrent_size", "missing": [], "token"}`.
 
 Existe porque a **API do UNIT3D não tem dry-run**. Sem o preview, a única forma de descobrir o que vai ser postado é postar — e um campo errado vira registro errado no catálogo de um tracker privado, sem desfazer. Aqui pesa mais do que numa ferramenta de upload comum: o `.torrent` que vai no POST já está **semeando** num Node, então um post errado não é só um registro ruim, é um infohash publicado que o cluster já está servindo.

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -353,10 +354,13 @@ func FetchTorrent(ctx context.Context, apiURL, apiToken, torrentID string) ([]by
 	req.Header.Set("Accept", "application/json")
 	resp, err := cli.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("query torrent on tracker: %w", stripURL(err))
+		return nil, networkFailure("query torrent on tracker", err)
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	_ = resp.Body.Close()
+	if err != nil {
+		return nil, networkFailure("query torrent on tracker", err)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("tracker rejected the torrent query (status %d)", resp.StatusCode)
 	}
@@ -399,6 +403,12 @@ func DownloadFromLink(ctx context.Context, link, apiToken string) ([]byte, error
 	if errors.As(errDirect, &denied) || errors.Is(errDirect, ErrRateLimited) {
 		return nil, errDirect
 	}
+	// A timeout ends it here too. The token doesn't speed up a tracker that isn't answering, and
+	// the caller's deadline is already gone: the second attempt would start cancelled and replace
+	// the real reason with "context canceled" in the report (#35).
+	if errors.Is(errDirect, ErrTimeout) {
+		return nil, errDirect
+	}
 	sep := "?"
 	if strings.Contains(link, "?") {
 		sep = "&"
@@ -422,6 +432,22 @@ func DownloadFromLink(ctx context.Context, link, apiToken string) ([]byte, error
 // to wait instead of insisting. Separated from DeniedError because the difference is the remedy:
 // refusal requires intervention on the account, rate limit requires patience.
 var ErrRateLimited = errors.New("the tracker rate-limited the requests (429)")
+
+// ErrTimeout says the tracker didn't answer within the deadline — the http.Client's or the
+// caller's context. A sentinel so the route answers 504 with the reason instead of a generic
+// 502: a slow tracker calls for waiting and trying again, not for checking the account (#35).
+var ErrTimeout = errors.New("the tracker did not answer in time")
+
+// networkFailure translates the error of a request to the tracker: a timeout becomes ErrTimeout
+// (the "awaiting headers" detail doesn't help the operator); anything else gets the operation
+// prefix, without the URL, which carries a credential (stripURL).
+func networkFailure(op string, err error) error {
+	var ne net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+		return ErrTimeout
+	}
+	return fmt.Errorf("%s: %w", op, stripURL(err))
+}
 
 // DeniedError says the tracker REFUSED the download instead of delivering the file: the
 // response redirected to another page (typically /login or the torrent details page).
@@ -452,7 +478,7 @@ func fetchTorrentBytes(ctx context.Context, cli *http.Client, link string) ([]by
 	}
 	resp, err := cli.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("download .torrent: %w", stripURL(err))
+		return nil, networkFailure("download .torrent", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusTooManyRequests {
@@ -471,7 +497,11 @@ func fetchTorrentBytes(ctx context.Context, cli *http.Client, link string) ([]by
 		resp.Request.URL.Path != p {
 		return nil, &DeniedError{FinalPath: resp.Request.URL.Path, Status: resp.StatusCode}
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return nil, networkFailure("download .torrent", err)
+	}
+	return data, nil
 }
 
 // pathOf extracts the Path from a URL. ok=false when it cannot be parsed — in this case

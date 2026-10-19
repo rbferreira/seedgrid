@@ -69,6 +69,7 @@ export const api: Catalog["api"] = {
     torrent_not_found: "Torrent not found",
     torrent_not_on_node: "The torrent wasn't found on this Node",
     tracker_not_found: "Tracker not found",
+    tracker_timeout: "The tracker did not answer within {seconds} s — it may be down or overloaded; try again in a moment",
     tracker_upload_failed: "The tracker rejected the upload: {detail}",
     tracker_without_api: "This tracker has no API integration (API URL + token)",
     unauthorized: "Not authorized",

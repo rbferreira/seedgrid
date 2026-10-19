@@ -138,6 +138,13 @@ The contract has two deliberate properties, and both exist because the search is
 
 The Portal displays the candidates and requires an explicit "publish anyway" before enabling the button — the same pattern as `allow_duplicate` in cluster duplicates (#11). The decision remains with the operator; the endpoint only ensures they are informed.
 
+**Seeding from the tracker catalog (#12, #35).** `POST /api/v1/trackers/{id}/seed` requires `trackers:seed`. Body: `{"torrent_id": "…", "allow_duplicate": false}`. It downloads the item's `.torrent`, using the `download_link` saved by browse or, without it, the `/api/torrents/{id}` query, and adds it to the cluster through the Scheduler. It answers `201` with the torrent. Talking to the tracker has a **25 s** deadline, the ADR-040 §4 budget: it stays below the 30 s `WriteTimeout` and the proxy's 60 s on `/api/`, so the operator gets the reason rather than the proxy's error. Errors:
+- `504 tracker_timeout`, with `error.params.seconds`: the tracker didn't answer in time. There is no second attempt with the `api_token`, because the token doesn't speed up a slow tracker and a retry would only double the load on it.
+- `502 fetch_failed`: the tracker refused the download, rate-limited it (`429`) or delivered something that isn't a `.torrent`. The message says which of the three.
+- `409 duplicate`: the torrent is already in the cluster; the Portal confirms and resends with `allow_duplicate`.
+- `409 no_eligible_node` / `409 no_node_with_space`: the Scheduler found no eligible Node, or no Node with space.
+- `400 tracker_without_api`: the tracker has no `api_url` and token registered.
+
 **Frozen payload preview (#188).** `POST /api/v1/torrents/{id}/publish-tracker/preview` — requires `torrents:publish`. Receives **the same body** as `publish-tracker` and returns the exact payload that the submit would send, without touching the network: `{"endpoint", "tracker", "fields": {…}, "torrent_name", "torrent_size", "missing": [], "token"}`.
 
 It exists because the **UNIT3D API has no dry-run**. Without the preview, the only way to find out what will be posted is to post it — and a wrong field becomes a wrong record in a private tracker's catalog, with no undo. This weighs more here than in a common upload tool: the `.torrent` going into the POST is already **seeding** on a Node, so a wrong post is not just a bad record, it is a published infohash that the cluster is already serving.

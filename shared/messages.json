@@ -676,6 +676,13 @@
   },
   {
     "kind": "error",
+    "code": "tracker_timeout",
+    "payload": [
+      "seconds"
+    ]
+  },
+  {
+    "kind": "error",
     "code": "tracker_upload_failed",
     "payload": []
   },
