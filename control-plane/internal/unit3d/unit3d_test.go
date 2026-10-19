@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestUploadSuccess(t *testing.T) {
@@ -336,6 +338,74 @@ func TestDownloadFromLink_InvalidBodyDescribesWhatArrived(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bytes") || !strings.Contains(err.Error(), "not") {
 		t.Errorf("error does not describe the received body: %v", err)
+	}
+}
+
+// hangingTracker never answers: it holds each request until the client gives up. It counts the
+// requests received, so the test can prove how many times the client insisted.
+func hangingTracker(t *testing.T) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+// REGRESSION #35 — a tracker that doesn't answer becomes ErrTimeout, not "context canceled".
+//
+// A tracker went a minute without answering the download. The first attempt used up the
+// http.Client's 60s, the second started with the request already cancelled, and the report came
+// out as "context canceled (without api_token: … Client.Timeout …)" — in a generic 502. A timeout
+// must not turn into the second attempt: the token doesn't speed the tracker up.
+func TestDownloadFromLink_TimeoutDoesNotRetry(t *testing.T) {
+	srv, requests := hangingTracker(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := DownloadFromLink(ctx, srv.URL+"/download/42.key", "tok")
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("expected ErrTimeout, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "context") {
+		t.Errorf("message still talks about the context, not the tracker: %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %s; the caller's deadline was not respected", d)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("expected 1 request to the tracker, got %d", n)
+	}
+}
+
+// The same holds when what hangs is the /api/torrents/{id} query, before the download.
+func TestFetchTorrent_TimeoutOnQuery(t *testing.T) {
+	srv, requests := hangingTracker(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	_, err := FetchTorrent(ctx, srv.URL, "tok", "42")
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("expected ErrTimeout, got: %v", err)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("expected 1 request to the tracker, got %d", n)
+	}
+}
+
+// A network error that isn't a timeout (connection refused) follows the old path: it doesn't
+// become ErrTimeout, which would tell the operator to wait for something that won't come back.
+func TestDownloadFromLink_ConnectionRefusedIsNotTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	link := srv.URL + "/download/42.key"
+	srv.Close()
+
+	_, err := DownloadFromLink(context.Background(), link, "tok")
+	if err == nil || errors.Is(err, ErrTimeout) {
+		t.Fatalf("expected a connection error (not ErrTimeout), got: %v", err)
 	}
 }
 

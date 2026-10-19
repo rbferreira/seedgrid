@@ -4,10 +4,12 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/rbferreira/seedgrid/control-plane/internal/enrich"
 	"github.com/rbferreira/seedgrid/control-plane/internal/httpx"
@@ -243,6 +245,12 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 	}
 }
 
+// seedFetchBudget is the deadline for talking to the tracker in the seed — the ADR-040 §4 budget,
+// below the 30s WriteTimeout and the proxy's 60s on /api/. Without it, a tracker that hangs used
+// up the http.Client's 60s and the operator got the proxy's 502 instead of the reason (#35). A variable
+// only so the test can shorten it.
+var seedFetchBudget = 25 * time.Second
+
 // handleSeedFromTracker downloads the .torrent of an item from the tracker catalog and adds it
 // to the cluster for seeding (ADR-020, backlog #12). Reuses the duplicate guard (#11): 409 if
 // it already exists (the Portal confirms and resends with allow_duplicate).
@@ -277,17 +285,25 @@ func handleSeedFromTracker(d Deps) http.HandlerFunc {
 		}
 		// Prefer the cached download_link from browse (the /api/torrents/{id} endpoint doesn't
 		// always return the download_link); falls back to single-fetch if not cached.
+		fetchCtx, cancel := context.WithTimeout(r.Context(), seedFetchBudget)
 		var data []byte
 		if link, ok := d.Torrents.TrackerLink(r.PathValue("id"), req.TorrentID); ok {
-			data, err = unit3d.DownloadFromLink(r.Context(), link, sec.APIToken)
+			data, err = unit3d.DownloadFromLink(fetchCtx, link, sec.APIToken)
 		} else {
-			data, err = unit3d.FetchTorrent(r.Context(), sec.APIURL, sec.APIToken, req.TorrentID)
+			data, err = unit3d.FetchTorrent(fetchCtx, sec.APIURL, sec.APIToken, req.TorrentID)
 		}
+		cancel()
 		if err != nil {
 			// torrent_id in the log: without it the line doesn't say WHICH torrent failed, and the
 			// diagnosis starts without the most basic data (#207).
 			d.Logger.Warn("download .torrent from tracker", "tracker", sec.Source,
 				"torrent_id", req.TorrentID, "error", err)
+			if errors.Is(err, unit3d.ErrTimeout) {
+				httpx.WriteErrorParams(w, http.StatusGatewayTimeout, "tracker_timeout", fmt.Sprintf(
+					"the tracker did not answer within %s — it may be down or overloaded; try again in a moment",
+					seedFetchBudget), map[string]any{"seconds": int(seedFetchBudget.Seconds())})
+				return
+			}
 			httpx.WriteError(w, http.StatusBadGateway, "fetch_failed", err.Error())
 			return
 		}

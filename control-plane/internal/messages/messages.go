@@ -164,6 +164,7 @@ var Registry = []Message{
 	{Kind: Error, Code: "torrent_not_found", Payload: []string{}},
 	{Kind: Error, Code: "torrent_not_on_node", Payload: []string{}},
 	{Kind: Error, Code: "tracker_not_found", Payload: []string{}},
+	{Kind: Error, Code: "tracker_timeout", Payload: []string{"seconds"}},
 	{Kind: Error, Code: "tracker_upload_failed", Payload: []string{}},
 	{Kind: Error, Code: "tracker_without_api", Payload: []string{}},
 	{Kind: Error, Code: "unauthorized", Payload: []string{}},

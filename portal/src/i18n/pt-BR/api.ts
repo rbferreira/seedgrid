@@ -67,6 +67,7 @@ export const api = {
     torrent_not_found: "Torrent não encontrado",
     torrent_not_on_node: "O torrent não foi encontrado neste Node",
     tracker_not_found: "Tracker não encontrado",
+    tracker_timeout: "O tracker não respondeu em {seconds} s — pode estar fora do ar ou sobrecarregado; tente de novo em instantes",
     tracker_upload_failed: "O tracker recusou o upload: {detail}",
     tracker_without_api: "Este tracker não tem integração de API (URL da API + token)",
     unauthorized: "Não autorizado",
