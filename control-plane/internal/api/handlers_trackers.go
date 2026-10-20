@@ -182,9 +182,19 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "tracker_without_api", "this tracker has no API integration (api_url + token)")
 			return
 		}
-		res, err := unit3d.Browse(r.Context(), sec.APIURL, sec.APIToken, r.URL.Query().Get("cursor"), r.URL.Query().Get("q"))
+		// One deadline for the whole route, tracker and enrichment together: the two added up
+		// went past the 30s WriteTimeout and the operator got the proxy's 502 (#41).
+		ctx, cancel := context.WithTimeout(r.Context(), browseBudget)
+		defer cancel()
+		res, err := unit3d.Browse(ctx, sec.APIURL, sec.APIToken, r.URL.Query().Get("cursor"), r.URL.Query().Get("q"))
 		if err != nil {
 			d.Logger.Warn("list tracker catalog", "tracker", sec.Source, "error", err)
+			if errors.Is(err, unit3d.ErrTimeout) {
+				httpx.WriteErrorParams(w, http.StatusGatewayTimeout, "tracker_timeout", fmt.Sprintf(
+					"the tracker did not answer within %s — it may be down or overloaded; try again in a moment",
+					browseBudget), map[string]any{"seconds": int(browseBudget.Seconds())})
+				return
+			}
 			httpx.WriteError(w, http.StatusBadGateway, "browse_failed", err.Error())
 			return
 		}
@@ -200,7 +210,8 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 
 		// Parallel enrichment (#12): TMDB for movie/show, IGDB for game, Open Library
 		// for book/audiobook. Silent failure per item — the card falls back to neutral mode
-		// (no poster/PT title) instead of disappearing from the list.
+		// (no poster/PT title) instead of disappearing from the list. It uses what is left of
+		// the route's deadline; an item not ready in time comes back neutral and isn't cached (#41).
 		// The catalog is the site's: its metadata comes in the site's content language (#74).
 		lang := contentLanguage(r.Context(), d, user.ID, r.PathValue("id"))
 		enrichIn := make([]enrich.Item, len(res.Items))
@@ -214,7 +225,7 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 				Lang: lang,
 			}
 		}
-		results := d.Enrich.EnrichBatch(r.Context(), enrichIn)
+		results := d.Enrich.EnrichBatch(ctx, enrichIn)
 
 		items := make([]map[string]any, 0, len(res.Items))
 		for i, it := range res.Items {
@@ -272,6 +283,11 @@ func otherVersions(lib *torrent.Library, it unit3d.BrowseItem) []torrent.Version
 // up the http.Client's 60s and the operator got the proxy's 502 instead of the reason (#35). A variable
 // only so the test can shorten it.
 var seedFetchBudget = 25 * time.Second
+
+// browseBudget is the same budget for the catalog browse, only covering the whole route: the
+// tracker listing and the enrichment that comes after it (#41). It also applies to the
+// duplicate search, which lists the same catalog. A variable only so the test can shorten it.
+var browseBudget = 25 * time.Second
 
 // handleSeedFromTracker downloads the .torrent of an item from the tracker catalog and adds it
 // to the cluster for seeding (ADR-020, backlog #12). Reuses the add guards: 409 duplicate if the

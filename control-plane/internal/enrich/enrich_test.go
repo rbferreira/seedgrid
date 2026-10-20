@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rbferreira/seedgrid/control-plane/internal/googlebooks"
 	"github.com/rbferreira/seedgrid/control-plane/internal/igdb"
@@ -94,6 +95,34 @@ func TestEnrichMovieUsesCache(t *testing.T) {
 	// hits must be <= 2 (never 3 — the 3rd one hits the cache).
 	if h := atomic.LoadInt32(&hits); h > 2 {
 		t.Errorf("hits = %d, want <= 2 (3rd should fetch from cache)", h)
+	}
+}
+
+// REGRESSION #41 — the caller's deadline running out isn't a provider failure.
+//
+// The browse now has a single budget for tracker and enrichment. If the budget's cut were stored
+// as a failure, the card would stay without a poster for the cache's 24h; the next browse has to
+// complete what this one had no time to fetch.
+func TestEnrichCallerDeadlineIsNotCached(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			<-r.Context().Done() // the 1st request hangs until the caller gives up
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":27205,"title":"A Origem","poster_path":"/x.jpg"}`))
+	}))
+	defer srv.Close()
+	s := New(tmdb.NewClient(func() string { return "k" }).WithBase(srv.URL), nil, nil, nil, 4)
+	item := []Item{{Category: "Filmes", Type: "WEB-DL", TMDB: 27205}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if got := s.EnrichBatch(ctx, item); got[0].Title != "" {
+		t.Fatalf("with the deadline exhausted, expected a neutral card: %+v", got[0])
+	}
+	if got := s.EnrichBatch(context.Background(), item); got[0].Title != "A Origem" {
+		t.Errorf("the deadline's cut was cached: %+v", got[0])
 	}
 }
 

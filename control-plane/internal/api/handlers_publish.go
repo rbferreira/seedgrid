@@ -749,7 +749,11 @@ func handleTrackerDupes(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "tracker_without_api", "this tracker has no API integration (api_url + token)")
 			return
 		}
-		resp, err := dupeEvidence(r.Context(), unit3d.Browse, sec.APIURL, sec.APIToken, name)
+		// Its own deadline, below the WriteTimeout: without it a slow tracker became the proxy's
+		// 502, and the route promises never to fail upward (#41).
+		ctx, cancel := context.WithTimeout(r.Context(), browseBudget)
+		defer cancel()
+		resp, err := dupeEvidence(ctx, unit3d.Browse, sec.APIURL, sec.APIToken, name)
 		if err != nil {
 			d.Logger.Warn("search for duplicate on tracker", "tracker", sec.Source, "error", err)
 		}
