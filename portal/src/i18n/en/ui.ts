@@ -9,6 +9,11 @@ export const ui: Catalog["ui"] = {
       label: "health",
     },
   },
+  newVersion: {
+    title: "There's a new version of SeedGrid",
+    body: "This tab is still running the previous version. Reload to use the new one — some screens may not work properly until then.",
+    reload: "Reload",
+  },
   otherVersions: {
     title: "You already have this title",
     summary: {

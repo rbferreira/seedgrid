@@ -418,6 +418,15 @@ Tags
 > The rule lives in the Control Plane (contract in `13 - API.md`); the Portal only presents
 > it and resends with the confirmation.
 
+> **Implemented (Oct/2026, #39): a tab left open during a deploy.** The Portal checks whether
+> the code it runs is the published one. The entry bundle name (`/assets/index-<hash>.js`) in
+> the page's `<script>` is what runs; the one in the `index.html` served now (always
+> `no-cache`) is what is published. The check runs every 60 s and when the tab regains focus.
+> When the two differ, the **"There's a new version of SeedGrid"** banner appears at the top
+> with **Reload**. It doesn't reload by itself, because the operator may be in the middle of a
+> form. A Control-Plane-only deploy doesn't change the bundle and doesn't ask for a reload.
+> Without an answer from the server, or in dev (no hashed bundle), it says nothing.
+
 # **21. Torrent Details**
 Each Torrent must have a dedicated page.
 Suggested information:
