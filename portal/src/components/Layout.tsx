@@ -3,6 +3,7 @@ import { getUsername, hasPermission, type Me } from "../api";
 import { useRoute, href } from "../router";
 import { Logo } from "./ui";
 import { ThemeSwitch } from "./ThemeSwitch";
+import { NewVersionBanner } from "./NewVersionBanner";
 import { applyTheme, readThemePref, saveThemePref, watchSystemTheme, type ThemePref } from "../lib/theme";
 import { useT, useLang, type Key, type Lang } from "../i18n";
 
@@ -190,6 +191,7 @@ export function Layout({
         {/* max-w-[2000px]: takes advantage of ultrawide screens (used to cap at 1536px and end up
             squished in the middle) without stretching too much to the point of hindering readability. */}
         <main className="mx-auto w-full min-w-0 max-w-[2000px] flex-1 space-y-6 px-3 py-6 sm:px-4 lg:px-5 2xl:px-8">
+          <NewVersionBanner />
           {children}
         </main>
       </div>

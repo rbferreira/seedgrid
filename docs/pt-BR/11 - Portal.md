@@ -420,6 +420,16 @@ Tags
 > A regra fica no Control Plane (contrato em `13 - API.md`); o Portal só
 > apresenta e reenvia com a confirmação.
 
+> **Implementado (out/2026, #39): aba aberta durante um deploy.** O Portal confere
+> se o código que está rodando é o publicado. O nome do bundle de entrada
+> (`/assets/index-<hash>.js`) na `<script>` da página é o que roda; o do `index.html`
+> servido agora (sempre `no-cache`) é o publicado. A checagem roda a cada 60 s e
+> quando a aba volta ao foco. Se os dois diferem, aparece no topo a faixa **"Há uma
+> versão nova do SeedGrid"** com **Recarregar**. Ela não recarrega sozinha, porque o
+> operador pode estar no meio de um formulário. Deploy só do Control Plane não muda o
+> bundle e não pede recarga. Sem resposta do servidor, ou em dev (sem bundle com
+> hash), não diz nada.
+
 # **21. Detalhes do Torrent**
 Cada Torrent deverá possuir uma página dedicada.
 Informações sugeridas:

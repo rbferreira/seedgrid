@@ -1310,3 +1310,16 @@ export type AnalyticsReport = {
 };
 
 export const getAnalytics = () => req<AnalyticsReport>("/api/v1/analytics");
+
+// getPublishedIndex reads the index.html the server publishes now, so the Portal can tell whether the
+// bundle it runs is still the published one (#39). cache: "no-store" on top of nginx's no-cache, so no
+// intermediate cache hands back the index from before the deploy. null on any failure: a network error
+// must not be read as "new version".
+export async function getPublishedIndex(): Promise<string | null> {
+  try {
+    const res = await fetch("/", { cache: "no-store", headers: { Accept: "text/html" } });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}

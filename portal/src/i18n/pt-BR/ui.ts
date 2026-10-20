@@ -7,6 +7,11 @@ export const ui = {
       label: "health",
     },
   },
+  newVersion: {
+    title: "Há uma versão nova do SeedGrid",
+    body: "Esta aba ainda roda a versão anterior. Recarregue para usar a nova — algumas telas podem não funcionar direito até lá.",
+    reload: "Recarregar",
+  },
   otherVersions: {
     title: "Você já tem este título",
     summary: {
