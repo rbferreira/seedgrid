@@ -758,6 +758,8 @@ Contraste adequado.
 Navegação por teclado.
 Textos alternativos.
 Hierarquia visual consistente.
+
+**Contraste no tema claro (#47).** O tema claro remapeia `white` para quase preto, porque `text-white` é o texto principal (títulos, valores, inputs). Sobre um fundo de acento sólido (botão `bg-emerald-600`, `bg-red-600`, selo colorido) o texto é `text-[#fff]`, que não remapeia. O teste `src/theme-contrast.test.ts` varre os componentes e falha se `text-white` aparecer na mesma linha de um fundo de acento sólido. Fundo com alfa (`bg-red-500/10`) e os neutros (`slate`) seguem o tema e continuam com `text-white`.
 # **39. Internacionalização**
 A arquitetura deverá permitir suporte a múltiplos idiomas.
 A versão inicial utilizará um único idioma configurável.

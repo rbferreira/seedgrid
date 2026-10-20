@@ -100,7 +100,7 @@ export function OtherVersionsDialog({
           <button
             type="button"
             onClick={onConfirm}
-            className="flex-1 rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
+            className="flex-1 rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500"
           >
             {t("ui.otherVersions.confirm")}
           </button>

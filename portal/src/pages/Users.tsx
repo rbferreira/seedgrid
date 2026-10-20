@@ -163,7 +163,7 @@ export function Users() {
         <h1 className="text-lg font-semibold text-white">{t("users.users.title")}</h1>
         <button
           onClick={() => setCreating((v) => !v)}
-          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
+          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500"
         >
           {creating ? t("common.cancel") : t("users.users.actions.new")}
         </button>
@@ -237,7 +237,7 @@ export function Users() {
           <button
             onClick={submitCreate}
             disabled={saving}
-            className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
           >
             {saving ? t("users.users.actions.creating") : t("users.users.actions.create")}
           </button>
@@ -329,7 +329,7 @@ export function Users() {
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => saveEdit(u)}
-                          className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                          className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-[#fff] hover:bg-emerald-500"
                         >
                           {t("common.save")}
                         </button>

@@ -526,7 +526,7 @@ export function TrackerUploadPanel({
                   type="button"
                   onClick={runGameSearch}
                   disabled={gameBusy}
-                  className="shrink-0 rounded-full bg-fuchsia-600 px-3 py-2 text-sm text-white transition hover:bg-fuchsia-500 disabled:opacity-40"
+                  className="shrink-0 rounded-full bg-fuchsia-600 px-3 py-2 text-sm text-[#fff] transition hover:bg-fuchsia-500 disabled:opacity-40"
                 >
                   {gameBusy ? "…" : t("publish.trackerUploadPanel.game.searchBtn")}
                 </button>
@@ -742,7 +742,7 @@ export function TrackerUploadPanel({
             <button
               onClick={preview ? publish : openPreview}
               disabled={busy || (!!dupes && dupes.candidates.length > 0 && !dupeAck)}
-              className="rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
+              className="rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-sky-500 disabled:opacity-50"
             >
               {busy
                 ? preview

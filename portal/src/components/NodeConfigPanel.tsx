@@ -186,7 +186,7 @@ function ConfigRow({
               <button
                 onClick={save}
                 disabled={busy}
-                className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-40"
               >
                 {t("common.save")}
               </button>
