@@ -220,7 +220,12 @@ func (s *Service) enrichOne(ctx context.Context, it Item) Meta {
 
 	m := s.fetch(callCtx, mt, it)
 	m.MediaType = mt // ensures the type even when the provider returns nothing
-	s.cache.Store(key, cacheEntry{meta: m, at: time.Now()})
+	// The caller's deadline ran out (the browse budget, #41): that isn't a provider failure.
+	// Storing the empty Meta would leave the card without a poster for 24h; without storing it,
+	// the next browse completes it. Only the item's own deadline counts as a cacheable failure.
+	if ctx.Err() == nil {
+		s.cache.Store(key, cacheEntry{meta: m, at: time.Now()})
+	}
 	return m
 }
 

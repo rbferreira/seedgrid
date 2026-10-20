@@ -396,6 +396,25 @@ func TestFetchTorrent_TimeoutOnQuery(t *testing.T) {
 	}
 }
 
+// REGRESSION #41 — the catalog browse also says the tracker didn't answer, so the route answers
+// 504 with the reason instead of the proxy's generic 502.
+func TestBrowse_TimeoutBecomesErrTimeout(t *testing.T) {
+	srv, requests := hangingTracker(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	_, err := Browse(ctx, srv.URL, "tok", "", "")
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("expected ErrTimeout, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "tok") {
+		t.Errorf("the error leaks the token: %v", err)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("expected 1 request to the tracker, got %d", n)
+	}
+}
+
 // A network error that isn't a timeout (connection refused) follows the old path: it doesn't
 // become ErrTimeout, which would tell the operator to wait for something that won't come back.
 func TestDownloadFromLink_ConnectionRefusedIsNotTimeout(t *testing.T) {

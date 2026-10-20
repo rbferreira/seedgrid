@@ -262,10 +262,15 @@ func Browse(ctx context.Context, apiURL, apiToken, cursor, search string) (Brows
 	req.Header.Set("Accept", "application/json")
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
-		return BrowseResult{}, fmt.Errorf("connect to tracker: %w", stripURL(err))
+		return BrowseResult{}, networkFailure("connect to tracker", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// A read error can't be swallowed: a tracker that hangs in the middle of the body used to
+	// become "invalid JSON" instead of a timeout (#41).
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return BrowseResult{}, networkFailure("read the tracker listing", err)
+	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		// Sentinel, so whoever sweeps multiple pages (taxonomy discovery, #196) stops
 		// WITH what it has already collected instead of treating the rate limit as a total failure.
