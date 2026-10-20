@@ -237,7 +237,7 @@ function SettingField({
             <button
               onClick={() => run(() => updateSetting(item.key, value))}
               disabled={busy || !dirty}
-              className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("common.save")}
             </button>
@@ -304,7 +304,7 @@ function SettingField({
             }
           }}
           disabled={busy || !dirty}
-          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-3 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("common.save")}
         </button>

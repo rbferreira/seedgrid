@@ -59,7 +59,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         <button
           type="submit"
           disabled={loading || !username || !password}
-          className="w-full rounded-full bg-emerald-600 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="w-full rounded-full bg-emerald-600 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? t("login.submitting") : t("login.submit")}
         </button>

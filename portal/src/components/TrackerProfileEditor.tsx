@@ -343,7 +343,7 @@ export function TrackerProfileEditor({
         <button
           onClick={save}
           disabled={saving || !dirty}
-          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-40"
         >
           {saving ? t("common.saving") : t("trackers.trackerProfileEditor.actions.save")}
         </button>
@@ -400,7 +400,7 @@ export function TrackerProfileEditor({
               onClick={discover}
               disabled={discovering || dirty}
               title={dirty ? t("trackers.trackerProfileEditor.discovery.dirtyTitle") : undefined}
-              className="rounded-full bg-sky-700 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-sky-600 disabled:opacity-40"
+              className="rounded-full bg-sky-700 px-4 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-sky-600 disabled:opacity-40"
             >
               {discovering ? t("trackers.trackerProfileEditor.discovery.scanning") : t("trackers.trackerProfileEditor.discovery.button")}
             </button>
@@ -548,7 +548,7 @@ function Proposal({
         <button
           onClick={onApply}
           disabled={applying || count === 0}
-          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-40"
         >
           {applying ? t("trackers.trackerProfileEditor.proposal.applying") : t("trackers.trackerProfileEditor.proposal.applyButton", { count })}
         </button>

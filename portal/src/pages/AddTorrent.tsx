@@ -328,7 +328,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={running || totalPending === 0}
-          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {running
             ? t("torrents.addTorrent.btnAdding")
@@ -546,7 +546,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
                       onClick={() => resumePending(p)}
                       disabled={!p.has_file || running || pendingBusy === p.id}
                       title={p.has_file ? t("torrents.addTorrent.resumeTitleReady") : t("torrents.addTorrent.resumeTitleWaiting")}
-                      className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-500 disabled:opacity-40"
+                      className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-[#fff] transition hover:bg-amber-500 disabled:opacity-40"
                     >
                       {t("torrents.addTorrent.btnReviewPublish")}
                     </button>
@@ -698,7 +698,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={running || files.length === 0}
-          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {phase === "uploading"
             ? t("torrents.addTorrent.progressUploading", { pct })

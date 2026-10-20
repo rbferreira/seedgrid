@@ -296,7 +296,7 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
         <button
           onClick={submit}
           disabled={busy}
-          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {busy ? t("common.saving") : editing ? t("trackers.trackersPanel.actions.saveChanges") : t("trackers.trackersPanel.actions.addTracker")}
         </button>

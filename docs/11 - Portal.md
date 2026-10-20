@@ -756,6 +756,8 @@ Adequate contrast.
 Keyboard navigation.
 Alternative text.
 Consistent visual hierarchy.
+
+**Contrast in the light theme (#47).** The light theme remaps `white` to near-black, because `text-white` is the main text (titles, values, inputs). On a solid accent background (a `bg-emerald-600` or `bg-red-600` button, a colored badge) the text is `text-[#fff]`, which isn't remapped. The test `src/theme-contrast.test.ts` scans the components and fails if `text-white` appears on the same line as a solid accent background. Backgrounds with alpha (`bg-red-500/10`) and the neutrals (`slate`) follow the theme and keep `text-white`.
 # **39. Internationalization**
 The architecture must support multiple languages.
 The initial version will use a single configurable language.

@@ -75,7 +75,7 @@ export function AddNodeModal({ onClose, onLogout }: { onClose: () => void; onLog
             <button
               type="submit"
               disabled={busy}
-              className="mt-4 w-full rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+              className="mt-4 w-full rounded-full bg-emerald-600 px-3 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
             >
               {busy ? t("health.addNodeModal.generating") : t("health.addNodeModal.generateBtn")}
             </button>

@@ -60,7 +60,7 @@ export function NewVersionBar({ onReload }: { onReload: () => void }) {
       <button
         type="button"
         onClick={onReload}
-        className="shrink-0 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
+        className="shrink-0 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-[#fff] transition hover:bg-emerald-500"
       >
         {t("ui.newVersion.reload")}
       </button>

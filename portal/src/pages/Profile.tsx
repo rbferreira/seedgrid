@@ -75,7 +75,7 @@ export function Profile({ onLogout }: { onLogout: () => void }) {
         <button
           onClick={submit}
           disabled={loading || !current || !next}
-          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+          className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? t("profile.changePassword.submitting") : t("profile.changePassword.submit")}
         </button>

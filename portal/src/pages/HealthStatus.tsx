@@ -235,7 +235,7 @@ export function HealthStatus({ can, onLogout }: { can: (perm: string) => boolean
       {/* ===== Control Plane ===== */}
       <section className="rounded-2xl border border-emerald-900/50 bg-emerald-950/10 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <span className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">Control Plane</span>
+          <span className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-[#fff]">Control Plane</span>
           {sys && (
             <span className="text-xs text-slate-500">
               {t("health.healthStatus.cpVersion", {
