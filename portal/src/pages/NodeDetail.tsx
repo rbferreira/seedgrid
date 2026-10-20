@@ -31,6 +31,8 @@ import { RenameNodeModal } from "../components/RenameNodeModal";
 import { NodeConfigPanel } from "../components/NodeConfigPanel";
 import { hasNickname, nodeLabel, nodeLabelFull } from "../lib/node-label";
 import { useT } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
+import { restartEnginePrompt } from "../lib/confirm-prompts";
 
 const REFRESH_MS = 10_000;
 
@@ -87,9 +89,9 @@ export function NodeDetail({
 
   const { running, act, onRemove } = useTorrentActions({ reload: load, onLogout });
 
-  const onRestartEngine = () => {
+  const onRestartEngine = async () => {
     if (!node) return;
-    if (!window.confirm(t("nodes.nodeDetail.confirmRestartEngine", { name: nodeLabelFull(node) }))) return;
+    if (!(await askConfirm(restartEnginePrompt(t, nodeLabelFull(node))))) return;
     startAction({
       id: node.id,
       label: t("nodes.nodeDetail.actionRestartEngine", { name: nodeLabel(node) }),

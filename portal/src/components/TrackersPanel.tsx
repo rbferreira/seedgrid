@@ -11,6 +11,7 @@ import {
   type Tracker,
 } from "../api";
 import { rich, useT } from "../i18n";
+import { askConfirm } from "./ConfirmDialog";
 
 // TrackersPanel manages the operator's announce trackers (ADR-019/ADR-020). The
 // passkey (in announce) and api_token are never returned by the API — the list shows only name +
@@ -98,7 +99,12 @@ export function TrackersPanel({ can, onLogout }: { can: (perm: string) => boolea
   }
 
   async function remove(id: string, nm: string) {
-    if (!window.confirm(t("trackers.trackersPanel.confirmRemove", { name: nm }))) return;
+    const ok = await askConfirm({
+      title: t("trackers.trackersPanel.confirmRemove.title", { name: nm }),
+      confirmLabel: t("trackers.trackersPanel.confirmRemove.confirm"),
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteTracker(id);
       if (editingId === id) resetForm();

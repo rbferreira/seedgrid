@@ -33,19 +33,27 @@ describe("canCancelMigration", () => {
 
 describe("cancelMigrationPrompt", () => {
   it("warns that the destination copy is discarded and that the torrent stays at the origin", () => {
-    const msg = cancelMigrationPrompt(t, "node-01", "node-02", "PENDING");
-    expect(msg).toContain("node-01 → node-02");
-    expect(msg).toContain("DESCARTADA");
-    expect(msg).toContain("continua no Node de origem");
+    const p = cancelMigrationPrompt(t, "node-01", "node-02", "PENDING");
+    expect(p.title).toContain("node-01 → node-02");
+    expect(p.message).toContain("DESCARTADA");
+    expect(p.message).toContain("continua no Node de origem");
+    expect(p.confirmLabel).toBe("Cancelar e descartar");
+    expect(p.tone).toBe("danger");
   });
 
   it("queued migration does not promise to discard anything — nothing was copied", () => {
-    const msg = cancelMigrationPrompt(t, "node-01", "node-02", "QUEUED");
-    expect(msg).toContain("nada foi copiado");
-    expect(msg).not.toContain("DESCARTADA");
+    const p = cancelMigrationPrompt(t, "node-01", "node-02", "QUEUED");
+    expect(p.message).toContain("nada foi copiado");
+    expect(p.message).not.toContain("DESCARTADA");
+    expect(p.tone).not.toBe("danger");
+  });
+
+  it("the action is itself a cancel, so the other button is Keep", () => {
+    expect(cancelMigrationPrompt(t, "node-01", "node-02", "QUEUED").cancelLabel).toBe("Manter");
+    expect(cancelMigrationPrompt(t, "node-01", "node-02", "PENDING").cancelLabel).toBe("Manter");
   });
 
   it("without a Node name, it is still readable", () => {
-    expect(cancelMigrationPrompt(t, "", "", "PENDING")).toContain("origem → destino");
+    expect(cancelMigrationPrompt(t, "", "", "PENDING").title).toContain("origem → destino");
   });
 });

@@ -42,8 +42,12 @@ export const nodes: Catalog["nodes"] = {
     prompt: {
       originFallback: "source",
       destFallback: "destination",
-      cancelQueued: "Cancel migration {route}? It is still queued — nothing has been copied, and the torrent remains in place.",
-      cancelPending: "Cancel migration {route}?\n\nThe copy already made on the destination Node will be DISCARDED (both data and torrent there), and the torrent will remain on the source Node. If the copy is still in progress, it will finish before being discarded.",
+      title: "Cancel the migration {route}?",
+      queuedMessage: "It is still queued — nothing has been copied, and the torrent stays where it is.",
+      pendingMessage: "The copy already made on the destination Node will be DISCARDED (both the data and the torrent there), and the torrent stays on the source Node. If the copy is still in progress, it finishes and only then is discarded.",
+      confirmQueued: "Cancel the migration",
+      confirmPending: "Cancel and discard",
+      keep: "Keep",
     },
   },
   migratePicker: {
@@ -95,7 +99,6 @@ export const nodes: Catalog["nodes"] = {
   },
   nodeDetail: {
     loadError: "Failed to load Node",
-    confirmRestartEngine: "Restart the Torrent Engine for \"{name}\"? (the container will come back up)",
     actionRestartEngine: "Restart Engine for «{name}»",
     notFound: "Node not found.",
     hostnameTitle: "OS Hostname",
@@ -162,5 +165,10 @@ export const nodes: Catalog["nodes"] = {
       deleteTitle: "Delete",
       empty: "No torrents on this Node.",
     },
+  },
+  restartEnginePrompt: {
+    title: "Restart the Torrent Engine of “{name}”?",
+    message: "The container comes back up. This Node's seeding stops for a few seconds.",
+    confirm: "Restart",
   },
 };

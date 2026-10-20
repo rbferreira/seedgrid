@@ -11,6 +11,8 @@ import { startAction, toast, useRunningId } from "../actions";
 import { href } from "../router";
 import { fmtSpeed, shortId, TRANSFER } from "./ui";
 import { useT } from "../i18n";
+import { askConfirm } from "./ConfirmDialog";
+import { removeTorrentPrompt } from "../lib/confirm-prompts";
 
 /**
  * isDone answers "is this torrent already in the collection?" — today, seeding.
@@ -147,7 +149,7 @@ export function ActionBtn({
 /**
  * useTorrentActions centralizes the torrent actions that were literally copied in
  * Dashboard/Nodes/NodeDetail — including the confirmation messages, which need to be
- * the same across every screen (the operator confirms a `window.confirm`, not a page).
+ * the same across every screen (the operator confirms in a dialog, not on a page).
  *
  * - `act` wraps the action in a tracked command (`startAction`): inline spinner,
  *   progress toast, and reload on finish.
@@ -167,8 +169,8 @@ export function useTorrentActions({ reload, onLogout }: { reload: () => void; on
       onSettled: reload,
     });
 
-  const onRemove = (tr: Torrent) => {
-    if (window.confirm(t("torrents.torrents.actions.confirmRemove", { name: tr.name ?? tr.hash ?? "" }))) {
+  const onRemove = async (tr: Torrent) => {
+    if (await askConfirm(removeTorrentPrompt(t, tr.name ?? tr.hash ?? ""))) {
       act(tr, t("torrents.torrents.actions.verbRemove"), removeTorrent);
     }
   };

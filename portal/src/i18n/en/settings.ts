@@ -94,6 +94,7 @@ export const settings: Catalog["settings"] = {
       clusterScope: "Applies to ALL Nodes without their own value on each Agent's next heartbeat, with no restart required.",
       changeCluster: "Change \"{label}\" to {value}{unit} cluster-wide?",
       resetCluster: "Restore \"{label}\" to the default ({defaultValue}) cluster-wide?",
+      restore: "Restore",
     },
     messages: {
       applied: "Applied",

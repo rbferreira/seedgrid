@@ -13,6 +13,7 @@ import { NodeOverridesPanel } from "../components/NodeOverridesPanel";
 import { chanMatch, isChannelCustom, isChannelRule } from "../lib/notify-keys";
 import { useT, rich, type Key } from "../i18n";
 import { categoryName, choiceLabel, settingText } from "../lib/setting-text";
+import { askConfirm } from "../components/ConfirmDialog";
 
 // Settings panel (ADR-023): exposes the behavior tunables of the Control
 // Plane, editable at runtime (hot-reload — applies without redeploy). Each field shows the
@@ -187,11 +188,9 @@ function SettingField({
   // CLUSTER value of an Agent/Engine tunable (ADR-039) reaches ALL Nodes without their
   // own value on the next heartbeat — it's the broadest change on this screen, and the one #144
   // exists to make conscious. Asks for confirmation before saving or restoring.
-  const confirmCluster = (what: string) =>
+  const confirmCluster = async (what: string, confirmLabel: string) =>
     !item.per_node ||
-    window.confirm(
-      `${what}\n\n${t("settings.settings.confirm.clusterScope")}`,
-    );
+    askConfirm({ title: what, message: t("settings.settings.confirm.clusterScope"), confirmLabel });
 
   return (
     <div className="flex flex-col gap-1.5 py-3">
@@ -297,10 +296,10 @@ function SettingField({
         )}
         {item.unit && <span className="text-xs text-slate-500">{item.unit}</span>}
         <button
-          onClick={() => {
+          onClick={async () => {
             const next = item.secret ? value : value.trim();
             const shown = item.type === "bool" ? (next === "true" ? t("settings.settings.field.optionOn") : t("settings.settings.field.optionOff")) : next;
-            if (confirmCluster(t("settings.settings.confirm.changeCluster", { label: settingText(item.key, "label", item.label), value: shown, unit: item.unit ? ` ${item.unit}` : "" }))) {
+            if (await confirmCluster(t("settings.settings.confirm.changeCluster", { label: settingText(item.key, "label", item.label), value: shown, unit: item.unit ? ` ${item.unit}` : "" }), t("common.save"))) {
               run(() => updateSetting(item.key, next));
             }
           }}
@@ -311,8 +310,8 @@ function SettingField({
         </button>
         {modified && (
           <button
-            onClick={() => {
-              if (confirmCluster(t("settings.settings.confirm.resetCluster", { label: settingText(item.key, "label", item.label), defaultValue: item.default || t("settings.settings.field.emptyValue") }))) {
+            onClick={async () => {
+              if (await confirmCluster(t("settings.settings.confirm.resetCluster", { label: settingText(item.key, "label", item.label), defaultValue: item.default || t("settings.settings.field.emptyValue") }), t("settings.settings.confirm.restore"))) {
                 run(() => resetSetting(item.key));
               }
             }}

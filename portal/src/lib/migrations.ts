@@ -1,5 +1,6 @@
 import type { Migration } from "../api";
 import type { Key, TFn } from "../i18n";
+import type { ConfirmOptions } from "../components/ConfirmDialog";
 
 // Display rules for migrations (#87), outside the component to be testable.
 
@@ -29,18 +30,32 @@ export function canCancelMigration(m: Pick<Migration, "status">): boolean {
   return m.status === "QUEUED" || m.status === "PENDING";
 }
 
-// Confirmation text. Canceling DISCARDS the destination copy — and the in-flight migration
+// Confirmation. Canceling DISCARDS the destination copy — and the in-flight migration
 // is precisely saving the torrent's actions — so the operator needs to know what they
-// lose and what they DON'T lose (the torrent stays at the source).
+// lose and what they DON'T lose (the torrent stays at the source). The action itself is a
+// "cancel", so the other button is "Keep", and the two don't share a name (#45).
 export function cancelMigrationPrompt(
   t: TFn,
   source: string,
   dest: string,
   status: string,
-): string {
+): ConfirmOptions {
   const migrationPath = `${source || t("nodes.migrations.prompt.originFallback")} → ${dest || t("nodes.migrations.prompt.destFallback")}`;
+  const title = t("nodes.migrations.prompt.title", { route: migrationPath });
+  const cancelLabel = t("nodes.migrations.prompt.keep");
   if (status === "QUEUED") {
-    return t("nodes.migrations.prompt.cancelQueued", { route: migrationPath });
+    return {
+      title,
+      message: t("nodes.migrations.prompt.queuedMessage"),
+      confirmLabel: t("nodes.migrations.prompt.confirmQueued"),
+      cancelLabel,
+    };
   }
-  return t("nodes.migrations.prompt.cancelPending", { route: migrationPath });
+  return {
+    title,
+    message: t("nodes.migrations.prompt.pendingMessage"),
+    confirmLabel: t("nodes.migrations.prompt.confirmPending"),
+    cancelLabel,
+    tone: "danger",
+  };
 }

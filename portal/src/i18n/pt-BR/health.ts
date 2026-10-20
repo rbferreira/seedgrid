@@ -33,10 +33,16 @@ export const health = {
     },
     actions: {
       addNode: "+ Adicionar Node",
-      restartConfirm: "Reiniciar o Torrent Engine de \"{name}\"? (o container sobe de novo)",
       restartLabel: "Reiniciar Engine de «{name}»",
-      deleteConfirm: "Remover o Node \"{name}\" do Cluster?",
-      deleteWithTorrentsConfirm: "\"{name}\" ainda tem torrents. Remover mesmo assim? (os torrents deste Node também serão removidos)",
+      deleteConfirm: {
+        title: "Remover o Node «{name}» do Cluster?",
+        confirm: "Remover",
+      },
+      deleteWithTorrentsConfirm: {
+        title: "«{name}» ainda tem torrents. Remover mesmo assim?",
+        message: "Os torrents deste Node também são removidos do Cluster.",
+        confirm: "Remover com os torrents",
+      },
       migrateLabel: "Migrar todos os torrents de \"{name}\" para o Node destino.",
     },
     services: {

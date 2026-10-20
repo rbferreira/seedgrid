@@ -37,6 +37,7 @@ import { ratioOf, topBy, TOP_STEPS } from "../lib/ranking";
 import { hasNickname, nodeLabel, nodeLabelById, nodeLabelFull } from "../lib/node-label";
 import { ClusterThroughput } from "../components/ClusterThroughput";
 import { getLang, rich, useT, type Key } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
 
 const REFRESH_MS = 10_000;
 // Window for the Agent to restart on the new binary and resume reporting the version in the heartbeat
@@ -269,17 +270,16 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
 
   // Agent update (ADR-027). Confirms why the Agent restarts: the Node's seeding
   // goes unsupervised for a few seconds (the Engine keeps running; nothing is lost).
-  const onUpdateAgent = (n: Node) => {
-    if (
-      !window.confirm(
-        t("dashboard.dashboard.agent.confirmUpdate", {
-          node: nodeLabelFull(n),
-          version: agentRel?.version ?? "",
-        }),
-      )
-    ) {
-      return;
-    }
+  const onUpdateAgent = async (n: Node) => {
+    const ok = await askConfirm({
+      title: t("dashboard.dashboard.agent.confirmUpdate.title", {
+        node: nodeLabelFull(n),
+        version: agentRel?.version ?? "",
+      }),
+      message: t("dashboard.dashboard.agent.confirmUpdate.message"),
+      confirmLabel: t("dashboard.dashboard.agent.confirmUpdate.confirm"),
+    });
+    if (!ok) return;
     const targetVersion = agentRel?.version;
     startAction({
       id: n.id,

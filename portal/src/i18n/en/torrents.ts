@@ -80,7 +80,6 @@ export const torrents: Catalog["torrents"] = {
     },
     actions: {
       label: "{verb} «{name}»",
-      confirmRemove: "Remove \"{name}\" from Node (deletes downloaded data)?",
       verbRemove: "Remove",
       toastPrioritized: "⚡ «{name}» prioritized in queue",
       toastUnprioritized: "Priority removed from «{name}»",
@@ -117,7 +116,11 @@ export const torrents: Catalog["torrents"] = {
     abandonTitle: "Give up: cancels the upload and deletes the torrent from the Node",
     btnRemoving: "Removing…",
     btnAbandon: "Give up",
-    confirmAbandon: "Stop publishing \"{name}\"?\n\nThis CANCELS the upload: removes the torrent from the Node and deletes downloaded data. This cannot be undone.",
+    confirmAbandon: {
+      title: "Stop publishing “{name}”?",
+      message: "This cancels the upload: it removes the torrent from the Node and deletes the downloaded data. This can't be undone.",
+      confirm: "Stop and delete",
+    },
     publishDropzoneHint: "Drag files (ISOs, videos, etc.) here or click to browse",
     torrentNameLabel: "Torrent name (optional)",
     torrentNamePlaceholder: "Default: first file's name",
@@ -143,7 +146,6 @@ export const torrents: Catalog["torrents"] = {
     downloadFailed: "Failed to start download",
     loadFailed: "Failed to load torrent",
     actionLabel: "{verb} \"{name}\"",
-    confirmRemove: "Remove \"{name}\" from the Node (this deletes downloaded data)?",
     removeFailed: "Failed to remove torrent",
     notFound: "Torrent not found.",
     processing: "processing…",
@@ -175,5 +177,10 @@ export const torrents: Catalog["torrents"] = {
     chartSpeedTitle: "Speed",
     seriesDlSpeed: "Download",
     seriesUpSpeed: "Upload",
+  },
+  removePrompt: {
+    title: "Delete “{name}”?",
+    message: "The torrent leaves the Node and the downloaded data is deleted. This can't be undone.",
+    confirm: "Delete",
   },
 };

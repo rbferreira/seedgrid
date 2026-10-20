@@ -20,6 +20,7 @@ import {
   type PendingPublish,
 } from "../api";
 import { rich, useT } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
 
 // skipped: didn't go in and isn't an error — the file was already in the cluster, or the operator
 // cancelled on seeing the other version (#37).
@@ -406,8 +407,13 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
   // (the Agent deletes from the Engine + data) and it disappears from the queue (soft delete removes from
   // pending, which filters deleted_at IS NULL). Reuses the same remove from other screens.
   async function abandonPending(p: PendingPublish) {
-    if (!window.confirm(t("torrents.addTorrent.confirmAbandon", { name: p.name || p.id })))
-      return;
+    const ok = await askConfirm({
+      title: t("torrents.addTorrent.confirmAbandon.title", { name: p.name || p.id }),
+      message: t("torrents.addTorrent.confirmAbandon.message"),
+      confirmLabel: t("torrents.addTorrent.confirmAbandon.confirm"),
+      tone: "danger",
+    });
+    if (!ok) return;
     setPendingBusy(p.id);
     try {
       await removeTorrent(p.id);

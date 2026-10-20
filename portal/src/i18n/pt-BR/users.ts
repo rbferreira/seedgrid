@@ -35,7 +35,11 @@ export const users = {
       passwordPlaceholder: "Nova senha (opcional)",
     },
     confirm: {
-      disable: "Desabilitar o usuário «{username}»? Ele perde o acesso imediatamente.",
+      disable: {
+        title: "Desabilitar o usuário «{username}»?",
+        message: "O acesso é cortado imediatamente.",
+        confirm: "Desabilitar",
+      },
     },
     notice: {
       created: "✓ Usuário criado.",

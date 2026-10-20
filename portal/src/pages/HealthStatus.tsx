@@ -21,6 +21,8 @@ import { NodeCard } from "../components/NodeCard";
 import { RenameNodeModal } from "../components/RenameNodeModal";
 import { nodeLabel, nodeLabelFull, relabelByNode } from "../lib/node-label";
 import { useT, type TFn } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
+import { restartEnginePrompt } from "../lib/confirm-prompts";
 
 const REFRESH_MS = 15_000;
 const RANGE = "3h";
@@ -141,9 +143,9 @@ export function HealthStatus({ can, onLogout }: { can: (perm: string) => boolean
 
   const { target, setTarget, confirm: confirmMigrate } = useMigrateTarget({ nodes, reload: load });
 
-  const onRestartEngine = (n: Node) => {
+  const onRestartEngine = async (n: Node) => {
     // Destructive confirmation: shows nickname AND hostname — the actual machine that will undergo the action.
-    if (!window.confirm(t("health.healthStatus.actions.restartConfirm", { name: nodeLabelFull(n) }))) return;
+    if (!(await askConfirm(restartEnginePrompt(t, nodeLabelFull(n))))) return;
     startAction({
       id: n.id,
       label: t("health.healthStatus.actions.restartLabel", { name: nodeLabel(n) }),
@@ -154,18 +156,25 @@ export function HealthStatus({ can, onLogout }: { can: (perm: string) => boolean
 
   // onDeleteNode: removes the Node. If the CP refuses due to having torrents (409), offers to force.
   const onDeleteNode = async (n: Node) => {
-    if (!window.confirm(t("health.healthStatus.actions.deleteConfirm", { name: nodeLabelFull(n) }))) return;
+    const ok = await askConfirm({
+      title: t("health.healthStatus.actions.deleteConfirm.title", { name: nodeLabelFull(n) }),
+      confirmLabel: t("health.healthStatus.actions.deleteConfirm.confirm"),
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(n.id);
     try {
       await deleteNode(n.id);
       await load();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        if (
-          window.confirm(
-            t("health.healthStatus.actions.deleteWithTorrentsConfirm", { name: nodeLabelFull(n) }),
-          )
-        ) {
+        const force = await askConfirm({
+          title: t("health.healthStatus.actions.deleteWithTorrentsConfirm.title", { name: nodeLabelFull(n) }),
+          message: t("health.healthStatus.actions.deleteWithTorrentsConfirm.message"),
+          confirmLabel: t("health.healthStatus.actions.deleteWithTorrentsConfirm.confirm"),
+          tone: "danger",
+        });
+        if (force) {
           try {
             await deleteNode(n.id, true);
             await load();
