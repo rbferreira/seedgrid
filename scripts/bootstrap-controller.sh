@@ -125,6 +125,13 @@ echo "==> build + deploy do Portal (nginx)"
 sh "$REPO_ROOT/scripts/build-portal.sh"
 ( cd "$REPO_ROOT/deploy/portal" && docker compose up -d )
 
+# Each update rebuilds the images and leaves the previous ones untagged (#43). Only SeedGrid's go:
+# a plain `docker image prune` would also take untagged images from whatever else runs on this
+# host. The build cache isn't touched for the same reason (Deployment §43 says how to clear it).
+# A failed cleanup doesn't fail the update.
+echo "==> removing SeedGrid's previous images"
+docker image prune -f --filter label=seedgrid.image >/dev/null || true
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 ADMIN_USER="$(env_get SEEDGRID_ADMIN_USERNAME)"
 echo "==> done."
