@@ -212,6 +212,10 @@ type BrowseItem struct {
 	IGDB           int    `json:"igdb_id"` // games (#17); 0 when the tracker sends null
 	Year           int    `json:"release_year"`
 	DetailsLink    string `json:"details_link"`
+	// Files are the names of the item's files: together with the size, they are the evidence that
+	// a catalog item is the SAME file the cluster already has, since the catalog doesn't expose the
+	// info_hash and the item name isn't the torrent name (#37). Server-side only.
+	Files []string `json:"-"`
 }
 
 // BrowseResult is a page from the catalog + the next page's cursor (cursor pagination).
@@ -224,8 +228,8 @@ type BrowseResult struct {
 }
 
 // Browse lists the tracker's catalog (UNIT3D's JSON:API). UNIT3D DOES NOT expose info_hash
-// here; the "already have" match is heuristic (by name) and the hard guarantee stays on add
-// (duplicate guard, #11). #12.
+// here; the "already have" match is by exact size + name (torrent.Library.HasFile, #37) and the
+// hard guarantee stays on add (duplicate guard, #11). #12.
 //
 // PAGE pagination via GET /api/torrents/filter (#13, bug #9): the `cursor`
 // received/returned is the page NUMBER (string); the next page comes from
@@ -293,6 +297,9 @@ func Browse(ctx context.Context, apiURL, apiToken, cursor, search string) (Brows
 				Year           any    `json:"release_year"`
 				DetailsLink    string `json:"details_link"`
 				DownloadLink   string `json:"download_link"`
+				Files          []struct {
+					Name string `json:"name"`
+				} `json:"files"`
 			} `json:"attributes"`
 		} `json:"data"`
 		Meta struct {
@@ -321,13 +328,17 @@ func Browse(ctx context.Context, apiURL, apiToken, cursor, search string) (Brows
 	for _, d := range parsed.Data {
 		a := d.Attributes
 		id := anyToStr(d.ID)
+		files := make([]string, 0, len(a.Files))
+		for _, f := range a.Files {
+			files = append(files, f.Name)
+		}
 		out.Items = append(out.Items, BrowseItem{
 			ID: id, Name: a.Name, Category: a.Category, Type: a.Type, Resolution: a.Resolution,
 			CategoryID: anyToInt(a.CategoryID), TypeID: anyToInt(a.TypeID), ResolutionID: anyToInt(a.ResolutionID),
 			Size:    anyToInt64(a.Size),
 			Seeders: anyToInt(a.Seeders), Leechers: anyToInt(a.Leechers), TimesCompleted: anyToInt(a.TimesCompleted),
 			TMDB: anyToInt(a.TMDB), IMDB: anyToStr(a.IMDB), IGDB: anyToInt(a.IGDB),
-			Year: anyToInt(a.Year), DetailsLink: a.DetailsLink,
+			Year: anyToInt(a.Year), DetailsLink: a.DetailsLink, Files: files,
 		})
 		if a.DownloadLink != "" {
 			out.Links[id] = a.DownloadLink

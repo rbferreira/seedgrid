@@ -236,8 +236,8 @@ func (s *Service) EnablePublish(port int) {
 // Add adds a torrent from a magnet: the Scheduler chooses the Node, the
 // torrent is registered (QUEUED), the decision is audited and an add_torrent command is
 // queued to the Agent.
-func (s *Service) Add(ctx context.Context, magnet, name string, allowDuplicate bool) (Torrent, error) {
-	return s.add(ctx, magnet, name, nil, 0, allowDuplicate)
+func (s *Service) Add(ctx context.Context, magnet, name string, opts AddOptions) (Torrent, error) {
+	return s.add(ctx, magnet, name, nil, 0, opts)
 }
 
 // AddFile adds a torrent from a .torrent file. It parses
@@ -245,13 +245,13 @@ func (s *Service) Add(ctx context.Context, magnet, name string, allowDuplicate b
 // bytes to the Agent: this way the Engine receives the full metadata (without going
 // through metaDL) and honors the torrent's private flag — essential for private
 // trackers, where there is no DHT to fetch metadata.
-func (s *Service) AddFile(ctx context.Context, data []byte, allowDuplicate bool) (Torrent, error) {
+func (s *Service) AddFile(ctx context.Context, data []byte, opts AddOptions) (Torrent, error) {
 	meta, err := torrentfile.Parse(data)
 	if err != nil {
 		return Torrent{}, fmt.Errorf("invalid .torrent file: %w", err)
 	}
 	// meta.Size (ADR-032) allows the Scheduler to block Nodes with no space for the torrent.
-	return s.add(ctx, buildMagnet(meta), meta.Name, data, meta.Size, allowDuplicate)
+	return s.add(ctx, buildMagnet(meta), meta.Name, data, meta.Size, opts)
 }
 
 // Create publishes local content (ADR-019): chooses the Node (Scheduler, or the
@@ -518,22 +518,35 @@ func randomToken() (string, error) {
 
 // add is the common addition flow. When fileData != nil, the .torrent bytes
 // are sent in the payload (base64) and the Agent prefers them over the magnet.
-func (s *Service) add(ctx context.Context, magnet, name string, fileData []byte, sizeBytes int64, allowDuplicate bool) (Torrent, error) {
+func (s *Service) add(ctx context.Context, magnet, name string, fileData []byte, sizeBytes int64, opts AddOptions) (Torrent, error) {
 	hash, dn := parseMagnet(magnet)
 	if name == "" {
 		name = dn
 	}
 
-	// #11: without allowDuplicate, refuses (409) if the hash already exists on any Node —
-	// prevents duplicate content in the cluster without the operator knowing. The Portal confirms and
-	// resends with allow_duplicate=true when the operator really wants a 2nd copy.
-	if !allowDuplicate && hash != "" {
+	// #11: without AllowDuplicate, refuses (409) if the hash already exists on any Node —
+	// prevents duplicate content in the cluster without the operator knowing. Since #37 the Portal
+	// no longer offers a 2nd copy: an identical file is "already in the cluster", and that's it.
+	if !opts.AllowDuplicate && hash != "" {
 		nodes, existing, nerr := s.existingNodesForHash(ctx, hash)
 		if nerr != nil {
 			return Torrent{}, nerr
 		}
 		if len(nodes) > 0 {
 			return Torrent{}, &DuplicateError{Nodes: nodes, Existing: existing}
+		}
+	}
+	// #37: another version of the same work (another resolution, codec or release) isn't an error,
+	// it's the operator's decision — but an informed one: without AllowOtherVersion, it returns the
+	// versions the cluster already has, for the Portal to show and ask.
+	if !opts.AllowOtherVersion && name != "" {
+		lib, lerr := s.Library(ctx)
+		if lerr != nil {
+			return Torrent{}, lerr
+		}
+		if vs := lib.OtherVersions(name, hash, 0); len(vs) > 0 {
+			adding := newLibraryEntry(hash, name, sizeBytes, "").v
+			return Torrent{}, &OtherVersionsError{Versions: vs, Adding: adding}
 		}
 	}
 
@@ -652,31 +665,6 @@ var reNameNonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
 // so the match is by name — the hard guarantee is the duplicate guard on add, #11).
 func NormalizeName(s string) string {
 	return reNameNonAlnum.ReplaceAllString(strings.ToLower(s), "")
-}
-
-// ClusterNames returns the names (normalized, unique) of the cluster's torrents (not
-// removed — any status, including ERROR), basis for the cross-check with the tracker's
-// catalog (#12). Use with NameInCluster.
-func (s *Service) ClusterNames(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT DISTINCT name FROM torrents WHERE deleted_at IS NULL AND name IS NOT NULL AND name <> ''`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	seen := make(map[string]bool)
-	out := make([]string, 0)
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			return nil, err
-		}
-		if k := NormalizeName(n); k != "" && !seen[k] {
-			seen[k] = true
-			out = append(out, k)
-		}
-	}
-	return out, rows.Err()
 }
 
 // NameInCluster reports if `name` (raw) matches any torrent in the cluster: exact match

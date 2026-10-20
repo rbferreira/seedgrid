@@ -3,10 +3,10 @@ import type { Catalog } from "../types";
 export const explore: Catalog["explore"] = {
   explore: {
     title: "Catalog",
-    description: "Tracker showcase with poster, Portuguese title and basic info. The \"already have\" match is by name (approximate); duplicates are blocked on download. Metadata comes from TMDB (movie/series), IGDB (game) and Open Library (book/audiobook) — when the provider has no key, the card falls back to simple mode.",
+    description: "Tracker showcase with poster, Portuguese title and basic info. \"✓ in cluster\" is the same file you already have; \"You have it in …\" is another version of the same title, and the download shows which one before asking. Metadata comes from TMDB (movie/series), IGDB (game) and Open Library (book/audiobook) — when the provider has no key, the card falls back to simple mode.",
     noIntegration: "No tracker with API integration. Register one (source + token) in",
     trackersLink: "Settings › Trackers",
-    confirmDuplicate: "Download a second copy anyway (on another Node)?",
+    alreadyInCluster: "This file is already in the cluster",
     loadMore: "Load more",
     error: {
       listFailed: "Failed to list catalog",
@@ -58,6 +58,9 @@ export const explore: Catalog["explore"] = {
       openTracker: "Open in tracker",
       byAuthor: "by {author}",
       inCluster: "in cluster",
+      otherVersions: "You have it in {versions}",
+      otherVersionsTooltip: "Already in the cluster:",
+      otherVersionFallback: "another version",
       seedButton: "Download & Seed",
       season: "Season {season}",
       seasonEpisode: "Season {season} · Ep. {episode}",

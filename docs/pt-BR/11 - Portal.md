@@ -401,6 +401,25 @@ Tags
 > não tem paginação nem filtro, e nesta ordem de grandeza não precisa.
 > Seleção múltipla e paginação seguem não implementadas (ver §34).
 
+> **Implementado (out/2026, #37): "já tenho?" antes de baixar.** Explorar e
+> Adicionar Torrent separam duas situações:
+> - **O mesmo arquivo já está no cluster:** "✓ no cluster", sem botão e sem
+>   oferecer 2ª cópia. No catálogo, o cruzamento é pelo tamanho exato em bytes
+>   mais uma evidência de nome (o catálogo não traz o hash, e o nome do item não
+>   é o nome do torrent). No Adicionar, o arquivo é pulado com "já está no
+>   cluster".
+> - **Outra versão do mesmo título** (outra resolução, codec ou release): o card
+>   do catálogo ganha o selo **"Você tem em 1080p x264"**, com os nomes no
+>   tooltip. No download, abre um diálogo do Portal (`OtherVersionsDialog`, não
+>   o `window.confirm`) com cada versão do cluster (nome, resolução, codec,
+>   tamanho e Node) ao lado do que se vai adicionar, e as opções **Cancelar** /
+>   **Adicionar mesmo assim**. Cancelar é o foco inicial e o Esc. No lote do
+>   Adicionar, o diálogo aparece por item e o item cancelado conta como
+>   "pulado".
+>
+> A regra fica no Control Plane (contrato em `13 - API.md`); o Portal só
+> apresenta e reenvia com a confirmação.
+
 # **21. Detalhes do Torrent**
 Cada Torrent deverá possuir uma página dedicada.
 Informações sugeridas:

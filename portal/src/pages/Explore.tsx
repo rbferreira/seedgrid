@@ -3,13 +3,16 @@ import {
   getTrackers,
   browseTracker,
   seedFromTracker,
+  otherVersionsOf,
   ApiError,
   type Tracker,
   type TrackerBrowseItem,
+  type TorrentVersion,
   type MediaType,
 } from "../api";
 import { fmtBytes, TRANSFER } from "../components/ui";
 import { Spinner, toast } from "../actions";
+import { useOtherVersionsPrompt } from "../components/OtherVersionsDialog";
 import { useT, type TFn } from "../i18n";
 
 // Explore (#12/#13, catalog redesign): the Control Plane browses the UNIT3D tracker + enriches
@@ -117,6 +120,7 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
   const [fSize, setFSize] = useState(0);
   const [fSeeds, setFSeeds] = useState(0);
   const [fStatus, setFStatus] = useState<"all" | "avail" | "have">("all");
+  const [askOtherVersion, otherVersionDialog] = useOtherVersionsPrompt();
 
   // The NAME search is server-side (#13); here we only refine by type/size/seeds/status.
   const filtered = items.filter(
@@ -206,17 +210,21 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
     setError("");
     try {
       try {
-        await seedFromTracker(trackerId, it.id, false);
+        await seedFromTracker(trackerId, it.id);
       } catch (e) {
-        // #11: already exists in the cluster → confirms the 2nd copy.
+        // #37: the SAME file is already in the cluster → mark it and stop, without offering a 2nd
+        // copy. It happens when the catalog gave no way to know before the click (the hash only
+        // exists after downloading the .torrent).
         if (e instanceof ApiError && e.status === 409 && e.code === "duplicate") {
-          if (!window.confirm(`${e.message}\n\n${t("explore.explore.confirmDuplicate")}`)) {
-            return;
-          }
-          await seedFromTracker(trackerId, it.id, true);
-        } else {
-          throw e;
+          markInCluster(it.id);
+          toast(t("explore.explore.alreadyInCluster"), "info");
+          return;
         }
+        // #37: another version of the same work → show what already exists and ask.
+        const other = otherVersionsOf(e);
+        if (!other) throw e;
+        if (!(await askOtherVersion(it.title_pt || it.title_original || it.name, other))) return;
+        await seedFromTracker(trackerId, it.id, true);
       }
       markInCluster(it.id);
     } catch (err) {
@@ -388,7 +396,29 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
           </div>
         </>
       )}
+      {otherVersionDialog}
     </>
+  );
+}
+
+// OtherVersionsChip: the "You have it in 1080p" badge — another version of the same title is already
+// in the cluster (#37). It answers "do I already have it?" just by looking at the list; each version's
+// name goes in the tooltip, and the full detail, in the download dialog.
+function OtherVersionsChip({ versions, t }: { versions: TorrentVersion[]; t: TFn }) {
+  const labels = [
+    ...new Set(
+      versions.map((v) => [v.resolution, v.codec].filter(Boolean).join(" ") || t("explore.explore.card.otherVersionFallback")),
+    ),
+  ];
+  const tooltip = [
+    t("explore.explore.card.otherVersionsTooltip"),
+    ...versions.map((v) => `${v.name} (${fmtBytes(v.size_bytes)}, ${v.node})`),
+  ].join("\n");
+  return (
+    <Chip tone="bg-amber-500/10 text-amber-300 ring-amber-500/30" title={tooltip}>
+      {"⧉ "}
+      {t("explore.explore.card.otherVersions", { versions: labels.join(", ") })}
+    </Chip>
   );
 }
 
@@ -532,6 +562,9 @@ function CatalogCard({
         {/* Secondary chips: resolution + audio + subtitles + genres (up to 3). The type
             already went up as a badge at the top — no need to repeat it here. */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {!item.in_cluster && (item.other_versions?.length ?? 0) > 0 && (
+            <OtherVersionsChip versions={item.other_versions!} t={t} />
+          )}
           {item.resolution && (
             <Chip tone="bg-slate-800 text-slate-200 ring-slate-700">{item.resolution.toUpperCase()}</Chip>
           )}

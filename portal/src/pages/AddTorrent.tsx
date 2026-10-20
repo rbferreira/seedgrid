@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, type DragEvent } from "react"
 import { TrackerUploadPanel } from "./publish/TrackerUploadPanel";
 import { fmtSize } from "./publish/bbcode";
 import { nodeLabel, nodeLabelById } from "../lib/node-label";
+import { useOtherVersionsPrompt } from "../components/OtherVersionsDialog";
 import {
   addTorrentMagnet,
   addTorrentFile,
@@ -11,6 +12,7 @@ import {
   getNodes,
   getPendingPublish,
   removeTorrent,
+  otherVersionsOf,
   ApiError,
   type Tracker,
   type Node,
@@ -19,7 +21,9 @@ import {
 } from "../api";
 import { rich, useT } from "../i18n";
 
-type JobStatus = "pending" | "sending" | "ok" | "error";
+// skipped: didn't go in and isn't an error — the file was already in the cluster, or the operator
+// cancelled on seeing the other version (#37).
+type JobStatus = "pending" | "sending" | "ok" | "skipped" | "error";
 type Job = {
   key: string;
   label: string;
@@ -34,6 +38,7 @@ const STATUS_UI: Record<JobStatus, { icon: string; cls: string }> = {
   pending: { icon: "•", cls: "text-slate-500" },
   sending: { icon: "…", cls: "text-blue-400" },
   ok: { icon: "✓", cls: "text-emerald-400" },
+  skipped: { icon: "–", cls: "text-slate-400" },
   error: { icon: "✕", cls: "text-red-400" },
 };
 
@@ -72,6 +77,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [askOtherVersion, otherVersionDialog] = useOtherVersionsPrompt();
 
   // Nodes to translate the result's node_id into the Node name (backlog #16 — identify
   // the Node by name, not by UUID). Best-effort: if it fails, falls back to short UUID.
@@ -152,25 +158,30 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
     let unauthorized = false;
     for (let i = 0; i < queue.length; i++) {
       setJobs((prev) => prev.map((j, idx) => (idx === i ? { ...j, status: "sending" } : j)));
-      const runAdd = (allowDup: boolean): Promise<Torrent> =>
+      const runAdd = (allowOtherVersion: boolean): Promise<Torrent> =>
         queue[i].kind === "file"
-          ? addTorrentFile(queue[i].file!, allowDup)
-          : addTorrentMagnet(queue[i].magnet!, undefined, allowDup);
+          ? addTorrentFile(queue[i].file!, allowOtherVersion)
+          : addTorrentMagnet(queue[i].magnet!, undefined, allowOtherVersion);
+      const skip = (detail: string) =>
+        setJobs((prev) => prev.map((j, idx) => (idx === i ? { ...j, status: "skipped", detail } : j)));
       try {
         let tRes: Torrent;
         try {
           tRes = await runAdd(false);
         } catch (e) {
-          // #11: torrent already exists in the cluster → confirms before duplicating.
+          // #37: the SAME file is already in the cluster → skipped, without offering a 2nd copy.
           if (e instanceof ApiError && e.status === 409 && e.code === "duplicate") {
-            if (!window.confirm(`${e.message}\n\n${t("torrents.addTorrent.confirmDuplicate")}`)) {
-              setJobs((prev) => prev.map((j, idx) => (idx === i ? { ...j, status: "error", detail: t("torrents.addTorrent.detailDuplicateSkipped") } : j)));
-              continue;
-            }
-            tRes = await runAdd(true);
-          } else {
-            throw e;
+            skip(t("torrents.addTorrent.detailAlreadyInCluster"));
+            continue;
           }
+          // #37: another version of the same work → show what already exists and ask.
+          const other = otherVersionsOf(e);
+          if (!other) throw e;
+          if (!(await askOtherVersion(other.adding?.name || queue[i].label, other))) {
+            skip(t("torrents.addTorrent.detailOtherVersionCancelled"));
+            continue;
+          }
+          tRes = await runAdd(true);
         }
         setJobs((prev) =>
           prev.map((j, idx) =>
@@ -206,6 +217,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
 
   const okCount = jobs.filter((j) => j.status === "ok").length;
   const errCount = jobs.filter((j) => j.status === "error").length;
+  const skipCount = jobs.filter((j) => j.status === "skipped").length;
   const totalPending = files.length + magnetLines().length;
 
   return (
@@ -286,8 +298,8 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <p className="text-xs text-slate-400">
               {running
-                ? t("torrents.addTorrent.statusSending", { current: okCount + errCount, total: jobs.length })
-                : t("torrents.addTorrent.statusDone", { ok: okCount, errors: errCount })}
+                ? t("torrents.addTorrent.statusSending", { current: okCount + errCount + skipCount, total: jobs.length })
+                : t("torrents.addTorrent.statusDone", { ok: okCount, skipped: skipCount, errors: errCount })}
             </p>
             <ul className="space-y-1">
               {jobs.map((j) => {
@@ -324,6 +336,7 @@ function AddExisting({ onLogout }: { onLogout: () => void }) {
               : t("torrents.addTorrent.btnAddSingle")}
         </button>
       </div>
+      {otherVersionDialog}
     </>
   );
 }

@@ -174,22 +174,48 @@ const portalMsg = (key: Key, params?: Params) => translate(getLang(), key, param
 export class ApiError extends Error {
   status: number;
   code?: string; // API error code (e.g., "duplicate", "no_eligible_node")
-  constructor(status: number, message: string, code?: string) {
+  // details: the whole `error` object of the response, for the codes that carry data beyond the
+  // message (e.g., the versions of "other_versions", #37).
+  details?: Record<string, unknown>;
+  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
+}
+
+// TorrentVersion: a version of a work — one already in the cluster, or the one being added (no
+// Node). Comes from the "other_versions" 409 and from the catalog browse (#37).
+export type TorrentVersion = {
+  name: string;
+  resolution: string;
+  codec: string;
+  size_bytes: number;
+  node: string;
+};
+
+// OtherVersions: what the "other_versions" 409 says — the versions of the same work the cluster
+// already has and the one being added. null for any other error.
+export type OtherVersions = { versions: TorrentVersion[]; adding: TorrentVersion | null };
+export function otherVersionsOf(e: unknown): OtherVersions | null {
+  if (!(e instanceof ApiError) || e.status !== 409 || e.code !== "other_versions") return null;
+  const versions = Array.isArray(e.details?.versions) ? (e.details!.versions as TorrentVersion[]) : [];
+  const adding = (e.details?.adding as TorrentVersion | undefined) ?? null;
+  return { versions, adding };
 }
 
 // serverError: the error that arrives from the API. When the Portal knows the code, the phrase comes from the
 // catalog in the reader's language, with error.params (ADR-041 §4); otherwise error.message applies,
 // which is the fallback and the detail ({detail} in the phrases that cite it).
-type ErrorBody = { error?: { code?: string; message?: string; params?: Record<string, unknown> } } | null;
+type ErrorBody = {
+  error?: { code?: string; message?: string; params?: Record<string, unknown> } & Record<string, unknown>;
+} | null;
 function serverError(status: number, body: ErrorBody): ApiError {
   const e = body?.error;
   const reserve = e?.message ?? portalMsg("api.httpError", { status });
   const text = e?.code ? messageText("error", e.code, e.params, reserve, { detail: e.message ?? "" }) : reserve;
-  return new ApiError(status, text, e?.code);
+  return new ApiError(status, text, e?.code, e);
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -298,18 +324,21 @@ export const getTorrentSamples = (id: string, range = "6h") =>
   req<{ data: TorrentSample[] }>(
     `/api/v1/torrents/${id}/samples?range=${encodeURIComponent(range)}`,
   ).then((r) => r.data);
-export const addTorrentMagnet = (magnet: string, name?: string, allowDuplicate = false) =>
+// allowOtherVersion: the operator saw the versions of the same work the cluster already has and
+// wants to add anyway (#37). An identical file (same hash) has no confirmation: it's the
+// "duplicate" 409 and that's it — the Portal no longer offers a 2nd copy.
+export const addTorrentMagnet = (magnet: string, name?: string, allowOtherVersion = false) =>
   req<Torrent>("/api/v1/torrents", {
     method: "POST",
-    body: JSON.stringify({ magnet, name, allow_duplicate: allowDuplicate }),
+    body: JSON.stringify({ magnet, name, allow_other_version: allowOtherVersion }),
   });
 
 // addTorrentFile sends the .torrent as multipart (the browser sets the Content-Type).
-export async function addTorrentFile(file: File, allowDuplicate = false): Promise<Torrent> {
+export async function addTorrentFile(file: File, allowOtherVersion = false): Promise<Torrent> {
   const token = getToken();
   const fd = new FormData();
   fd.append("torrent", file);
-  if (allowDuplicate) fd.append("allow_duplicate", "true");
+  if (allowOtherVersion) fd.append("allow_other_version", "true");
   const res = await fetch("/api/v1/torrents", {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -745,7 +774,8 @@ export type TrackerBrowseItem = {
   imdb_id: string;
   year: number;
   details_link: string;
-  in_cluster: boolean;
+  in_cluster: boolean; // the SAME file is already in the cluster (size + name, #37)
+  other_versions?: TorrentVersion[]; // other versions of the same work the cluster already has (#37)
   // Enrichment (#12) — all optional.
   media_type?: MediaType;
   title_pt?: string; // translated title; for books, the OpenLibrary Title
@@ -779,10 +809,10 @@ export const trackerDupes = (trackerId: string, name: string) =>
     `/api/v1/trackers/${trackerId}/dupes?name=${encodeURIComponent(name)}`,
   );
 
-export const seedFromTracker = (trackerId: string, torrentId: string, allowDuplicate = false) =>
+export const seedFromTracker = (trackerId: string, torrentId: string, allowOtherVersion = false) =>
   req<Torrent>(`/api/v1/trackers/${trackerId}/seed`, {
     method: "POST",
-    body: JSON.stringify({ torrent_id: torrentId, allow_duplicate: allowDuplicate }),
+    body: JSON.stringify({ torrent_id: torrentId, allow_other_version: allowOtherVersion }),
   });
 
 // publishContent sends local files to the Cluster (ADR-019): the chosen Node

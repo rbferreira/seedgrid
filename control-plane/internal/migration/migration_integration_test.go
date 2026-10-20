@@ -73,7 +73,7 @@ func newHarness(t *testing.T) harness {
 
 func (h harness) addTorrent(t *testing.T, magnet string) torrent.Torrent {
 	t.Helper()
-	tr, err := h.tor.Add(h.ctx, magnet, "", false)
+	tr, err := h.tor.Add(h.ctx, magnet, "", torrent.AddOptions{AllowOtherVersion: true})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
