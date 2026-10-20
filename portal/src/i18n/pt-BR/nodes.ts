@@ -40,8 +40,12 @@ export const nodes = {
     prompt: {
       originFallback: "origem",
       destFallback: "destino",
-      cancelQueued: "Cancelar a migração {route}? Ela ainda está na fila — nada foi copiado, e o torrent continua onde está.",
-      cancelPending: "Cancelar a migração {route}?\n\nA cópia já feita no Node destino será DESCARTADA (os dados e o torrent lá) e o torrent continua no Node de origem. Se a cópia ainda estiver em andamento, ela termina e só então é descartada.",
+      title: "Cancelar a migração {route}?",
+      queuedMessage: "Ela ainda está na fila — nada foi copiado, e o torrent continua onde está.",
+      pendingMessage: "A cópia já feita no Node destino será DESCARTADA (os dados e o torrent lá) e o torrent continua no Node de origem. Se a cópia ainda estiver em andamento, ela termina e só então é descartada.",
+      confirmQueued: "Cancelar a migração",
+      confirmPending: "Cancelar e descartar",
+      keep: "Manter",
     },
   },
   migratePicker: {
@@ -93,7 +97,6 @@ export const nodes = {
   },
   nodeDetail: {
     loadError: "Falha ao carregar o Node",
-    confirmRestartEngine: "Reiniciar o Torrent Engine de \"{name}\"? (o container sobe de novo)",
     actionRestartEngine: "Reiniciar Engine de «{name}»",
     notFound: "Node não encontrado.",
     hostnameTitle: "Hostname do SO",
@@ -160,5 +163,10 @@ export const nodes = {
       deleteTitle: "Excluir",
       empty: "Nenhum torrent neste Node.",
     },
+  },
+  restartEnginePrompt: {
+    title: "Reiniciar o Torrent Engine de «{name}»?",
+    message: "O container sobe de novo. O seeding desse Node para por alguns segundos.",
+    confirm: "Reiniciar",
   },
 } as const;

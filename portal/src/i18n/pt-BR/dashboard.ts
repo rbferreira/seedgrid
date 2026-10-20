@@ -89,7 +89,11 @@ export const dashboard = {
       updateTitle: "Atualizar o Agent para {version} ({arch})",
       updating: "atualizando…",
       versionAvailable: "Versão {version} disponível",
-      confirmUpdate: "Atualizar o Agent de {node} para {version}?\n\nO binário é validado (checksum + smoke-test) antes da troca e o Agent reinicia. O Torrent Engine não é afetado.",
+      confirmUpdate: {
+        title: "Atualizar o Agent de «{node}» para {version}?",
+        message: "O binário é validado (checksum + smoke-test) antes da troca e o Agent reinicia. O Torrent Engine não é afetado.",
+        confirm: "Atualizar",
+      },
       actionLabel: "Atualizar Agent de {node} → {version}",
       updatedStatus: "Atualizado ({version})",
       restarting: "Reiniciando o Agent…",

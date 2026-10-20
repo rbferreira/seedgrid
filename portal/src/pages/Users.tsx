@@ -11,6 +11,7 @@ import {
   ApiError,
 } from "../api";
 import { getLang, useT, type Key, type TFn } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
 
 // System ROLES (ADR-035) — used in create/edit selects.
 const ROLES: Role[] = ["Administrator", "Publisher", "Downloader", "Viewer"];
@@ -135,7 +136,13 @@ export function Users() {
   }
 
   async function remove(u: User) {
-    if (!window.confirm(t("users.users.confirm.disable", { username: u.username }))) return;
+    const ok = await askConfirm({
+      title: t("users.users.confirm.disable.title", { username: u.username }),
+      message: t("users.users.confirm.disable.message"),
+      confirmLabel: t("users.users.confirm.disable.confirm"),
+      tone: "danger",
+    });
+    if (!ok) return;
     setError("");
     setNotice("");
     try {

@@ -37,7 +37,11 @@ export const users: Catalog["users"] = {
       passwordPlaceholder: "New password (optional)",
     },
     confirm: {
-      disable: "Disable user “{username}”? They will lose access immediately.",
+      disable: {
+        title: "Disable the user “{username}”?",
+        message: "They lose access immediately.",
+        confirm: "Disable",
+      },
     },
     notice: {
       created: "✓ User created.",

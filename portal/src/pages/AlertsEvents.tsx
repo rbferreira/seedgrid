@@ -19,6 +19,7 @@ import { toast } from "../actions";
 import { canCancelMigration, cancelMigrationPrompt, migrationStatusLabel } from "../lib/migrations";
 import { messageText } from "../lib/messages";
 import { getLang, useT, type Key, type TFn } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
 
 const REFRESH_MS = 10_000;
 const SEVERITIES = ["ALL", "CRITICAL", "WARNING", "INFO"] as const;
@@ -175,7 +176,7 @@ export function AlertsEvents({ can, onLogout }: { can: (perm: string) => boolean
   // torrents:migrate (the same permission to migrate) — the migration DATA remains visible to
   // everyone; the backend blocks it anyway (button gate, #97).
   const cancelMig = async (mg: Migration) => {
-    if (!window.confirm(cancelMigrationPrompt(t, nodeName(mg.source_node_id), nodeName(mg.dest_node_id), mg.status))) return;
+    if (!(await askConfirm(cancelMigrationPrompt(t, nodeName(mg.source_node_id), nodeName(mg.dest_node_id), mg.status)))) return;
     setCancelling(mg.id);
     try {
       await cancelMigration(mg.id);

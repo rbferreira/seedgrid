@@ -316,7 +316,10 @@ export const trackers: Catalog["trackers"] = {
       saveChanges: "Save changes",
       addTracker: "Add tracker",
     },
-    confirmRemove: "Delete tracker \"{name}\"?",
+    confirmRemove: {
+      title: "Delete the tracker “{name}”?",
+      confirm: "Delete",
+    },
     errors: {
       nameRequired: "Enter a name for the tracker.",
       announceRequired: "Enter the announce URL (http/https/udp).",

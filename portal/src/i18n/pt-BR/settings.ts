@@ -92,6 +92,7 @@ export const settings = {
       clusterScope: "Vale para TODOS os Nodes que não têm valor próprio, no próximo heartbeat de cada Agent, sem reiniciar nada.",
       changeCluster: "Mudar «{label}» para {value}{unit} no cluster?",
       resetCluster: "Restaurar «{label}» ao padrão ({defaultValue}) no cluster?",
+      restore: "Restaurar",
     },
     messages: {
       applied: "Aplicado",

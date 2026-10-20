@@ -747,6 +747,8 @@ Operation rejected.
 Insufficient permission.
 Communication error.
 Messages must be concise and contextualized.
+
+**Confirmations (#45).** Every action that asks for confirmation uses the Portal's dialog (`askConfirm`, in `components/ConfirmDialog.tsx`), never the browser's `window.confirm`. The question is the title; the consequence goes below it; the button names the action ("Delete", "Restart"), never "OK". Whatever deletes data or removes access uses the danger tone (a red button). Cancel has the initial focus and also answers to Esc and a click outside: the path that changes nothing is the one taken without thinking. When the action itself is a "cancel" (canceling a migration), the other button becomes "Keep", so the two don't share a name. Prompts that appear on more than one screen (delete a torrent, restart the Engine) live in `lib/confirm-prompts.ts`, so the same action is confirmed with the same words everywhere; like every text, they come from the `en` and `pt-BR` catalogs. `askConfirm` returns a Promise and the questions queue up, so two in a row don't overwrite each other.
 # **38. Accessibility**
 Whenever possible, the interface must follow accessibility best practices.
 Examples:

@@ -314,7 +314,10 @@ export const trackers = {
       saveChanges: "Salvar alterações",
       addTracker: "Adicionar tracker",
     },
-    confirmRemove: "Excluir o tracker \"{name}\"?",
+    confirmRemove: {
+      title: "Excluir o tracker «{name}»?",
+      confirm: "Excluir",
+    },
     errors: {
       nameRequired: "Informe um nome para o tracker.",
       announceRequired: "Informe o announce URL (http/https/udp).",

@@ -18,6 +18,7 @@ import { AuditPage } from "./pages/AuditPage";
 import { Users } from "./pages/Users";
 import { Layout } from "./components/Layout";
 import { ToastViewport, toast } from "./actions";
+import { ConfirmHost } from "./components/ConfirmDialog";
 import { useT } from "./i18n";
 
 // useSeedWatcher triggers a toast when a torrent starts SEEDING, on ANY page
@@ -168,13 +169,15 @@ export function App() {
   else if (route === "/profile") page = <Profile onLogout={logout} />;
   else page = dashboard;
 
-  // A global toast viewport (bottom right corner) for every action/confirmation.
+  // A global toast viewport (bottom right corner) for every action/confirmation, and the
+  // dialog for askConfirm's questions (#45).
   return (
     <>
       <Layout me={me} meReady={meReady} onLogout={logout}>
         {page}
       </Layout>
       <ToastViewport />
+      <ConfirmHost />
     </>
   );
 }

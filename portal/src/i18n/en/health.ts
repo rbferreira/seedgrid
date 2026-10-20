@@ -35,10 +35,16 @@ export const health: Catalog["health"] = {
     },
     actions: {
       addNode: "+ Add Node",
-      restartConfirm: "Restart the Torrent Engine of \"{name}\"? (the container will come back up)",
       restartLabel: "Restart Engine on “{name}”",
-      deleteConfirm: "Remove Node \"{name}\" from the Cluster?",
-      deleteWithTorrentsConfirm: "\"{name}\" still has torrents. Remove anyway? (torrents on this Node will also be removed)",
+      deleteConfirm: {
+        title: "Remove the Node “{name}” from the Cluster?",
+        confirm: "Remove",
+      },
+      deleteWithTorrentsConfirm: {
+        title: "“{name}” still has torrents. Remove it anyway?",
+        message: "This Node's torrents are removed from the Cluster too.",
+        confirm: "Remove with its torrents",
+      },
       migrateLabel: "Migrate all torrents from \"{name}\" to the target Node.",
     },
     services: {

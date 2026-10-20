@@ -749,6 +749,8 @@ Operação recusada.
 Permissão insuficiente.
 Erro de comunicação.
 As mensagens deverão ser objetivas e contextualizadas.
+
+**Confirmações (#45).** Toda ação que pede confirmação usa o diálogo do Portal (`askConfirm`, em `components/ConfirmDialog.tsx`), nunca o `window.confirm` do navegador. A pergunta é o título; a consequência vem abaixo; o botão diz a ação ("Excluir", "Reiniciar"), nunca "OK". O que apaga dados ou tira acesso usa o tom de perigo (botão vermelho). Cancelar tem o foco inicial e também responde ao Esc e ao clique fora: o caminho que não muda nada é o que se toma sem pensar. Quando a própria ação é um "cancelar" (cancelar uma migração), o outro botão vira "Manter", para os dois não terem o mesmo nome. Perguntas que aparecem em mais de uma tela (excluir torrent, reiniciar o Engine) moram em `lib/confirm-prompts.ts`, para a mesma ação ser confirmada com as mesmas palavras em todo lugar; como todo texto, vêm dos catálogos `en` e `pt-BR`. `askConfirm` devolve uma Promise e as perguntas fazem fila, então duas seguidas não se sobrescrevem.
 # **38. Acessibilidade**
 Sempre que possível, a interface deverá seguir boas práticas de acessibilidade.
 Exemplos:

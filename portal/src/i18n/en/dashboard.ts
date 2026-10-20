@@ -91,7 +91,11 @@ export const dashboard: Catalog["dashboard"] = {
       updateTitle: "Update Agent to {version} ({arch})",
       updating: "updating…",
       versionAvailable: "Version {version} available",
-      confirmUpdate: "Update the Agent on {node} to {version}?\n\nThe binary is validated (checksum + smoke test) before switching and the Agent will restart. The Torrent Engine is not affected.",
+      confirmUpdate: {
+        title: "Update the Agent on “{node}” to {version}?",
+        message: "The binary is validated (checksum + smoke test) before the switch and the Agent restarts. The Torrent Engine is not affected.",
+        confirm: "Update",
+      },
       actionLabel: "Update Agent on {node} → {version}",
       updatedStatus: "Updated ({version})",
       restarting: "Restarting Agent…",

@@ -78,7 +78,6 @@ export const torrents = {
     },
     actions: {
       label: "{verb} «{name}»",
-      confirmRemove: "Excluir \"{name}\" do Node (apaga os dados baixados)?",
       verbRemove: "Excluir",
       toastPrioritized: "⚡ «{name}» priorizado na fila",
       toastUnprioritized: "Prioridade removida de «{name}»",
@@ -115,7 +114,11 @@ export const torrents = {
     abandonTitle: "Desistir: cancela o upload e apaga o torrent do Node",
     btnRemoving: "Removendo…",
     btnAbandon: "Desistir",
-    confirmAbandon: "Desistir de publicar \"{name}\"?\n\nIsto CANCELA o upload: remove o torrent do Node e apaga os dados baixados. Não dá pra desfazer.",
+    confirmAbandon: {
+      title: "Desistir de publicar «{name}»?",
+      message: "Isto cancela o upload: remove o torrent do Node e apaga os dados baixados. Não dá para desfazer.",
+      confirm: "Desistir e apagar",
+    },
     publishDropzoneHint: "Arraste arquivos (ISO, vídeos, etc.) aqui ou clique para escolher",
     torrentNameLabel: "Nome do torrent (opcional)",
     torrentNamePlaceholder: "Padrão: nome do primeiro arquivo",
@@ -141,7 +144,6 @@ export const torrents = {
     downloadFailed: "Falha ao iniciar o download",
     loadFailed: "Falha ao carregar o torrent",
     actionLabel: "{verb} «{name}»",
-    confirmRemove: "Excluir \"{name}\" do Node (apaga os dados baixados)?",
     removeFailed: "Falha ao excluir o torrent",
     notFound: "Torrent não encontrado.",
     processing: "processando…",
@@ -173,5 +175,10 @@ export const torrents = {
     chartSpeedTitle: "Velocidade",
     seriesDlSpeed: "Download",
     seriesUpSpeed: "Upload",
+  },
+  removePrompt: {
+    title: "Excluir «{name}»?",
+    message: "O torrent sai do Node e os dados baixados são apagados. Não dá para desfazer.",
+    confirm: "Excluir",
   },
 } as const;

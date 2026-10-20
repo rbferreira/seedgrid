@@ -20,6 +20,8 @@ import { Chart, type TransferKind } from "../components/Chart";
 import { href, navigate } from "../router";
 import { nodeLabelById } from "../lib/node-label";
 import { useT } from "../i18n";
+import { askConfirm } from "../components/ConfirmDialog";
+import { removeTorrentPrompt } from "../lib/confirm-prompts";
 
 const toGB = (v: number) => Math.round((v / 1024 ** 3) * 100) / 100;
 const toMBs = (v: number) => Math.round((v / 1024 ** 2) * 100) / 100;
@@ -135,9 +137,7 @@ export function TorrentDetail({
       onSettled: load,
     });
   const onRemove = async () => {
-    if (!window.confirm(t("torrents.torrentDetail.confirmRemove", { name: torrent?.name ?? torrent?.hash ?? "" }))) {
-      return;
-    }
+    if (!(await askConfirm(removeTorrentPrompt(t, torrent?.name ?? torrent?.hash ?? "")))) return;
     setBusy(true);
     try {
       await removeTorrent(torrentId);
