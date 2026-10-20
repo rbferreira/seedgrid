@@ -41,14 +41,18 @@ func handleAddTorrent(d Deps) http.HandlerFunc {
 				httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "failed to read the file")
 				return
 			}
-			// allow_duplicate: the operator confirmed a 2nd copy (#11).
-			allowDup := r.FormValue("allow_duplicate") == "true" || r.FormValue("allow_duplicate") == "1"
-			t, err = d.Torrents.AddFile(r.Context(), data, allowDup)
+			// allow_duplicate: a 2nd copy of the same hash (#11); allow_other_version: the operator
+			// saw the versions of the same work the cluster already has and confirmed (#37).
+			t, err = d.Torrents.AddFile(r.Context(), data, torrent.AddOptions{
+				AllowDuplicate:    formBool(r, "allow_duplicate"),
+				AllowOtherVersion: formBool(r, "allow_other_version"),
+			})
 		} else {
 			var req struct {
-				Magnet         string `json:"magnet"`
-				Name           string `json:"name"`
-				AllowDuplicate bool   `json:"allow_duplicate"`
+				Magnet            string `json:"magnet"`
+				Name              string `json:"name"`
+				AllowDuplicate    bool   `json:"allow_duplicate"`
+				AllowOtherVersion bool   `json:"allow_other_version"`
 			}
 			if derr := httpx.DecodeJSON(r, &req); derr != nil {
 				httpx.WriteError(w, http.StatusBadRequest, "invalid_body", "invalid body")
@@ -58,10 +62,16 @@ func handleAddTorrent(d Deps) http.HandlerFunc {
 				httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "magnet or .torrent file is required")
 				return
 			}
-			t, err = d.Torrents.Add(r.Context(), req.Magnet, req.Name, req.AllowDuplicate)
+			t, err = d.Torrents.Add(r.Context(), req.Magnet, req.Name, torrent.AddOptions{
+				AllowDuplicate: req.AllowDuplicate, AllowOtherVersion: req.AllowOtherVersion,
+			})
 		}
 		var dup *torrent.DuplicateError
+		var other *torrent.OtherVersionsError
 		switch {
+		case errors.As(err, &other):
+			writeOtherVersions(w, other)
+			return
 		case errors.As(err, &dup):
 			// 409 with the Nodes that already have the torrent — the Portal confirms and resends.
 			httpx.WriteJSON(w, http.StatusConflict, map[string]any{
@@ -524,4 +534,24 @@ func noNodeWithSpaceMessage(err error) string {
 	return fmt.Sprintf("no Seed Node can accommodate this torrent: it is %s and the free disk margin is %s, but the Node with the most free space has %s free. "+
 		"Free up space, migrate torrents between Nodes, or adjust \"Free disk margin\" in Settings",
 		capacity.HumanBytes(noSpace.NeedBytes), capacity.HumanBytes(noSpace.MinFreeBytes), capacity.HumanBytes(noSpace.BestFreeBytes))
+}
+
+// formBool reads a multipart form boolean ("true" or "1").
+func formBool(r *http.Request, key string) bool {
+	v := r.FormValue(key)
+	return v == "true" || v == "1"
+}
+
+// writeOtherVersions answers the 409 for another version of the same work (#37): the versions the
+// cluster already has go along, so the Portal can show them and ask whether to add anyway (resend
+// with allow_other_version).
+func writeOtherVersions(w http.ResponseWriter, e *torrent.OtherVersionsError) {
+	httpx.WriteJSON(w, http.StatusConflict, map[string]any{
+		"error": map[string]any{
+			"code":     "other_versions",
+			"message":  e.Error(),
+			"versions": e.Versions,
+			"adding":   e.Adding,
+		},
+	})
 }

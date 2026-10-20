@@ -401,6 +401,23 @@ Tags
 > has no pagination or filter, and at this order of magnitude it doesn't need it.
 > Multiple selection and pagination remain unimplemented (see §34).
 
+> **Implemented (Oct/2026, #37): "do I already have it?" before downloading.** Explore
+> and Add Torrent separate two situations:
+> - **The same file is already in the cluster:** "✓ in cluster", with no button and no
+>   2nd-copy offer. In the catalog, the match is the exact size in bytes plus name
+>   evidence (the catalog has no hash, and the item name isn't the torrent name). In Add,
+>   the file is skipped as "already in the cluster".
+> - **Another version of the same title** (another resolution, codec or release): the
+>   catalog card gets the **"You have it in 1080p x264"** badge, with the names in the
+>   tooltip. On download, a Portal dialog opens (`OtherVersionsDialog`, not
+>   `window.confirm`) with each cluster version (name, resolution, codec, size and Node)
+>   next to what is being added, and the **Cancel** / **Add anyway** options. Cancel is the
+>   initial focus and the Esc key. In an Add batch, the dialog comes up per item, and a
+>   cancelled item counts as "skipped".
+>
+> The rule lives in the Control Plane (contract in `13 - API.md`); the Portal only presents
+> it and resends with the confirmation.
+
 # **21. Torrent Details**
 Each Torrent must have a dedicated page.
 Suggested information:

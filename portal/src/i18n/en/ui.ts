@@ -9,4 +9,18 @@ export const ui: Catalog["ui"] = {
       label: "health",
     },
   },
+  otherVersions: {
+    title: "You already have this title",
+    summary: {
+      one: "The cluster already has one version of {title}. Add this one too?",
+      other: "The cluster already has {count} versions of {title}. Add this one too?",
+    },
+    inCluster: "Already in the cluster",
+    adding: "You're adding",
+    unknownResolution: "resolution ?",
+    unknownCodec: "codec ?",
+    onNode: "on {node}",
+    cancel: "Cancel",
+    confirm: "Add anyway",
+  },
 };

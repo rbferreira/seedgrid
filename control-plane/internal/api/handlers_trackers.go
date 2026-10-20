@@ -190,10 +190,12 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 		}
 		// Caches the download_link (server-side) for the seed to use without re-querying the tracker.
 		d.Torrents.RememberTrackerLinks(r.PathValue("id"), res.Links)
-		names, err := d.Torrents.ClusterNames(r.Context())
+		// The cluster's collection, read once for the whole page: it decides "in cluster" (the same
+		// file) and the other versions of each item's work (#37).
+		lib, err := d.Torrents.Library(r.Context())
 		if err != nil {
-			d.Logger.Error("cluster names for cross-referencing", "error", err)
-			names = nil // proceeds without cross-matching
+			d.Logger.Error("cluster collection for cross-referencing", "error", err)
+			lib = nil // proceeds without cross-matching
 		}
 
 		// Parallel enrichment (#12): TMDB for movie/show, IGDB for game, Open Library
@@ -227,7 +229,8 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 				"size": it.Size, "seeders": it.Seeders, "leechers": it.Leechers,
 				"times_completed": it.TimesCompleted, "tmdb_id": it.TMDB, "imdb_id": it.IMDB,
 				"year": it.Year, "details_link": it.DetailsLink,
-				"in_cluster": torrent.NameInCluster(it.Name, names),
+				"in_cluster":     inCluster(lib, it),
+				"other_versions": otherVersions(lib, it),
 				// Enriched fields (all optional — the UI handles absence with a fallback).
 				"media_type":        string(m.MediaType),
 				"title_pt":          m.Title,
@@ -245,6 +248,25 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 	}
 }
 
+// inCluster decides an item's "in cluster": the same FILE is already in the cluster (#37). Without
+// the item's size, it falls back to the old name-only match (#12).
+func inCluster(lib *torrent.Library, it unit3d.BrowseItem) bool {
+	if it.Size <= 0 {
+		return lib.NameMatch(it.Name)
+	}
+	return lib.HasFile(it.Size, it.Name, it.Files)
+}
+
+// otherVersions are the versions of the same work the cluster already has, minus the file itself:
+// they feed the card badge ("You have it in 1080p"). An empty list, never null (#37).
+func otherVersions(lib *torrent.Library, it unit3d.BrowseItem) []torrent.Version {
+	vs := lib.OtherVersions(it.Name, "", it.Size)
+	if vs == nil {
+		return []torrent.Version{}
+	}
+	return vs
+}
+
 // seedFetchBudget is the deadline for talking to the tracker in the seed — the ADR-040 §4 budget,
 // below the 30s WriteTimeout and the proxy's 60s on /api/. Without it, a tracker that hangs used
 // up the http.Client's 60s and the operator got the proxy's 502 instead of the reason (#35). A variable
@@ -252,12 +274,14 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 var seedFetchBudget = 25 * time.Second
 
 // handleSeedFromTracker downloads the .torrent of an item from the tracker catalog and adds it
-// to the cluster for seeding (ADR-020, backlog #12). Reuses the duplicate guard (#11): 409 if
-// it already exists (the Portal confirms and resends with allow_duplicate).
+// to the cluster for seeding (ADR-020, backlog #12). Reuses the add guards: 409 duplicate if the
+// file already exists (#11) and 409 other_versions if there's another version of the same work —
+// the Portal shows the versions and resends with allow_other_version (#37).
 func handleSeedFromTracker(d Deps) http.HandlerFunc {
 	type request struct {
-		TorrentID      string `json:"torrent_id"`
-		AllowDuplicate bool   `json:"allow_duplicate"`
+		TorrentID         string `json:"torrent_id"`
+		AllowDuplicate    bool   `json:"allow_duplicate"`
+		AllowOtherVersion bool   `json:"allow_other_version"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := httpx.OperatorFromContext(r.Context())
@@ -307,9 +331,14 @@ func handleSeedFromTracker(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadGateway, "fetch_failed", err.Error())
 			return
 		}
-		t, err := d.Torrents.AddFile(r.Context(), data, req.AllowDuplicate)
+		t, err := d.Torrents.AddFile(r.Context(), data, torrent.AddOptions{
+			AllowDuplicate: req.AllowDuplicate, AllowOtherVersion: req.AllowOtherVersion,
+		})
 		var dup *torrent.DuplicateError
+		var other *torrent.OtherVersionsError
 		switch {
+		case errors.As(err, &other):
+			writeOtherVersions(w, other)
 		case errors.As(err, &dup):
 			httpx.WriteJSON(w, http.StatusConflict, map[string]any{
 				"error": map[string]any{"code": "duplicate", "message": dup.Error(), "nodes": dup.Nodes, "existing": dup.Existing},

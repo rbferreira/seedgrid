@@ -97,7 +97,7 @@ func TestMigrationCancelHTTP(t *testing.T) {
 
 	startMigration := func(hash, name string) (torrent.Torrent, migration.Migration) {
 		t.Helper()
-		tr, err := torrents.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn="+name, "", false)
+		tr, err := torrents.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn="+name, "", torrent.AddOptions{AllowOtherVersion: true})
 		if err != nil {
 			t.Fatalf("add: %v", err)
 		}

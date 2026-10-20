@@ -1,10 +1,10 @@
 export const explore = {
   explore: {
     title: "Catálogo",
-    description: "Vitrine do tracker com pôster, título em português e ficha básica. O casamento \"já tenho\" é por nome (aproximado); duplicados são bloqueados no download. Metadados vêm do TMDB (filme/série), IGDB (jogo) e Open Library (livro/audiolivro) — quando o provider está sem chave, o card cai no modo simples.",
+    description: "Vitrine do tracker com pôster, título em português e ficha básica. \"✓ no cluster\" é o mesmo arquivo que você já tem; \"Você tem em …\" é outra versão do mesmo título, e o download mostra qual antes de perguntar. Metadados vêm do TMDB (filme/série), IGDB (jogo) e Open Library (livro/audiolivro) — quando o provider está sem chave, o card cai no modo simples.",
     noIntegration: "Nenhum tracker com integração de API. Cadastre um (source + token) em",
     trackersLink: "Configurações › Trackers",
-    confirmDuplicate: "Baixar mesmo assim uma 2ª cópia (em outro Node)?",
+    alreadyInCluster: "Este arquivo já está no cluster",
     loadMore: "Carregar mais",
     error: {
       listFailed: "Falha ao listar o catálogo",
@@ -56,6 +56,9 @@ export const explore = {
       openTracker: "Abrir no tracker",
       byAuthor: "por {author}",
       inCluster: "no cluster",
+      otherVersions: "Você tem em {versions}",
+      otherVersionsTooltip: "Já no cluster:",
+      otherVersionFallback: "outra versão",
       seedButton: "Baixar & Seedar",
       season: "Temporada {season}",
       seasonEpisode: "Temporada {season} · Ep. {episode}",

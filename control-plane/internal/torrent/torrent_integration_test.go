@@ -274,7 +274,7 @@ func TestAdd_SchedulesAndEnqueues(t *testing.T) {
 
 	svc := torrent.NewService(pool, scheduler.NewService(pool), command.NewService(pool), events.NewEmitter(pool))
 	magnet := "magnet:?xt=urn:btih:a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0&dn=Test"
-	tr, err := svc.Add(ctx, magnet, "", false)
+	tr, err := svc.Add(ctx, magnet, "", torrent.AddOptions{AllowOtherVersion: true})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestAddFile_SizeBeyondInt32(t *testing.T) {
 
 	const bigSize = int64(4897417867) // > math.MaxInt32 (2147483647) — reproduces the reported bug
 	data := makeTorrentBytesWithSize("big-movie.mkv", bigSize)
-	tr, err := svc.AddFile(ctx, data, false)
+	tr, err := svc.AddFile(ctx, data, torrent.AddOptions{AllowOtherVersion: true})
 	if err != nil {
 		t.Fatalf("AddFile with torrent > 2GiB: %v", err)
 	}
@@ -689,12 +689,12 @@ func TestAddDuplicateGuard(t *testing.T) {
 	svc := torrent.NewService(pool, scheduler.NewService(pool), command.NewService(pool), events.NewEmitter(pool))
 	magnet := "magnet:?xt=urn:btih:2222222222222222222222222222222222222222&dn=Dup"
 
-	if _, err := svc.Add(ctx, magnet, "", false); err != nil {
+	if _, err := svc.Add(ctx, magnet, "", torrent.AddOptions{AllowOtherVersion: true}); err != nil {
 		t.Fatalf("1º add: %v", err)
 	}
 	// 2nd add without allowDuplicate → DuplicateError with the Node listed.
 	var dup *torrent.DuplicateError
-	if _, err := svc.Add(ctx, magnet, "", false); !errors.As(err, &dup) {
+	if _, err := svc.Add(ctx, magnet, "", torrent.AddOptions{AllowOtherVersion: true}); !errors.As(err, &dup) {
 		t.Fatalf("2nd add = %v, want *DuplicateError", err)
 	}
 	if len(dup.Nodes) == 0 {
@@ -704,8 +704,72 @@ func TestAddDuplicateGuard(t *testing.T) {
 		t.Error("DuplicateError without Existing (torrent name already present)")
 	}
 	// 3rd add with allowDuplicate → passes (operator confirmed the 2nd copy).
-	if _, err := svc.Add(ctx, magnet, "", true); err != nil {
+	if _, err := svc.Add(ctx, magnet, "", torrent.AddOptions{AllowDuplicate: true, AllowOtherVersion: true}); err != nil {
 		t.Fatalf("add with allowDuplicate: %v", err)
+	}
+}
+
+// TestAdd_OtherVersionOfTheSameTitle covers #37: with one version of the work in the cluster,
+// adding ANOTHER version (another resolution and codec, another hash) returns OtherVersionsError
+// with what already exists — name, resolution, codec, size, Node. With AllowOtherVersion, it goes
+// through. A different work isn't affected.
+func TestAdd_OtherVersionOfTheSameTitle(t *testing.T) {
+	dsn := os.Getenv("SEEDGRID_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("SEEDGRID_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	if err := db.Migrate(dsn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := db.Connect(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	ctx := context.Background()
+
+	nodeSvc := node.NewService(pool, events.NewEmitter(pool))
+	if err := nodeSvc.EnsureDefaultCluster(ctx); err != nil {
+		t.Fatalf("cluster: %v", err)
+	}
+	if _, err := nodeSvc.Register(ctx, node.RegisterInput{Hostname: "other-version-node", Engine: "qbittorrent"}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	svc := torrent.NewService(pool, scheduler.NewService(pool), command.NewService(pool), events.NewEmitter(pool))
+
+	// A unique title per run: the test database is shared by the package's tests.
+	title := fmt.Sprintf("Test Work %d", time.Now().UnixNano())
+	hash := func(n int) string { return fmt.Sprintf("%040x", time.Now().UnixNano()+int64(n)) }
+	first := title + ".2019.1080p.BluRay.x264-GRP"
+	if _, err := svc.Add(ctx, "magnet:?xt=urn:btih:"+hash(1)+"&dn="+first, "", torrent.AddOptions{}); err != nil {
+		t.Fatalf("1st version: %v", err)
+	}
+
+	other := "magnet:?xt=urn:btih:" + hash(2) + "&dn=" + title + " 2019 720p WEB-DL x265-OTHER"
+	var ov *torrent.OtherVersionsError
+	if _, err := svc.Add(ctx, other, "", torrent.AddOptions{}); !errors.As(err, &ov) {
+		t.Fatalf("2nd version = %v, want *OtherVersionsError", err)
+	}
+	if len(ov.Versions) != 1 {
+		t.Fatalf("versions = %+v, want only the 1st", ov.Versions)
+	}
+	v := ov.Versions[0]
+	if v.Name != first || v.Resolution != "1080p" || v.Codec != "x264" || v.Node == "" {
+		t.Errorf("version = %+v, want name %q, 1080p, x264 and the Node", v, first)
+	}
+	if ov.Adding.Resolution != "720p" || ov.Adding.Codec != "x265" {
+		t.Errorf("adding = %+v, want 720p x265", ov.Adding)
+	}
+
+	// The operator saw it and confirmed: it goes in.
+	if _, err := svc.Add(ctx, other, "", torrent.AddOptions{AllowOtherVersion: true}); err != nil {
+		t.Fatalf("confirmed 2nd version: %v", err)
+	}
+
+	// A different work doesn't run into anything.
+	different := "magnet:?xt=urn:btih:" + hash(3) + "&dn=" + title + " Part 2 2021 1080p WEB-DL x264-GRP"
+	if _, err := svc.Add(ctx, different, "", torrent.AddOptions{}); err != nil {
+		t.Fatalf("different work: %v", err)
 	}
 }
 
@@ -735,7 +799,7 @@ func TestBackfillTorrentFile(t *testing.T) {
 	svc := torrent.NewService(pool, scheduler.NewService(pool), command.NewService(pool), events.NewEmitter(pool))
 	// Torrent added via magnet: created without .torrent persisted in the CP.
 	magnet := "magnet:?xt=urn:btih:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0&dn=Backfill"
-	tr, err := svc.Add(ctx, magnet, "", false)
+	tr, err := svc.Add(ctx, magnet, "", torrent.AddOptions{AllowOtherVersion: true})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -935,7 +999,7 @@ func TestAdd_AtomicWhenEnqueueFails(t *testing.T) {
 	sabotage(t, pool, "seedgrid_test_boom_add",
 		`NEW.type = 'add_torrent' AND NEW.payload::text LIKE '%`+hash+`%'`)
 
-	if _, err := svc.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn=Atomic", "", false); err == nil {
+	if _, err := svc.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn=Atomic", "", torrent.AddOptions{AllowOtherVersion: true}); err == nil {
 		t.Fatal("Add should fail with sabotaged enqueueing")
 	}
 
@@ -984,7 +1048,7 @@ func TestRemove_AtomicWhenEnqueueFails(t *testing.T) {
 	svc := torrent.NewService(pool, scheduler.NewService(pool), command.NewService(pool), events.NewEmitter(pool))
 
 	hash := "f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2" // exclusive to this test (atomic remove)
-	tr, err := svc.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn=AtomicRemove", "", false)
+	tr, err := svc.Add(ctx, "magnet:?xt=urn:btih:"+hash+"&dn=AtomicRemove", "", torrent.AddOptions{AllowOtherVersion: true})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}

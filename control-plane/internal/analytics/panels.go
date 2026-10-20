@@ -8,48 +8,18 @@ import (
 	"github.com/rbferreira/seedgrid/control-plane/internal/release"
 )
 
-// keyTitle groups copies of the same content.
+// duplicates groups by work (release.TitleKey: title, year, season/episode and part) and returns
+// the groups with more than one copy, from the one that frees the most space to the one that
+// frees the least.
 //
-// Reuses release.Parse (ADR-020) instead of a new parser: it already yields a clean title,
-// year and season/episode, and is already covered by tests. It was exactly the key used in the
-// manual cleanup on 06/09/2026, which found 36 groups in 983 torrents.
-//
-// Resolution stays OUT of the purpose key — it is precisely what distinguishes the copies
-// within a group.
-//
-// PART, on the other hand, is included: "The Batman Saga - Phase 1" and "- Phase 2" are different
-// works, and `release.cleanTitle` cuts both down to "The Batman Saga" when applying
-// the tracker's alternative title rule. Without the part number in the key, the dashboard said it could
-// free 3.25 GB by deleting Phase 2 (#172).
-type keyTitle struct {
-	title string
-	year  int
-	se    string
-	part  string
-}
-
-func keyOf(name string) keyTitle {
-	i := release.Parse(name)
-	title := strings.ToLower(strings.TrimSpace(i.Title))
-	if title == "" {
-		title = strings.ToLower(name)
-	}
-	se := ""
-	if i.Season > 0 {
-		se = fmt.Sprintf("S%02d", i.Season)
-		if i.Episode > 0 {
-			se += fmt.Sprintf("E%02d", i.Episode)
-		}
-	}
-	return keyTitle{title: title, year: i.Year, se: se, part: strings.ToLower(i.Part)}
-}
-
-// duplicates groups by (title, year, season/episode) and returns groups with more
-// than one copy, from the one that frees the most space to the one that frees the least.
+// The key is the same one as the other-version warning on add (#37), so Analytics and add never
+// disagree about what "the same title" is. It groups by the whole key, year included: the
+// missing-year tolerance of SameWork isn't transitive and can't be a map key — and a panel that
+// suggests deleting copies should err on the side of not grouping.
 func duplicates(all []Torrent) []DuplicateSet {
-	groups := map[keyTitle][]Torrent{}
+	groups := map[release.TitleKey][]Torrent{}
 	for _, t := range all {
-		k := keyOf(t.Name)
+		k := release.KeyOf(t.Name)
 		groups[k] = append(groups[k], t)
 	}
 	var out []DuplicateSet
@@ -75,8 +45,8 @@ func duplicates(all []Torrent) []DuplicateSet {
 		larger := release.Parse(copies[0].Name)
 		out = append(out, DuplicateSet{
 			Title:        larger.Title,
-			Year:         k.year,
-			SE:           k.se,
+			Year:         k.Year,
+			SE:           k.SE,
 			Part:         larger.Part,
 			Identical:    len(names) == 1 && len(sizes) == 1,
 			Copies:       copies,

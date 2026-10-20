@@ -138,10 +138,28 @@ The contract has two deliberate properties, and both exist because the search is
 
 The Portal displays the candidates and requires an explicit "publish anyway" before enabling the button — the same pattern as `allow_duplicate` in cluster duplicates (#11). The decision remains with the operator; the endpoint only ensures they are informed.
 
-**Seeding from the tracker catalog (#12, #35).** `POST /api/v1/trackers/{id}/seed` requires `trackers:seed`. Body: `{"torrent_id": "…", "allow_duplicate": false}`. It downloads the item's `.torrent`, using the `download_link` saved by browse or, without it, the `/api/torrents/{id}` query, and adds it to the cluster through the Scheduler. It answers `201` with the torrent. Talking to the tracker has a **25 s** deadline, the ADR-040 §4 budget: it stays below the 30 s `WriteTimeout` and the proxy's 60 s on `/api/`, so the operator gets the reason rather than the proxy's error. Errors:
+**Same file × another version (#37).** Two different questions, with different criteria:
+
+- **Same file:** on add, it is the same info_hash (the guard from #11, `409 duplicate`). In the catalog browse, which has no hash (`magnet_link` is `null` on private trackers), it is the **exact size in bytes** confirmed by name evidence: the same work, an item file named like the torrent (or inside its folder), or the name match from #12. That is browse's `in_cluster: true`. An item without a size falls back to the name-only match.
+- **Another version of the same work** (another resolution, codec or release): the same title key (`release.TitleKey`: normalized title without accents or punctuation, year, season/episode and part). A year missing on one side doesn't prevent the match; different years keep works apart. It is the same key as the Analytics duplicates panel (#172).
+
+`POST /api/v1/torrents` and `POST /api/v1/trackers/{id}/seed` accept `allow_other_version` (JSON; in multipart, a `"true"` form field). Without it, when the cluster already has another version of the work, the answer is `409 other_versions`:
+
+```json
+{"error": {"code": "other_versions", "message": "the cluster already has another version of this title: «…»",
+  "versions": [{"name": "…", "resolution": "1080p", "codec": "x264", "size_bytes": 13636235264, "node": "seedgrid-node-01"}],
+  "adding":   {"name": "…", "resolution": "720p",  "codec": "x264", "size_bytes": 3650722201, "node": ""}}}
+```
+
+`versions` comes from the largest to the smallest, and `adding` is what was being added (no Node, which the Scheduler hasn't chosen yet). The Portal shows both and resends with `allow_other_version: true` if the operator confirms. The check runs **after** the hash guard: an identical file is still `409 duplicate`. The API still accepts `allow_duplicate`, but the Portal no longer offers a 2nd copy: an identical file is "in cluster", and that's it.
+
+In browse (`GET /api/v1/trackers/{id}/browse`), each item carries `other_versions` (the same format as `versions`, an empty list when there are none) for the card's "You have it in 1080p" badge.
+
+**Seeding from the tracker catalog (#12, #35, #37).** `POST /api/v1/trackers/{id}/seed` requires `trackers:seed`. Body: `{"torrent_id": "…", "allow_other_version": false}`. It downloads the item's `.torrent`, using the `download_link` saved by browse or, without it, the `/api/torrents/{id}` query, and adds it to the cluster through the Scheduler. It answers `201` with the torrent. Talking to the tracker has a **25 s** deadline, the ADR-040 §4 budget: it stays below the 30 s `WriteTimeout` and the proxy's 60 s on `/api/`, so the operator gets the reason rather than the proxy's error. Errors:
 - `504 tracker_timeout`, with `error.params.seconds`: the tracker didn't answer in time. There is no second attempt with the `api_token`, because the token doesn't speed up a slow tracker and a retry would only double the load on it.
 - `502 fetch_failed`: the tracker refused the download, rate-limited it (`429`) or delivered something that isn't a `.torrent`. The message says which of the three.
-- `409 duplicate`: the torrent is already in the cluster; the Portal confirms and resends with `allow_duplicate`.
+- `409 duplicate`: the same file is already in the cluster; the Portal marks the item as "in cluster".
+- `409 other_versions`: the cluster already has another version of the work (see above).
 - `409 no_eligible_node` / `409 no_node_with_space`: the Scheduler found no eligible Node, or no Node with space.
 - `400 tracker_without_api`: the tracker has no `api_url` and token registered.
 
