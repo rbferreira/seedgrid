@@ -21,6 +21,7 @@ check() { # check <description> <command...>
 
 # Fake clone: only what bootstrap reads, with stubs in place of what it executes.
 # FAKE_PG_VOLUME=0 makes `docker volume inspect seedgrid-postgres-data` return "exists".
+# Every docker call lands in $T/docker.log; FAKE_PRUNE_FAIL=1 makes `docker image prune` fail.
 setup() {
   cleanup
   T="$(mktemp -d)"
@@ -31,7 +32,9 @@ setup() {
   printf '#!/bin/sh\necho v0.0.0-test\n' > "$T/scripts/version.sh"
   cat > "$T/stub/docker" <<'EOF'
 #!/bin/sh
+echo "$*" >> "$(dirname "$0")/../docker.log"
 if [ "$1" = volume ] && [ "$2" = inspect ]; then exit "${FAKE_PG_VOLUME:-1}"; fi
+if [ "$1" = image ] && [ "$2" = prune ] && [ "${FAKE_PRUNE_FAIL:-0}" = 1 ]; then exit 1; fi
 exit 0
 EOF
   printf '#!/bin/sh\necho "192.168.0.10 "\n' > "$T/stub/hostname"
@@ -121,7 +124,16 @@ setup
 (cd "$T" && env -u SUDO_USER FAKE_PG_VOLUME=1 PATH="$T/stub:$PATH" sh scripts/bootstrap-controller.sh > "$T/out" 2>&1) || true
 check "without sudo: instructs to validate without sudo" grep -q "Validate: sh scripts/acceptance.sh" "$T/out"
 
-# --- 7. acceptance.sh with unreadable .env says what to do -----------------------------
+# --- 7. The update removes only SeedGrid's previous images (#43) -------------------------
+setup
+run FAKE_PG_VOLUME=1
+check "prunes the untagged images carrying SeedGrid's label" grep -qx "image prune -f --filter label=seedgrid.image" "$T/docker.log"
+check "never prunes without the label (other workloads on the host)" sh -c "! grep -E 'prune' '$T/docker.log' | grep -qv 'label=seedgrid.image'"
+setup
+run FAKE_PG_VOLUME=1 FAKE_PRUNE_FAIL=1
+check "a failed cleanup doesn't fail the update" [ "$STATUS" -eq 0 ]
+
+# --- 8. acceptance.sh with unreadable .env says what to do -----------------------------
 # You can only make the file unreadable when the test doesn't run as root (root reads everything).
 if [ "$(id -u)" -ne 0 ]; then
   setup

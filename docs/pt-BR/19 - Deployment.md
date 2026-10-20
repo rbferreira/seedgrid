@@ -415,6 +415,8 @@ O `sudo` é para quem não está logado como `root`; sem privilégio o script pa
 
 **Atualização do Control Plane:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — o mesmo script da instalação. Ele reconstrói as imagens e recria só o que mudou; o `.env`, os segredos e os volumes (banco, métricas) são preservados. O `fetch --tags` garante que a versão exibida acompanhe a tag nova.
 
+**Limpeza depois da atualização (#43).** Cada atualização reconstrói as imagens, e as anteriores ficam no disco sem nome. No fim, o bootstrap roda `docker image prune -f --filter label=seedgrid.image`. As imagens de execução do SeedGrid levam esse label, então só elas saem; imagens sem nome de qualquer outra coisa do host não são tocadas. Falha na limpeza não falha a atualização. O cache de build do Docker não é limpo, pelo mesmo motivo: ele é compartilhado com os outros builds do host. Quem quiser recuperá-lo pode rodar à mão `docker builder prune --filter until=168h`, que mantém o cache da última semana para o próximo build continuar rápido. Imagens construídas antes desta mudança não têm o label e precisam ser removidas uma vez à mão (`docker image prune`).
+
 **Atualização dos Nodes:** pelo Portal — o Control Plane publica o binário novo do Agent e oferece o self-update por Node (ADR-027). Para o que não é o binário (rede, storage, compose do Engine), ver §50.4.
 
 > **Migrations aplicadas no boot.** Não há script `migrate` separado: o controller aplica as migrations goose embutidas (`control-plane/migrations/`, embed via `embed.go`) durante a inicialização. Subir uma versão nova do controller aplica automaticamente as migrations pendentes.

@@ -17,6 +17,8 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -o /out/seedgrid-controller ./cmd/seedgrid-controller
 
 FROM alpine:3.20
+# The label lets the bootstrap remove the previous build of this image, and only SeedGrid's (#43).
+LABEL seedgrid.image=controller
 RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 seedgrid
 USER seedgrid
 COPY --from=build /out/seedgrid-controller /usr/local/bin/seedgrid-controller

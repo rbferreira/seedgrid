@@ -2,6 +2,8 @@
 # The static build (portal/dist) is generated beforehand by scripts/build-portal.sh (docker run node).
 # Build context: repository root.
 FROM nginx:1.27-alpine
+# The label lets the bootstrap remove the previous build of this image, and only SeedGrid's (#43).
+LABEL seedgrid.image=portal
 COPY deploy/portal/nginx.conf /etc/nginx/conf.d/default.conf
 COPY portal/dist /usr/share/nginx/html
 EXPOSE 80

@@ -415,6 +415,8 @@ The `sudo` is for those not logged in as `root`; without privilege the script st
 
 **Control Plane update:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — the same script as installation. It rebuilds the images and recreates only what changed; the `.env`, the secrets and the volumes (database, metrics) are preserved. The `fetch --tags` ensures the displayed version tracks the new tag.
 
+**Cleanup after the update (#43).** Each update rebuilds the images, and the previous ones stay on disk untagged. At the end, the bootstrap runs `docker image prune -f --filter label=seedgrid.image`. SeedGrid's runtime images carry that label, so only they go; untagged images from anything else on the host aren't touched. A failed cleanup doesn't fail the update. The Docker build cache isn't cleared, for the same reason: it is shared with the host's other builds. Those who want to reclaim it can run `docker builder prune --filter until=168h` by hand, which keeps the last week's cache so the next build stays fast. Images built before this change have no label and have to be removed once by hand (`docker image prune`).
+
 **Node update:** via the Portal — the Control Plane publishes the new Agent binary and offers self-update per Node (ADR-027). For everything that is not the binary (network, storage, Engine compose), see §50.4.
 
 > **Migrations applied at boot.** There is no separate `migrate` script: the controller applies the embedded goose migrations (`control-plane/migrations/`, embedded via `embed.go`) during startup. Deploying a new controller version automatically applies pending migrations.
