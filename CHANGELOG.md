@@ -12,6 +12,9 @@ the configuration; each release says how to upgrade.
   `amd64` and `arm64` (`ghcr.io/rbferreira/seedgrid-controller` and `-portal`, tagged `X.Y.Z`, `X.Y`
   and `latest`). The Portal image carries the Agent of the same version for onboarding and
   self-update. The single Compose file that uses them comes next (#30).
+- Control Plane: the secret variables (`SEEDGRID_DATABASE_URL`, `SEEDGRID_AGENT_REGISTRATION_TOKEN`,
+  `SEEDGRID_INTEGRATION_TOKEN`, `SEEDGRID_ADMIN_PASSWORD`) also accept the `_FILE` form, reading the
+  value from a file (#30).
 - Portal: **Downloaded** shows when each torrent was added, sorts by it and filters by period
   (last 24 hours / 7 days / 30 days). The screen now opens newest first.
 - Portal: the theme can follow the operating system — a light / system / dark switch in the

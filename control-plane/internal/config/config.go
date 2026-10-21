@@ -35,16 +35,34 @@ type Config struct {
 	// catalog), not by this config — which is why they are no longer read here.
 }
 
+// secretVars are the variables that also accept the `_FILE` form (ADR-042): the value is read
+// from the file the variable names, the Docker convention for secrets kept out of the environment.
+var secretVars = []string{
+	"SEEDGRID_DATABASE_URL",
+	"SEEDGRID_AGENT_REGISTRATION_TOKEN",
+	"SEEDGRID_INTEGRATION_TOKEN",
+	"SEEDGRID_ADMIN_PASSWORD",
+}
+
 // Load reads the configuration from the environment and validates the required fields.
 func Load() (Config, error) {
+	secrets := make(map[string]string, len(secretVars))
+	for _, key := range secretVars {
+		v, err := getsecret(key)
+		if err != nil {
+			return Config{}, err
+		}
+		secrets[key] = v
+	}
+
 	c := Config{
-		DatabaseURL:            os.Getenv("SEEDGRID_DATABASE_URL"),
+		DatabaseURL:            secrets["SEEDGRID_DATABASE_URL"],
 		HTTPAddr:               getenv("SEEDGRID_HTTP_ADDR", ":8080"),
 		LogLevel:               getenv("SEEDGRID_LOG_LEVEL", "info"),
-		AgentRegistrationToken: os.Getenv("SEEDGRID_AGENT_REGISTRATION_TOKEN"),
-		IntegrationToken:       os.Getenv("SEEDGRID_INTEGRATION_TOKEN"),
+		AgentRegistrationToken: secrets["SEEDGRID_AGENT_REGISTRATION_TOKEN"],
+		IntegrationToken:       secrets["SEEDGRID_INTEGRATION_TOKEN"],
 		AdminUsername:          getenv("SEEDGRID_ADMIN_USERNAME", "admin"),
-		AdminPassword:          os.Getenv("SEEDGRID_ADMIN_PASSWORD"),
+		AdminPassword:          secrets["SEEDGRID_ADMIN_PASSWORD"],
 		PrometheusURL:          getenv("SEEDGRID_PROMETHEUS_URL", "http://seedgrid-prometheus:9090"),
 		PromTargetsFile:        getenv("SEEDGRID_PROM_TARGETS_FILE", ""),
 		MigrationPort:          getenvInt("SEEDGRID_MIGRATION_PORT", 6900),
@@ -64,6 +82,25 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
 	}
 	return c, nil
+}
+
+// getsecret reads a secret: KEY wins when set, otherwise the file named by KEY_FILE. The trailing
+// newline an editor or `echo` leaves at the end of the file is not part of the value. A KEY_FILE
+// that cannot be read is an error, not an empty value: the operator pointed at a file, and
+// starting without it (an open webhook, a missing password) would hide the mistake.
+func getsecret(key string) (string, error) {
+	if v := os.Getenv(key); v != "" {
+		return v, nil
+	}
+	path := os.Getenv(key + "_FILE")
+	if path == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the path comes from the operator's own configuration
+	if err != nil {
+		return "", fmt.Errorf("%s_FILE: %w", key, err)
+	}
+	return strings.TrimRight(string(b), "\r\n"), nil
 }
 
 func getenv(key, def string) string {
