@@ -104,12 +104,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: bash -n / sh -n
         run: |
-          for f in scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh scripts/node-artifacts.sh scripts/build-portal.sh; do
+          for f in scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh scripts/node-artifacts.sh scripts/build-portal.sh scripts/test-compose.sh; do
             bash -n "$f" && sh -n "$f"
           done
       - name: shellcheck (install scripts)
         # -S warning: the baseline has old style notes; what must not get in is warning/error.
-        run: shellcheck -s sh -S warning scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh scripts/node-artifacts.sh scripts/build-portal.sh
+        run: shellcheck -s sh -S warning scripts/bootstrap-node.sh scripts/test-bootstrap-node.sh deploy/agent/seedgrid-storage-reattach.sh scripts/check-homelab.sh scripts/test-check-homelab.sh scripts/bootstrap-controller.sh scripts/test-bootstrap-controller.sh scripts/acceptance.sh scripts/check-docs-parity.sh scripts/test-check-docs-parity.sh scripts/node-artifacts.sh scripts/build-portal.sh scripts/test-compose.sh
       - name: bootstrap-node.sh tests
         # Bootstrap functions against ip/nmcli/networkctl stubs (see the script header).
         run: sh scripts/test-bootstrap-node.sh

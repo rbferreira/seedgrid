@@ -7,9 +7,8 @@
 #
 # Security (fix/c1-observability-bind-localhost):
 #   Prometheus and Alertmanager map ports only to 127.0.0.1 — inaccessible
-#   from the LAN. Node Exporter listens on the seedgrid-core network gateway (172.18.0.1),
-#   reachable by Prometheus within the same network but unreachable from the LAN
-#   (the LAN has no route to the Docker network, 172.18.0.0/16).
+#   from the LAN. Node Exporter publishes no port at all: Prometheus reaches it on the
+#   seedgrid-core network, by name (ADR-042).
 
 name: seedgrid-observability
 
@@ -52,9 +51,11 @@ services:
       # Bind only to 127.0.0.1 — no network exposure.
       - "127.0.0.1:9093:9093"
 
-  # Hardware/OS metrics from the Control Plane host. network_mode host → exposes :9100
-  # on the CT itself. Listens on the seedgrid-core network gateway (172.18.0.1),
-  # accessible by Prometheus (same network) but unreachable from the LAN.
+  # Hardware/OS metrics from the Control Plane host, read from the host's /, /proc and /sys
+  # (read-only). It sits on seedgrid-core like the rest, without a published port (ADR-042):
+  # until #30 it ran on the host network listening on 172.18.0.1, an address that only
+  # existed when Docker happened to give that range to seedgrid-core. Accepted cost: the
+  # network counters are the container's, not the host's.
   node-exporter:
     image: prom/node-exporter:latest
     container_name: seedgrid-node-exporter
@@ -66,9 +67,9 @@ services:
       - "--path.rootfs=/host"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--web.listen-address=172.18.0.1:9100"
-    network_mode: host
     pid: host
+    networks:
+      - seedgrid-core
     volumes:
       - "/:/host:ro,rslave"
 
@@ -76,11 +77,6 @@ networks:
   seedgrid-core:
     name: seedgrid-core
     external: true
-    # Fixed subnet to ensure the gateway (172.18.0.1) never changes between
-    # network recreations. Node Exporter listens on this IP.
-    ipam:
-      config:
-        - subnet: 172.18.0.0/16
   observability:
     name: seedgrid-observability
 
