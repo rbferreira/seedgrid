@@ -1,0 +1,123 @@
+name: Release images
+
+# ADR-042: the controller and Portal images are published to GHCR only from a release tag.
+# On a pull request that touches what goes into them, the same images are built for both
+# architectures and checked, without publishing, so a broken Dockerfile shows up before a tag.
+on:
+  push:
+    tags: ["v*.*.*"]
+  pull_request:
+    paths:
+      - control-plane/**
+      - agent/**
+      - portal/**
+      - deploy/portal/**
+      - deploy/agent/**
+      - scripts/bootstrap-node.sh
+      - scripts/node-artifacts.sh
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    name: Images (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: controller
+            context: control-plane
+            file: control-plane/Dockerfile
+          - image: portal
+            context: .
+            file: deploy/portal/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: version
+        id: version
+        # The tag on a release (v0.2.0); on a pull request, a version that cannot be mistaken for one.
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then v="$GITHUB_REF_NAME"; else v="pr-${{ github.event.number }}"; fi
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/seedgrid-${{ matrix.image }}
+          # 0.2.0, 0.2 and latest; a pre-release (0.2.0-rc.1) gets only its exact tag.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=seedgrid-${{ matrix.image }}
+
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build (and publish on a tag)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: load the amd64 image for the checks
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          load: true
+          tags: seedgrid-${{ matrix.image }}:check
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      - name: check the controller
+        if: matrix.image == 'controller'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          docker create --name sg-check-controller seedgrid-controller:check >/dev/null
+          docker cp sg-check-controller:/usr/local/bin/seedgrid-controller ./controller
+          file ./controller | grep -q "x86-64.*statically linked"
+          # The first log line names the version; with no database to reach, the process then exits.
+          log="$(timeout 20 docker run --rm -e SEEDGRID_DATABASE_URL=postgres://x:x@127.0.0.1:1/x -e SEEDGRID_AGENT_REGISTRATION_TOKEN=x -e SEEDGRID_ADMIN_PASSWORD=x seedgrid-controller:check 2>&1 || true)"
+          echo "$log" | head -3
+          echo "$log" | grep -q "starting seedgrid-controller.*$VERSION"
+          test "$(docker inspect -f '{{.Config.User}}' seedgrid-controller:check)" = "65532"
+
+      - name: check the Node artifacts in the Portal
+        if: matrix.image == 'portal'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          docker create --name sg-check-portal seedgrid-portal:check >/dev/null
+          docker cp sg-check-portal:/usr/share/nginx/html ./html
+          test -f html/index.html
+          cd html/node
+          for f in bootstrap-node.sh docker-compose.yml seedgrid-agent.service seedgrid-storage-reattach.sh \
+                   seedgrid-storage-reattach.service 99-seedgrid-storage.rules; do test -f "$f"; done
+          file seedgrid-agent-amd64 | grep -q "x86-64"
+          file seedgrid-agent-arm64 | grep -q "ARM aarch64"
+          jq -e --arg v "$VERSION" '.version == $v' agents.json
+          for arch in amd64 arm64; do
+            jq -e --arg a "$arch" --arg s "$(sha256sum "seedgrid-agent-$arch" | cut -d' ' -f1)" \
+              '.binaries[$a].file == "seedgrid-agent-\($a)" and .binaries[$a].sha256 == $s' agents.json
+          done

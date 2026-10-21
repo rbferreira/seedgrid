@@ -1,26 +1,29 @@
-# SeedGrid Control Plane — build multi-stage
-# Builds a static binary and runs it in a minimal image.
+# SeedGrid Control Plane — multi-stage build, the image published on every release (ADR-042).
+# The build stage runs on the build machine's platform and Go cross-compiles to the target
+# one, so a multi-arch build needs no emulation.
 
-FROM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
-RUN apk add --no-cache git
 
-# Source code
+# Dependencies first, so a source change does not download them again. go.sum is committed:
+# the build uses exactly the versions in the repository.
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
 
-# Resolves dependencies and generates go.sum (network available during build).
-RUN go mod tidy
-
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath \
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/seedgrid-controller ./cmd/seedgrid-controller
 
-FROM alpine:3.20
+# Same base as Dockerfile.runtime, so both paths run as the same user (UID 65532, the one
+# bootstrap-controller.sh gives the targets volume to). distroless/static carries the CA
+# certificates and the time zones the controller needs.
+FROM gcr.io/distroless/static:nonroot
 # The label lets the bootstrap remove the previous build of this image, and only SeedGrid's (#43).
 LABEL seedgrid.image=controller
-RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 seedgrid
-USER seedgrid
 COPY --from=build /out/seedgrid-controller /usr/local/bin/seedgrid-controller
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/seedgrid-controller"]

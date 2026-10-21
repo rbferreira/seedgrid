@@ -8,6 +8,10 @@ the configuration; each release says how to upgrade.
 ## [Unreleased]
 
 ### Added
+- Release images: every `vX.Y.Z` tag publishes the controller and Portal images to GHCR for
+  `amd64` and `arm64` (`ghcr.io/rbferreira/seedgrid-controller` and `-portal`, tagged `X.Y.Z`, `X.Y`
+  and `latest`). The Portal image carries the Agent of the same version for onboarding and
+  self-update. The single Compose file that uses them comes next (#30).
 - Portal: **Downloaded** shows when each torrent was added, sorts by it and filters by period
   (last 24 hours / 7 days / 30 days). The screen now opens newest first.
 - Portal: the theme can follow the operating system — a light / system / dark switch in the
@@ -24,6 +28,9 @@ the configuration; each release says how to upgrade.
   the Portal now uses the same fields.
 
 ### Fixed
+- Control Plane: building the controller with `docker compose up --build` gave it a different user
+  (UID 10001) from the one the bootstrap gives the Prometheus targets volume to (65532), so on that
+  path it could not write the Nodes' scrape targets. Both Dockerfiles now run it as 65532.
 - Portal: the sidebar language list no longer truncates in English, and scrollbars follow the
   theme (thin, transparent track) instead of the browser's wide grey bar.
 - Audit: requesting an Agent update and seeding from a tracker say which Node, versions, torrent

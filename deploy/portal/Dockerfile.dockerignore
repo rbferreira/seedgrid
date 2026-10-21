@@ -1,0 +1,7 @@
+# Used only by deploy/portal/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# Dockerfile.runtime needs portal/dist, so these rules cannot live in a root .dockerignore.
+**/node_modules
+portal/dist
+agent/bin
+control-plane/bin
+.git
