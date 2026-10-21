@@ -7,6 +7,20 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-21
+
+The Control Plane can now be installed from published images with a single Compose file — see the
+Quick start in the README.
+
+### Upgrading
+- **Installed with `bootstrap-controller.sh`:** update as before (`git pull && git fetch --tags &&
+  sh scripts/bootstrap-controller.sh`). The host's node-exporter moves off `172.18.0.1` and the
+  bootstrap restarts Prometheus and Alertmanager so they pick up the new configuration.
+- **Moving to the Compose file:** copy `deploy/control-plane/.env` next to `compose.yaml`, run
+  `docker compose down` in `deploy/control-plane`, `deploy/observability` and `deploy/portal`, then
+  `docker compose up -d`. The database, the metrics and the tokens are kept (Deployment §43).
+- **Nodes:** update the Agent from the Portal, as usual.
+
 ### Added
 - `deploy/compose.yaml`: the whole Control Plane from the published images in one file, with only
   `SEEDGRID_ADMIN_PASSWORD` to set. The other secrets are generated on the first start into the
@@ -105,5 +119,6 @@ coordinates several **Seed Nodes**, each running a Torrent Engine (qBittorrent) 
   boundaries, commit message format and the code language (comments, messages and identifiers
   in English).
 
-[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.1.0
