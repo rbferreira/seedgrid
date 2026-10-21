@@ -447,6 +447,8 @@ Configuração sempre externa, via `.env` gerados dos `.env.example`.
 
 > No compose, `SEEDGRID_DATABASE_URL` é derivada de `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` (definidos no `.env`).
 
+**Segredos em arquivo (#30).** `SEEDGRID_DATABASE_URL`, `SEEDGRID_AGENT_REGISTRATION_TOKEN`, `SEEDGRID_INTEGRATION_TOKEN` e `SEEDGRID_ADMIN_PASSWORD` também aceitam a variante `_FILE`. É a convenção do Docker para manter segredos fora das variáveis de ambiente. Por exemplo, `SEEDGRID_ADMIN_PASSWORD_FILE=/run/secrets/admin-password` lê o valor desse arquivo. Se as duas formas forem definidas, a variável normal tem prioridade. A quebra de linha no fim do arquivo não faz parte do valor. Um `_FILE` que não pode ser lido impede o controller de subir, com um erro que nomeia a variável.
+
 **Agent** (`/etc/seedgrid-agent.env` no Seed Node; ver `agent/internal/config/config.go`). Desde a **ADR-039** (#144) o `.env` guarda só **identidade e máquina** — URL do Control Plane, credenciais, portas, caminhos, nome do container do Engine. O **comportamento** (intervalos, nível de log, fila do Engine) vem do Control Plane e o env dele é só **fallback** (tabela seguinte).
 
 | Variável | Default | Obrigatória | Descrição |
