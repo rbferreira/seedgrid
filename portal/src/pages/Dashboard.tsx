@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { PillSwitch } from "../components/PillSwitch";
+import { refreshGuard } from "../lib/refresh-guard";
 import {
   getNodesAndMode,
   setClusterMode,
@@ -195,8 +196,11 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
   const [gate, setGate] = useState<ClusterMode>("full_auto");
   const [agentRel, setAgentRel] = useState<AgentRelease | null>(null);
   const [modeBusy, setModeBusy] = useState(false);
+  // A timer refresh that read the mode before a switch must not paint it back (#34).
+  const [guard] = useState(refreshGuard);
 
   const load = useCallback(async () => {
+    const current = guard.begin();
     try {
       // agentRel comes null when orchestrated update is not configured
       // (empty agent.artifacts_url, ADR-027) — the Agent column only shows the version, no badge.
@@ -206,6 +210,7 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
         getAlerts(false),
         getAgentAvailable(),
       ]);
+      if (!current()) return;
       setNodes(n.data);
       setGate(n.cluster_operation_mode);
       setTorrents(tData);
@@ -218,13 +223,14 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
         onLogout();
         return;
       }
-      setError(t("dashboard.dashboard.loadError"));
+      if (current()) setError(t("dashboard.dashboard.loadError"));
     }
-  }, [onLogout, t]);
+  }, [guard, onLogout, t]);
 
   // Switch the global gate (Full auto/Flex) and the per-Node mode (SG/Manual) — ADR-024.
   const changeGate = async (mode: ClusterMode) => {
     setModeBusy(true);
+    guard.changed();
     try {
       await setClusterMode(mode);
       await load();
@@ -236,6 +242,7 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
   };
   const changeNodeMode = async (id: string, mode: NodeMode) => {
     setModeBusy(true);
+    guard.changed();
     try {
       await setNodeMode(id, mode);
       await load();
