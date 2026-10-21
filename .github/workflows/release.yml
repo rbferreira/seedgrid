@@ -3,6 +3,8 @@ name: Release images
 # ADR-042: the controller and Portal images are published to GHCR only from a release tag.
 # On a pull request that touches what goes into them, the same images are built for both
 # architectures and checked, without publishing, so a broken Dockerfile shows up before a tag.
+# Both paths then start deploy/compose.yaml on a clean machine; on a tag, only after that does
+# the GitHub release get the compose.yaml pinned to its version.
 on:
   push:
     tags: ["v*.*.*"]
@@ -13,8 +15,11 @@ on:
       - portal/**
       - deploy/portal/**
       - deploy/agent/**
+      - deploy/compose.yaml
+      - deploy/observability/**
       - scripts/bootstrap-node.sh
       - scripts/node-artifacts.sh
+      - scripts/test-compose.sh
       - .github/workflows/release.yml
 
 permissions:
@@ -121,3 +126,98 @@ jobs:
             jq -e --arg a "$arch" --arg s "$(sha256sum "seedgrid-agent-$arch" | cut -d' ' -f1)" \
               '.binaries[$a].file == "seedgrid-agent-\($a)" and .binaries[$a].sha256 == $s' agents.json
           done
+
+  compose:
+    name: Compose stack
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: images under test
+        id: img
+        # On a tag, the images just published; on a pull request, the same images built here.
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "version=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=ci" >> "$GITHUB_OUTPUT"
+            echo "version=pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: github.event_name != 'push'
+
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build the controller image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: control-plane
+          file: control-plane/Dockerfile
+          platforms: linux/amd64
+          build-args: VERSION=${{ steps.img.outputs.version }}
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/seedgrid-controller:ci
+          cache-from: type=gha,scope=controller
+
+      - name: build the Portal image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/portal/Dockerfile
+          platforms: linux/amd64
+          build-args: VERSION=${{ steps.img.outputs.version }}
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/seedgrid-portal:ci
+          cache-from: type=gha,scope=portal
+
+      - name: start the stack and check it
+        env:
+          SEEDGRID_VERSION: ${{ steps.img.outputs.tag }}
+          EXPECT_VERSION: ${{ steps.img.outputs.version }}
+        run: sh scripts/test-compose.sh
+
+  release:
+    name: GitHub release
+    if: github.event_name == 'push'
+    needs: compose
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: compose.yaml pinned to this release
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          sed "s/SEEDGRID_VERSION:-latest}/SEEDGRID_VERSION:-$v}/" deploy/compose.yaml > compose.yaml
+          test "$(grep -c "SEEDGRID_VERSION:-$v}" compose.yaml)" = 2
+
+      - name: release notes from the CHANGELOG
+        # The section of this version; a release without one fails here, before anything is published.
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v h="## [$v]" 'index($0, h) == 1 { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md > notes.md
+          test -s notes.md
+
+      - name: publish the release with compose.yaml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" compose.yaml --clobber
+          else
+            pre=""
+            case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+            # shellcheck disable=SC2086 # $pre is empty or one flag
+            gh release create "$GITHUB_REF_NAME" compose.yaml --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md $pre
+          fi

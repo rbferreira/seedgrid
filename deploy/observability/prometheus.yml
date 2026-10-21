@@ -1,6 +1,6 @@
 # SeedGrid — Prometheus configuration (Monitoring.md).
-# Node Exporter listens on the seedgrid-core network gateway (172.18.0.1),
-# accessible by Prometheus but unreachable from the LAN.
+# deploy/compose.yaml carries a copy of this file inline; scripts/test-compose.sh fails if
+# the two differ.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
@@ -21,12 +21,12 @@ scrape_configs:
       - targets: ["seedgrid-controller:8080"]
 
   # node-exporter on each Seed Node/host (hardware/OS metrics).
-  # The Control Plane host (113) is fixed infra → static. Seed Nodes are
+  # The Control Plane host is fixed infra → static, by container name. Seed Nodes are
   # discovered via file_sd: the CP writes nodes.json (ADR-017) and Prometheus
   # reloads automatically — a new Node appears without editing this config.
   - job_name: node
     static_configs:
-      - targets: ["172.18.0.1:9100"]
+      - targets: ["seedgrid-node-exporter:9100"]
         labels: { instance: seedgrid-controller }
     file_sd_configs:
       - files: ["/etc/prometheus/targets/nodes.json"]

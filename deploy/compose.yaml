@@ -1,0 +1,306 @@
+# SeedGrid — Control Plane from the published images (ADR-042).
+#
+# One file, nothing else next to it:
+#   1. Put this file in a directory of its own.
+#   2. Create a .env next to it with the admin password you will type into the Portal:
+#        SEEDGRID_ADMIN_PASSWORD=<a password>
+#   3. docker compose up -d
+# The Portal answers on port 80 (SEEDGRID_HTTP_PORT changes it). Requires Docker Compose
+# 2.23.1 or later, for the inline configuration below.
+#
+# The database password, the Agent registration token and the internal webhook token are
+# generated on the first start into the `seedgrid-secrets` volume. Back that volume up with
+# the database: without it, the controller cannot open its own database.
+#
+# Update: download the compose.yaml of the new release (or set SEEDGRID_VERSION in .env), then
+#   docker compose pull && docker compose up -d
+#
+# Coming from scripts/bootstrap-controller.sh: copy deploy/control-plane/.env here, run
+# `docker compose down` in deploy/control-plane, deploy/observability and deploy/portal, then
+# `docker compose up -d` here. The volumes keep their names, and the init service takes the
+# existing passwords and tokens from that .env instead of generating new ones.
+
+name: seedgrid
+
+services:
+  # One-shot: writes what the operator never types and gives the volumes to the users that
+  # write them. It never overwrites a value that already exists.
+  init:
+    image: alpine:3.20
+    restart: "no"
+    environment:
+      # Only read on the first start, and only when set: an install coming from the bootstrap
+      # keeps the values its database and Nodes already use.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      SEEDGRID_AGENT_REGISTRATION_TOKEN: ${SEEDGRID_AGENT_REGISTRATION_TOKEN:-}
+      SEEDGRID_INTEGRATION_TOKEN: ${SEEDGRID_INTEGRATION_TOKEN:-}
+      POSTGRES_USER: ${POSTGRES_USER:-seedgrid}
+      POSTGRES_DB: ${POSTGRES_DB:-seedgrid}
+    volumes:
+      - secrets:/secrets
+      - prom-targets:/targets
+    command:
+      - sh
+      - -euc
+      - |
+        # keep <file> <value>: writes the value (or a random one) only if the file is empty.
+        keep() {
+          [ -s "/secrets/$$1" ] && return 0
+          v="$$2"
+          from="from the environment"
+          case "$$v" in '' | change-*)
+            v="$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            from="generated" ;;
+          esac
+          printf '%s' "$$v" > "/secrets/$$1"
+          echo "$$1: $$from"
+        }
+        keep postgres-password "$$POSTGRES_PASSWORD"
+        keep agent-registration-token "$$SEEDGRID_AGENT_REGISTRATION_TOKEN"
+        keep integration-token "$$SEEDGRID_INTEGRATION_TOKEN"
+        # Derived, so it always follows the password file.
+        printf 'postgres://%s:%s@postgres:5432/%s?sslmode=disable' \
+          "$$POSTGRES_USER" "$$(cat /secrets/postgres-password)" "$$POSTGRES_DB" > /secrets/database-url
+        # Each file readable only by the container that needs it: Postgres runs as 999 and
+        # the controller as 65532. Alertmanager (nobody) and the controller share the
+        # webhook token.
+        chmod 755 /secrets
+        chown 999:999 /secrets/postgres-password
+        chown 65532:65532 /secrets/database-url /secrets/agent-registration-token
+        chmod 400 /secrets/postgres-password /secrets/database-url /secrets/agent-registration-token
+        chown 0:0 /secrets/integration-token
+        chmod 444 /secrets/integration-token
+        # The controller writes the Nodes' scrape targets here (ADR-017).
+        chown -R 65532:65532 /targets
+
+  postgres:
+    # Pinned to the major version: the data directory belongs to it.
+    image: postgres:17
+    container_name: seedgrid-postgres
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-seedgrid}
+      POSTGRES_USER: ${POSTGRES_USER:-seedgrid}
+      POSTGRES_PASSWORD_FILE: /run/secrets/seedgrid/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - secrets:/run/secrets/seedgrid:ro
+    networks:
+      - seedgrid-core
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seedgrid} -d ${POSTGRES_DB:-seedgrid}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  controller:
+    image: ghcr.io/rbferreira/seedgrid-controller:${SEEDGRID_VERSION:-latest}
+    container_name: seedgrid-controller
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      SEEDGRID_DATABASE_URL_FILE: /run/secrets/seedgrid/database-url
+      SEEDGRID_AGENT_REGISTRATION_TOKEN_FILE: /run/secrets/seedgrid/agent-registration-token
+      SEEDGRID_INTEGRATION_TOKEN_FILE: /run/secrets/seedgrid/integration-token
+      SEEDGRID_ADMIN_USERNAME: ${SEEDGRID_ADMIN_USERNAME:-admin}
+      # Only used to create the admin on the first start; later changes are made in the Portal.
+      SEEDGRID_ADMIN_PASSWORD: ${SEEDGRID_ADMIN_PASSWORD:?set SEEDGRID_ADMIN_PASSWORD in .env}
+      SEEDGRID_LOG_LEVEL: ${SEEDGRID_LOG_LEVEL:-info}
+      SEEDGRID_PROMETHEUS_URL: http://seedgrid-prometheus:9090
+      SEEDGRID_PROM_TARGETS_FILE: /targets/nodes.json
+      # Where the Nodes download the Agent from, e.g. http://<this host>/node. Can also be set
+      # later in the Portal (Settings › Agent); empty disables updates from the Portal.
+      SEEDGRID_AGENT_ARTIFACTS_URL: ${SEEDGRID_AGENT_ARTIFACTS_URL:-}
+    volumes:
+      - prom-targets:/targets
+      - secrets:/run/secrets/seedgrid:ro
+    networks:
+      - seedgrid-core
+
+  portal:
+    image: ghcr.io/rbferreira/seedgrid-portal:${SEEDGRID_VERSION:-latest}
+    container_name: seedgrid-portal
+    restart: unless-stopped
+    depends_on:
+      - controller
+    ports:
+      # The only published port. The Agents also talk to the Control Plane through it.
+      - "${SEEDGRID_HTTP_PORT:-80}:80"
+    networks:
+      - seedgrid-core
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: seedgrid-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+      - source: prometheus-rules
+        target: /etc/prometheus/rules.yml
+    volumes:
+      - prometheus-data:/prometheus
+      # Seed Node targets written by the Control Plane (file_sd, ADR-017).
+      - prom-targets:/etc/prometheus/targets:ro
+    networks:
+      - seedgrid-core
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    container_name: seedgrid-alertmanager
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    configs:
+      - source: alertmanager
+        target: /etc/alertmanager/alertmanager.yml
+    volumes:
+      - secrets:/etc/alertmanager/secrets:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - seedgrid-core
+
+  # Hardware/OS metrics from this host, read from its /, /proc and /sys (read-only). No
+  # published port: Prometheus reaches it by name. The network counters are the container's.
+  # Plain `ro`, not `rslave`: on hosts whose / is not a shared mount (several NAS systems),
+  # Docker refuses rslave and the container would not start.
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: seedgrid-node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    pid: host
+    volumes:
+      - "/:/host:ro"
+    networks:
+      - seedgrid-core
+
+networks:
+  seedgrid-core:
+    name: seedgrid-core
+
+volumes:
+  # The same names as an install made by scripts/bootstrap-controller.sh.
+  postgres-data:
+    name: seedgrid-postgres-data
+  prometheus-data:
+    name: seedgrid-prometheus-data
+  alertmanager-data:
+    name: seedgrid-alertmanager-data
+  prom-targets:
+    name: seedgrid-prom-targets
+  secrets:
+    name: seedgrid-secrets
+
+# Copies of deploy/observability/*.yml (`$$` is how Compose writes a literal `$`).
+# scripts/test-compose.sh fails if they drift.
+configs:
+  prometheus:
+    content: |
+      # SeedGrid — Prometheus configuration (Monitoring.md).
+      # deploy/compose.yaml carries a copy of this file inline; scripts/test-compose.sh fails if
+      # the two differ.
+      global:
+        scrape_interval: 15s
+        scrape_timeout: 10s
+
+      rule_files:
+        - /etc/prometheus/rules.yml
+
+      alerting:
+        alertmanagers:
+          - static_configs:
+              - targets: ["seedgrid-alertmanager:9093"]
+
+      scrape_configs:
+        # Control Plane: Cluster metrics (seedgrid_*) + Go runtime.
+        - job_name: seedgrid-controller
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["seedgrid-controller:8080"]
+
+        # node-exporter on each Seed Node/host (hardware/OS metrics).
+        # The Control Plane host is fixed infra → static, by container name. Seed Nodes are
+        # discovered via file_sd: the CP writes nodes.json (ADR-017) and Prometheus
+        # reloads automatically — a new Node appears without editing this config.
+        - job_name: node
+          static_configs:
+            - targets: ["seedgrid-node-exporter:9100"]
+              labels: { instance: seedgrid-controller }
+          file_sd_configs:
+            - files: ["/etc/prometheus/targets/nodes.json"]
+
+        - job_name: prometheus
+          static_configs:
+            - targets: ["localhost:9090"]
+  prometheus-rules:
+    content: |
+      # SeedGrid — metric alert rules (evaluated by Prometheus, ADR-016).
+      # They fire to Alertmanager, which sends a webhook to the Control Plane (becomes a SeedGrid alert).
+      groups:
+        - name: seedgrid-host
+          rules:
+            - alert: NodeExporterDown
+              expr: up{job="node"} == 0
+              for: 1m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Host metrics unavailable on {{ $$labels.instance }}"
+
+            - alert: DiskSpaceLow
+              expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Low disk on {{ $$labels.instance }} (under 15% free on /)"
+
+            - alert: HighMemory
+              expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "High memory on {{ $$labels.instance }} (above 90%)"
+  alertmanager:
+    content: |
+      # SeedGrid — Alertmanager. Routes all alerts by metric to a webhook in the
+      # Control Plane, which persists them as SeedGrid alerts (shown in the Portal).
+      route:
+        receiver: seedgrid-cp
+        group_by: ["alertname", "instance"]
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 1h
+
+      receivers:
+        - name: seedgrid-cp
+          webhook_configs:
+            # Internal Control Plane endpoint (seedgrid-core network). send_resolved=true
+            # so the CP also resolves the alert when the condition normalizes.
+            - url: http://seedgrid-controller:8080/api/v1/integrations/alertmanager
+              send_resolved: true
+              # Shared secret for internal webhooks (#116); the file is generated by
+              # scripts/bootstrap-controller.sh in deploy/observability/secrets/ (gitignored),
+              # or by the init service of deploy/compose.yaml.
+              http_config:
+                authorization:
+                  type: Bearer
+                  credentials_file: /etc/alertmanager/secrets/integration-token

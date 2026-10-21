@@ -8,6 +8,10 @@ the configuration; each release says how to upgrade.
 ## [Unreleased]
 
 ### Added
+- `deploy/compose.yaml`: the whole Control Plane from the published images in one file, with only
+  `SEEDGRID_ADMIN_PASSWORD` to set. The other secrets are generated on the first start into the
+  `seedgrid-secrets` volume; only the Portal publishes a port (`SEEDGRID_HTTP_PORT`, default `80`). An
+  install made by `bootstrap-controller.sh` can move to it and keep its database and metrics (#30).
 - Release images: every `vX.Y.Z` tag publishes the controller and Portal images to GHCR for
   `amd64` and `arm64` (`ghcr.io/rbferreira/seedgrid-controller` and `-portal`, tagged `X.Y.Z`, `X.Y`
   and `latest`). The Portal image carries the Agent of the same version for onboarding and
@@ -31,6 +35,10 @@ the configuration; each release says how to upgrade.
   the Portal now uses the same fields.
 
 ### Fixed
+- Control Plane host: node-exporter no longer listens on `172.18.0.1`, an address that only existed when
+  Docker happened to give that range to `seedgrid-core`; it joins the network and Prometheus reaches it
+  by name. The bootstrap now restarts Prometheus and Alertmanager on every update, so they read the
+  new configuration (#30).
 - Control Plane: building the controller with `docker compose up --build` gave it a different user
   (UID 10001) from the one the bootstrap gives the Prometheus targets volume to (65532), so on that
   path it could not write the Nodes' scrape targets. Both Dockerfiles now run it as 65532.

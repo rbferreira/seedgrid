@@ -119,7 +119,11 @@ echo "==> Control Plane (Postgres + Controller)"
 ( cd "$CP_DIR" && docker compose up -d )
 
 echo "==> Observability (Prometheus + Alertmanager + node-exporter)"
-( cd "$REPO_ROOT/deploy/observability" && docker compose up -d )
+# The restart is what makes an update reach their configuration: it is mounted from files that
+# `git pull` replaces, `up -d` does not recreate a container when only a mounted file changed,
+# and a running container keeps reading the file it started with. When #30 moved the host's
+# node-exporter off 172.18.0.1, Prometheus kept scraping the old address until restarted.
+( cd "$REPO_ROOT/deploy/observability" && docker compose up -d && docker compose restart prometheus alertmanager )
 
 echo "==> build + deploy do Portal (nginx)"
 sh "$REPO_ROOT/scripts/build-portal.sh"

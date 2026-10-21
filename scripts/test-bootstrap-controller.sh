@@ -133,6 +133,11 @@ setup
 run FAKE_PG_VOLUME=1 FAKE_PRUNE_FAIL=1
 check "a failed cleanup doesn't fail the update" [ "$STATUS" -eq 0 ]
 
+# --- 7b. The update restarts Prometheus and Alertmanager, so they read the new configuration (#30)
+setup
+run FAKE_PG_VOLUME=1
+check "restarts Prometheus and Alertmanager after starting observability" grep -qx "compose restart prometheus alertmanager" "$T/docker.log"
+
 # --- 8. acceptance.sh with unreadable .env says what to do -----------------------------
 # You can only make the file unreadable when the test doesn't run as root (root reads everything).
 if [ "$(id -u)" -ne 0 ]; then

@@ -374,7 +374,7 @@ Uma instalação tem **um host para o Control Plane** e **um host por Seed Node*
 
 Os endereços são ilustrativos. O Control Plane e os Nodes só precisam se alcançar por HTTP: cada Node fala com a porta `80` do Control Plane (Agent → API, pelo nginx do Portal), e o Prometheus do Control Plane coleta a `9100` de cada Node. Nada mais é exposto entre eles.
 
-**Control Plane e Node ficam em hosts diferentes.** O Engine e o node-exporter do Node usam a rede do host e ocupam as portas `8080` e `9100` — as mesmas que o Control Plane usa no host dele.
+**Control Plane e Node ficam em hosts diferentes.** O Engine e o node-exporter do Node usam a rede do host e ocupam as portas `8080` e `9100`; uma instalação feita pelo `bootstrap-controller.sh` mantém a API do controller em `127.0.0.1:8080` do host dela.
 
 # **42. Fluxo de build**
 As imagens vêm de dois lugares. Em toda tag de release, o CI publica as imagens do controller e do Portal no GHCR (veja o fim desta seção). Fora de uma release — quem contribui, um commit ainda sem tag — elas são montadas no próprio host do Control Plane, pelos scripts `build-*.sh`, chamados pelo `bootstrap-controller.sh`. Cada um compila o artefato num container efêmero (`docker run`) e monta a imagem final com um Dockerfile **sem etapas `RUN`**:
@@ -408,6 +408,21 @@ Não há nada para editar antes. Quem prefere escolher os valores cria o `.env` 
 
 `bootstrap-controller.sh` orquestra os três composes (`deploy/control-plane`, `deploy/observability`, `deploy/portal`).
 
+**Control Plane — a partir das imagens publicadas (#30, ADR-042).** O arquivo `deploy/compose.yaml` instala o mesmo Control Plane usando as imagens de release (§42), sem clone e sem build. Requer Docker Compose 2.23.1 ou superior, pois a configuração do Prometheus e do Alertmanager fica dentro do próprio arquivo. Em um diretório dedicado:
+```sh
+curl -fsSLO https://github.com/rbferreira/seedgrid/releases/latest/download/compose.yaml
+echo 'SEEDGRID_ADMIN_PASSWORD=<a senha que você usará no Portal>' > .env
+docker compose up -d
+```
+- **Só a senha de admin é obrigatória.** Na primeira execução, um serviço `init` de execução única gera a senha do banco, o token de registro do Agent e o token interno de webhook no volume `seedgrid-secrets`. O controller e o Postgres leem esses valores dali (variáveis `_FILE`, §45). Cada arquivo só pode ser lido pelo container que precisa dele. O `init` nunca sobrescreve um valor que já exista.
+- **Faça backup do `seedgrid-secrets` junto com o banco.** Se esse volume for perdido e o `seedgrid-postgres-data` não, o controller não conseguirá mais abrir o banco.
+- **Só o Portal publica porta**, a `SEEDGRID_HTTP_PORT` (padrão `80`; em sistemas unRAID e vários NAS, a porta `80` pertence à interface do próprio sistema). A API, o Prometheus, o Alertmanager e o Postgres são acessíveis apenas na rede interna do projeto.
+- **Atualização:** baixe o `compose.yaml` da nova release (cada um está fixado à sua versão) ou defina `SEEDGRID_VERSION` no `.env`, depois rode `docker compose pull && docker compose up -d`. As migrations rodam quando o controller inicia; os Agents são atualizados em seguida pelo Portal.
+- **Migrando do `bootstrap-controller.sh`:** copie o `deploy/control-plane/.env` para ao lado do `compose.yaml`, rode `docker compose down` nos diretórios `deploy/control-plane`, `deploy/observability` e `deploy/portal` (os nomes dos containers são iguais) e então `docker compose up -d`. Os volumes mantêm seus nomes, preservando o banco e as métricas. O `init` reutiliza a senha do banco e os tokens desse `.env` em vez de gerar novos.
+- **O node-exporter do host** lê `/`, `/proc` e `/sys` do host como somente leitura, de dentro da rede do projeto; seus contadores de rede referem-se ao container. Ele é montado sem `rslave`, opção que o Docker recusa em hosts onde `/` não é um ponto de montagem compartilhado.
+
+O CI executa `scripts/test-compose.sh` em uma máquina limpa para cada pull request que altere as imagens ou o arquivo Compose, e em cada release antes de anexar o `compose.yaml`. O script sobe a stack, verifica o login, `/node/`, os segredos e seus donos, o token de webhook, os targets do Prometheus e as portas publicadas. Depois, reinicia tudo e remove a stack com seus volumes. Ele se recusa a rodar se já existir um volume de banco do SeedGrid.
+
 **Seed Node — do zero:** um comando, executado no Node como `root`, sem clonar o repositório (onboarding
 zero-touch, §50). O Portal o mostra pronto, com o token, em **Saúde & Métricas → Adicionar Node**:
 ```sh
@@ -415,7 +430,9 @@ curl -fsSL http://<control-plane>/node/bootstrap-node.sh | sudo CP_URL=http://<c
 ```
 O `sudo` é para quem não está logado como `root`; sem privilégio o script para na primeira linha e diz como rodar.
 
-**Atualização do Control Plane:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — o mesmo script da instalação. Ele reconstrói as imagens e recria só o que mudou; o `.env`, os segredos e os volumes (banco, métricas) são preservados. O `fetch --tags` garante que a versão exibida acompanhe a tag nova.
+**Atualização do Control Plane:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — o mesmo script da instalação. Ele reconstrói as imagens e recria só o que mudou; o `.env`, os segredos e os volumes (banco, métricas) são preservados. O `fetch --tags` garante que a versão exibida acompanhe a tag nova. Prometheus e Alertmanager sempre reiniciam: a configuração vem de arquivos que o `git pull` substitui, e um container em execução continua lendo o arquivo com que iniciou (#30).
+
+**O node-exporter do host deixou o `172.18.0.1` (#30).** Antes ele rodava na rede do host escutando em `172.18.0.1`, gateway da `seedgrid-core` — endereço que só existia quando o Docker atribuía essa faixa à rede. Agora ele entra na `seedgrid-core` como os demais serviços, não publica porta e o Prometheus o alcança pelo nome (`seedgrid-node-exporter:9100`). Os contadores de rede são do próprio container.
 
 **Limpeza depois da atualização (#43).** Cada atualização reconstrói as imagens, e as anteriores ficam no disco sem nome. No fim, o bootstrap roda `docker image prune -f --filter label=seedgrid.image`. As imagens de execução do SeedGrid levam esse label, então só elas saem; imagens sem nome de qualquer outra coisa do host não são tocadas. Falha na limpeza não falha a atualização. O cache de build do Docker não é limpo, pelo mesmo motivo: ele é compartilhado com os outros builds do host. Quem quiser recuperá-lo pode rodar à mão `docker builder prune --filter until=168h`, que mantém o cache da última semana para o próximo build continuar rápido. Imagens construídas antes desta mudança não têm o label e precisam ser removidas uma vez à mão (`docker image prune`).
 
