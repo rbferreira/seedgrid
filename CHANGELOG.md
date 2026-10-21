@@ -49,6 +49,9 @@ Quick start in the README.
   the Portal now uses the same fields.
 
 ### Fixed
+- Portal: the Dashboard's admission switch (and the per-Node SG / Manual switch) no longer shows the
+  old mode for a moment after a change, when a timer refresh that started before the change
+  answered after it (#34).
 - Control Plane host: node-exporter no longer listens on `172.18.0.1`, an address that only existed when
   Docker happened to give that range to `seedgrid-core`; it joins the network and Prometheus reaches it
   by name. The bootstrap now restarts Prometheus and Alertmanager on every update, so they read the
