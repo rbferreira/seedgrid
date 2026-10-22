@@ -1927,6 +1927,81 @@ Quem hospeda os próprios serviços em unRAID, ZimaOS, TrueNAS, Portainer ou num
 3. `deploy/compose.yaml` com o serviço `init`, as variáveis `_FILE` do controller, o node-exporter sem endereço fixo e o job do CI que sobe a pilha.
 4. Guia de implantação e README: o arquivo Compose vira o Quick start; o build no host vai para uma seção de quem contribui.
 
+# **ADR-043**
+
+**Título:** Um Seed Node entra com o qBittorrent que já roda — o Engine fica com o operador, o SeedGrid o lê e orquestra
+
+**Status:** Aprovada — implementação em fatias (#32)
+
+**Contexto**
+O onboarding (ADR-017) pressupõe uma máquina vazia. O `bootstrap-node.sh` instala o Docker, monta um disco em `/data`, inicia **seu próprio** qBittorrent no container `seedgrid-engine` com uma senha gerada por ele, altera a rede (ADR-034, ADR-038) e instala o Agent. No primeiro contato, o Agent define as preferências do Engine: a porta BitTorrent que o Control Plane atribuiu no enroll, `save_path=/data`, sem UPnP, sem porta aleatória e a fila de download (ADR-039).
+
+Quem testa o SeedGrid geralmente já roda qBittorrent, muitas vezes há anos, com milhares de torrents, port forward, regra de firewall, estrutura de pastas lida pelo servidor de mídia e configurações próprias de fila. Nessas máquinas, o bootstrap instala um segundo qBittorrent que disputa a porta da WebUI com o primeiro. Um Agent apontado manualmente para o existente reescreve sua porta e pasta de download. O usuário do fórum que pediu rTorrent (#31) pediu isso antes: coordenar os qBittorrents que já possuem.
+
+**Problema**
+(a) O bootstrap não tem caminho que preserve um Engine existente. (b) O Agent trata a porta, a pasta de download e a fila do Engine como se fossem dele. (c) O Agent lê dados dos torrents diretamente (migração, capturas de tela, MediaInfo, saúde do armazenamento); quando o Engine roda em container, os caminhos reportados (`/downloads/...`) diferem dos vistos pelo host (`/mnt/user/torrents/...`). (d) Na primeira passagem de admissão, um Engine com dezenas de downloads ativos teria a maioria pausada pelo Control Plane para respeitar o limite do tracker (ADR-021). (e) Reiniciar o Engine pelo Portal depende da política de reinício do container; num Engine que o SeedGrid não instalou, nada garante que ele volte. (f) A rede e os discos da máquina já estão configurados e funcionam; alterá-los quebra o que o operador montou.
+
+**Alternativas consideradas**
+1. **Apenas documentação** (apontar o Agent para o Engine existente manualmente). Mantém (b) a (f) como estão: o primeiro heartbeat muda a porta e a pasta de download. Rejeitada.
+2. **Importação:** instalar o Engine do SeedGrid e mover os torrents existentes para ele. Assume o controle da máquina, dobra o trabalho de disco e o operador perde a configuração que queria manter. Rejeitada.
+3. **Adoção com o mesmo Agent em modo que deixa o Engine com o operador (adotada).** O Agent lê o Engine e executa comandos do Control Plane, mas nunca grava preferências; o bootstrap lê a porta e a pasta de download em vez de escolhê-las.
+
+**Decisão** (alternativa 3)
+
+1. **Modo bootstrap para um Engine existente: `ENGINE=existing`.**
+   - Recebe o endereço e as credenciais da WebUI (`QBT_URL`, padrão `http://127.0.0.1:8080`; `QBT_USERNAME`, `QBT_PASSWORD`). Valida esses dados e a versão do Engine **antes** de falar com o Control Plane: nenhum Node faz enroll se o Agent não conseguir usar o Engine.
+   - Lê do Engine sua porta de escuta (`listen_port`) e sua pasta padrão de download (`save_path`).
+   - Não instala o Engine, não altera sua senha, não monta discos nem instala a recuperação de hot-plug, e não mexe na rede (extensões de privacidade e sufixo IPv6). O Docker não é instalado. A opção `--network-only` continua disponível para quem quiser aplicar a ADR-038 nessa máquina.
+   - Exportador de métricas do Node: se algo já responder na porta 9100, ele é usado; caso contrário, se houver Docker, apenas o exportador é iniciado; sem Docker, o bootstrap avisa e o Node entra sem métricas de host.
+   - Engine suportado: qBittorrent **4.5 ou superior** (primeira versão com `torrents/export`, necessário para migração). Publicar a partir desse Node (ADR-019) exige a **5.0**, a primeira com o criador de torrents; na série 4.x, o Agent pausa e retoma torrents via `pause`/`resume`.
+
+2. **A porta é a do Engine.** O enroll aceita a porta lida pelo bootstrap e reserva **essa** porta para o Node, em vez da próxima livre na sequência. Uma porta fora da sequência é aceita; o Node fica sem índice e sem sufixo IPv6 determinístico (ADR-038), que o bootstrap não aplica de qualquer forma. Uma porta já usada por outro Node é aceita com um aviso citando esse Node: dois Nodes atrás do mesmo IPv4 não podem compartilhar um port forward, mas dois em redes diferentes podem, e o Control Plane não consegue distinguir. O Agent reporta a porta lida do Engine em todo heartbeat, então uma alteração feita pelo operador no qBittorrent aparece no Portal.
+
+3. **O Agent nunca escreve nas preferências de um Engine adotado.** Nada de `listen_port`, UPnP, porta aleatória, `save_path` ou fila de download. As configurações `engine.*` do Node (ADR-039) não são aplicadas, e o Portal informa isso nesse Node. A fila do próprio Engine é responsabilidade do operador.
+
+4. **A pasta de download é a do Engine, e o Agent a enxerga.** O armazenamento do Node é a pasta do host definida no `save_path` do Engine. Novos torrents são adicionados sem pasta específica, então os padrões do Engine (e suas categorias) decidem o destino; a migração copia para o armazenamento do Node e adiciona o torrent apontando para lá, como em qualquer Node. A verificação de saúde do armazenamento confirma se essa pasta tem permissão de escrita; não há exigência de disco dedicado (`SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false`), pois o disco não foi montado pelo SeedGrid.
+
+5. **Mapeamento de caminhos entre o Engine e o host.** Quando o Engine roda em container, o bootstrap lê os bind mounts e grava o mapeamento (`SEEDGRID_ENGINE_PATH_MAP`, pares `caminho no Engine=caminho no host`); `ENGINE_PATH_MAP` sobrepõe essa configuração. O Agent traduz todo caminho reportado pelo Engine antes de ler dados (origem de migração, capturas de tela, MediaInfo) e todo caminho passado ao Engine (destino de migração, origem de publicação). Dados para migração podem vir do armazenamento do Node ou de qualquer pasta mapeada do host; um torrent fora dessas áreas é recusado com essa justificativa, como hoje.
+
+6. **Dados escritos pelo Agent pertencem ao dono do destino.** O Agent roda como root; um Engine em container geralmente não. Arquivos extraídos pelo Agent (migração, upload de publicação) recebem o dono da pasta onde são gravados, permitindo que o Engine continue escrevendo em um torrent parcialmente migrado. Nos Nodes instalados pelo SeedGrid, tudo é do root e nada muda.
+
+7. **Um Node adotado entra em Manual.** Seus torrents aparecem no Cluster exatamente como estão (o inventário já adota os hashes desconhecidos pelo Control Plane), e o controlador de admissão não pausa, inicia nem rotaciona nenhum deles até que o operador mova o Node para SG (ADR-024). O modo Manual só existe sob o gate Flex: se o Cluster estiver em Full auto, o registro do primeiro Node adotado muda o gate para Flex, gerando um evento explicativo. Os demais Nodes permanecem em SG, mantendo o comportamento anterior do Cluster. Downloads ativos do Node ainda contam no limite do tracker (ADR-024); um Node que entra acima do limite faz o controlador segurar downloads nos Nodes SG, o que é a regra, não um efeito colateral.
+
+8. **O Engine não é reiniciado pelo SeedGrid.** A opção "reiniciar Engine" do Portal não aparece para um Node adotado, e o Agent recusa o comando informando o motivo. O uptime do Engine vem do container quando existe (o bootstrap o encontra) e fica ausente caso contrário.
+
+9. **O Control Plane registra que o Engine do Node é adotado** (`nodes.engine_adopted`), a partir do registro. É isso que o Portal exibe e o que define o modo inicial. O Agent mantém a flag em seu ambiente (`SEEDGRID_ENGINE_ADOPTED=true`); o bootstrap a grava.
+
+
+**Fora do escopo**
+- **Outros Engines** (#31). Esta ADR mantém a interface do Engine igual à do qBittorrent. O rTorrent vai reusar o modo adotado, e não o contrário.
+- **Assumir um Engine adotado** (fazer o SeedGrid gerenciar as preferências dele depois). O caminho é reinstalar o Node com o Engine próprio do SeedGrid, o que significa migrar os dados.
+- **Várias pastas de download como armazenamento.** O espaço livre e a saúde do disco são lidos apenas do armazenamento do Node. Um torrent mantido em outro disco continua sendo semeado e migrado, mas esse disco não é medido.
+
+**Consequências**
+
+*Positivas*
+- O caso mais comum — uma máquina que já roda o qBittorrent — entra no Cluster sem perder o port forward, as pastas ou as configurações. Além disso, a primeira passagem de admissão não pausa os downloads.
+- O Agent aprende a trabalhar com caminhos que não controla. Isso será necessário de qualquer forma para um Engine em container (e para #31).
+
+*Custos e limites aceitos*
+- Dois tipos de Node para manter funcionando. Os testes de bootstrap e do Agent cobrem ambos.
+- O Engine de um Node adotado pode ser configurada de jeitos que o SeedGrid não espera (sem fila, limite de download por torrent). O Control Plane enxerga apenas o efeito.
+- Sem o sufixo determinístico, o endereço IPv6 de um Node adotado é o que a máquina já tinha. Os alertas de conectividade (ADR-034) continuam lendo o endereço que ele reporta.
+- Nodes com qBittorrent 4.x não conseguem publicar.
+
+**Relação com outras ADRs**
+- **ADR-017**: um segundo caminho de onboarding. O join token e o registro não mudam.
+- **ADR-024**: o Node adotado usa o modo Manual como ele existe hoje, e o gate passa para Flex.
+- **ADR-034** e **ADR-038**: não aplicadas pelo bootstrap num Node adotado. A opção `--network-only` permanece.
+- **ADR-039**: as configurações `engine.*` não chegam a um Engine adotado. As configurações `agent.*` chegam.
+
+**Implementação (fatias)**
+1. Esta ADR.
+2. Control Plane: o enroll reserva a porta pedida. O registro grava `engine_adopted`, inicia o Node em Manual e move o gate para Flex, se necessário.
+3. Agent: modo adotado (sem preferências, porta lida do Engine, sem reinício), mapeamento de caminhos, propriedade dos dados extraídos e `pause`/`resume` no qBittorrent 4.x.
+4. `bootstrap-node.sh ENGINE=existing`, com o arquivo Compose só do exporter.
+5. Portal (selo de adotado, sem reinício, aviso sobre `engine.*`), guias e um teste na bancada com um qBittorrent 4.x existente em container.
+
 # **10. Template Oficial**
 Toda ADR deverá seguir uma estrutura padronizada.
 Campos mínimos:
