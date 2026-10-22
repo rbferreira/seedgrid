@@ -7,6 +7,19 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- **A Node can join with the qBittorrent it already runs (#32, ADR-043).** `bootstrap-node.sh`
+  with `ENGINE=existing` and the WebUI password keeps the machine's qBittorrent — its port forward,
+  folders, settings and torrents — instead of installing another one. It checks the WebUI and the
+  version (4.5 or later) before enrolling, reserves the Engine's own port, finds the container and
+  its mounts to translate paths, and installs only the Agent: no Docker, disk or network changes.
+  The Agent never writes that Engine's preferences, does not restart it, and gives the files it
+  extracts the destination folder's owner. The Node joins in Manual, so admission leaves its
+  torrents alone until you move it to SG; a Cluster in Full auto moves to Flex for it. The Portal
+  marks such a Node and says which settings do not reach it. qBittorrent 4.x works, except for
+  publishing to a tracker, which needs 5.0. See the deployment guide, §50.6.
+
 ## [0.2.0] — 2026-10-21
 
 The Control Plane can now be installed from published images with a single Compose file — see the

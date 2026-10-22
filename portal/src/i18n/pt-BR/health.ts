@@ -100,6 +100,8 @@ export const health = {
       firewalledTitleGeneric: "Nenhuma conexão de entrada recebida — confira a liberação da porta BitTorrent no firewall.",
       reachable: "Alcançável",
       reachableTitle: "O Engine já aceitou conexões vindas de fora — a porta BitTorrent está alcançável.",
+      adopted: "qBittorrent próprio",
+      adoptedTitle: "Este Node entrou com o qBittorrent que a máquina já rodava: o SeedGrid não muda as configurações dele (porta, pastas, fila) nem o reinicia.",
     },
     actions: {
       details: "Detalhes →",

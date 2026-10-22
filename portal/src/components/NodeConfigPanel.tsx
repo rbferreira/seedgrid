@@ -110,14 +110,21 @@ function ValueInput({
 
 // Single line. Editing is local (draft state); the container talks to the API, via
 // onSave/onReset, which return an error message (or "" if it succeeded).
+// notAppliedHere: an engine.* key on a Node whose Engine is the operator's own qBittorrent
+// (ADR-043) — the Agent never writes that Engine's preferences, so the value does not reach it.
+export const notAppliedHere = (key: string, engineAdopted: boolean): boolean =>
+  engineAdopted && key.startsWith("engine.");
+
 function ConfigRow({
   item,
   canWrite,
+  notApplied,
   onSave,
   onReset,
 }: {
   item: NodeSettingItem;
   canWrite: boolean;
+  notApplied: boolean;
   onSave: (key: string, value: string) => Promise<string>;
   onReset: (key: string) => Promise<string>;
 }) {
@@ -170,7 +177,12 @@ function ConfigRow({
           </div>
         ) : (
           <>
-            <span className="font-mono text-sm text-white">{fmtConfigValue(t, item, item.value)}</span>
+            <span className={`font-mono text-sm ${notApplied ? "text-slate-500 line-through" : "text-white"}`}>
+              {fmtConfigValue(t, item, item.value)}
+            </span>
+            {notApplied && (
+              <p className="max-w-xs whitespace-normal text-[11px] text-sky-400">{t("nodes.nodeConfigPanel.notAppliedAdopted")}</p>
+            )}
             {err && <p className="max-w-xs whitespace-normal text-xs text-red-400">{err}</p>}
           </>
         )}
@@ -179,7 +191,9 @@ function ConfigRow({
         <SourceCell item={item} />
       </td>
       {/* Button gate (docs/11 - Portal.md §13.1): without nodes:write the button disappears; the data stays. */}
-      {canWrite && (
+      {/* A value that does not reach the Node (an adopted Engine, ADR-043) offers nothing to set. */}
+      {canWrite && notApplied && <td className="px-5 py-2.5" />}
+      {canWrite && !notApplied && (
         <td className="whitespace-nowrap px-5 py-2.5 text-right">
           {editing ? (
             <div className="flex justify-end gap-1">
@@ -242,11 +256,14 @@ function ConfigRow({
 export function NodeConfigView({
   data,
   canWrite,
+  engineAdopted = false,
   onSave,
   onReset,
 }: {
   data: NodeSettings;
   canWrite: boolean;
+  // The Node runs the operator's own qBittorrent (ADR-043): the engine.* values do not reach it.
+  engineAdopted?: boolean;
   onSave: (key: string, value: string) => Promise<string>;
   onReset: (key: string) => Promise<string>;
 }) {
@@ -274,6 +291,9 @@ export function NodeConfigView({
           nodeValue: <b className="text-slate-400">{t("nodes.nodeConfigPanel.termNodeValue")}</b>,
         })}
       </p>
+      {engineAdopted && (
+        <p className="px-5 pt-2 text-xs leading-relaxed text-sky-400">{t("nodes.nodeConfigPanel.adoptedNotice")}</p>
+      )}
       <table className="mt-2 w-full text-left text-sm">
         <thead className="text-xs uppercase text-slate-500">
           <tr>
@@ -285,7 +305,14 @@ export function NodeConfigView({
         </thead>
         <tbody>
           {data.items.map((it) => (
-            <ConfigRow key={it.key} item={it} canWrite={canWrite} onSave={onSave} onReset={onReset} />
+            <ConfigRow
+              key={it.key}
+              item={it}
+              canWrite={canWrite}
+              notApplied={notAppliedHere(it.key, engineAdopted)}
+              onSave={onSave}
+              onReset={onReset}
+            />
           ))}
         </tbody>
       </table>
@@ -301,10 +328,12 @@ export function NodeConfigPanel({
   nodeId,
   can,
   onLogout,
+  engineAdopted = false,
 }: {
   nodeId: string;
   can: (perm: string) => boolean;
   onLogout: () => void;
+  engineAdopted?: boolean;
 }) {
   const t = useT();
   const [data, setData] = useState<NodeSettings | null>(null);
@@ -356,5 +385,13 @@ export function NodeConfigPanel({
     );
   }
   if (!data) return null;
-  return <NodeConfigView data={data} canWrite={canWriteNodeConfig(can)} onSave={onSave} onReset={onReset} />;
+  return (
+    <NodeConfigView
+      data={data}
+      canWrite={canWriteNodeConfig(can)}
+      engineAdopted={engineAdopted}
+      onSave={onSave}
+      onReset={onReset}
+    />
+  );
 }
