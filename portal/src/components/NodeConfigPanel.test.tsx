@@ -177,6 +177,15 @@ describe("NodeConfigView — a Node with its own qBittorrent (ADR-043)", () => {
     expect(notAppliedHere("engine.max_active_downloads", false)).toBe(false);
   });
 
+  it("offers no value to set on the rows that do not reach it", () => {
+    const html = renderToStaticMarkup(
+      <NodeConfigView data={data("in_sync")} canWrite engineAdopted onSave={noop} onReset={noop} />,
+    );
+    // Only agent.heartbeat_interval keeps its button; the two engine.* rows have none.
+    expect((html.match(/Valor próprio/g) ?? []).length).toBe(1);
+    expect(html).not.toContain("Alterar");
+  });
+
   it("a Node SeedGrid installs shows no such notice", () => {
     expect(render(data("in_sync"), false)).not.toContain("não aplicado");
   });

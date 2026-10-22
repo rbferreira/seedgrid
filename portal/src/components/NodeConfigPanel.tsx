@@ -191,7 +191,9 @@ function ConfigRow({
         <SourceCell item={item} />
       </td>
       {/* Button gate (docs/11 - Portal.md §13.1): without nodes:write the button disappears; the data stays. */}
-      {canWrite && (
+      {/* A value that does not reach the Node (an adopted Engine, ADR-043) offers nothing to set. */}
+      {canWrite && notApplied && <td className="px-5 py-2.5" />}
+      {canWrite && !notApplied && (
         <td className="whitespace-nowrap px-5 py-2.5 text-right">
           {editing ? (
             <div className="flex justify-end gap-1">
