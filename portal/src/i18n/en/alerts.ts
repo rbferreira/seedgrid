@@ -64,6 +64,10 @@ export const alerts: Catalog["alerts"] = {
     event: {
       AGENT_UPDATE: "Agent update requested ({from} → {to})",
       ENGINE_RESTART: "Torrent Engine restart requested",
+      NODE_ADOPTED_MANUAL: {
+        false: "Seed Node “{hostname}” joined with its own qBittorrent and starts in Manual: admission leaves its torrents alone until you move it to SG",
+        true: "Seed Node “{hostname}” joined with its own qBittorrent and starts in Manual: admission leaves its torrents alone until you move it to SG. The Cluster moved from Full auto to Flex for it; the other Nodes stay SG",
+      },
       NODE_CONFIG_SEEDED: "Node “{hostname}”: .env values became per-Node overrides ({overrides})",
       NODE_DELETED: "Seed Node “{hostname}” removed from the Cluster",
       NODE_REGISTERED: {

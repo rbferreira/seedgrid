@@ -42,7 +42,10 @@ type Node struct {
 	AgentVersion *string `json:"agent_version,omitempty"`
 	// OperationMode is the per-Node "sg"|"manual" mode (ADR-024). It only takes effect under
 	// the global Flex gate; in Full auto the controller ignores it and treats every Node as SG.
-	OperationMode string     `json:"operation_mode"`
+	OperationMode string `json:"operation_mode"`
+	// EngineAdopted: the Node joined with the qBittorrent it already ran (ADR-043). Its Engine
+	// is the operator's: SeedGrid does not write its preferences or restart it.
+	EngineAdopted bool       `json:"engine_adopted"`
 	Engine        *string    `json:"engine,omitempty"`
 	LastSeenAt    *time.Time `json:"last_seen_at,omitempty"`
 	RegisteredAt  *time.Time `json:"registered_at,omitempty"`
@@ -100,6 +103,9 @@ type RegisterInput struct {
 	AgentVersion  string `json:"agent_version"`
 	Engine        string `json:"engine"`
 	EngineVersion string `json:"engine_version"`
+	// EngineAdopted: the Agent runs against the qBittorrent the machine already had (ADR-043).
+	// A Node that becomes adopted starts in Manual.
+	EngineAdopted bool `json:"engine_adopted"`
 	// BTPort is the port assigned by the CP via join token (ADR-017); populated by
 	// the handler from the enroll token, never from the Agent's JSON.
 	BTPort *int `json:"-"`
@@ -227,13 +233,18 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	displayName, nameDropped := s.registrationName(ctx, in.Hostname, in.DisplayName)
 
 	var nodeID, nodeUUID string
+	// wasAdopted is the row's engine_adopted BEFORE this registration (false for a new Node):
+	// the CTE reads the snapshot taken before the INSERT. A Node that becomes adopted here —
+	// new, or reinstalled with the Engine it already had — starts in Manual (ADR-043).
+	var wasAdopted bool
 	upsert := func(name string) error {
 		return s.pool.QueryRow(ctx,
-			`INSERT INTO nodes (cluster_id, hostname, display_name, os_name, os_version,
+			`WITH prev AS (SELECT engine_adopted FROM nodes WHERE cluster_id = $1 AND hostname = $2)
+			 INSERT INTO nodes (cluster_id, hostname, display_name, os_name, os_version,
 			                    kernel_version, architecture, agent_version, engine, engine_version,
-			                    bt_port, status, registered_at, last_seen_at)
+			                    bt_port, engine_adopted, status, registered_at, last_seen_at)
 			 VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), NULLIF($6,''), NULLIF($7,''),
-			         NULLIF($8,''), NULLIF($9,''), NULLIF($10,''), $11, 'ONLINE', now(), now())
+			         NULLIF($8,''), NULLIF($9,''), NULLIF($10,''), $11, $12, 'ONLINE', now(), now())
 			 ON CONFLICT (cluster_id, hostname) DO UPDATE SET
 			    display_name   = COALESCE(NULLIF(EXCLUDED.display_name,''), nodes.display_name),
 			    os_name        = COALESCE(NULLIF(EXCLUDED.os_name,''), nodes.os_name),
@@ -244,13 +255,15 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			    engine         = COALESCE(NULLIF(EXCLUDED.engine,''), nodes.engine),
 			    engine_version = COALESCE(NULLIF(EXCLUDED.engine_version,''), nodes.engine_version),
 			    bt_port        = COALESCE(EXCLUDED.bt_port, nodes.bt_port),
+			    engine_adopted = EXCLUDED.engine_adopted,
 			    status         = 'ONLINE',
 			    last_seen_at   = now(),
 			    updated_at     = now()
-			 RETURNING id::text, uuid::text`,
+			 RETURNING id::text, uuid::text, COALESCE((SELECT engine_adopted FROM prev), false)`,
 			s.defaultClusterID, in.Hostname, name, in.OSName, in.OSVersion,
 			in.KernelVersion, in.Architecture, in.AgentVersion, in.Engine, in.EngineVersion, in.BTPort,
-		).Scan(&nodeID, &nodeUUID)
+			in.EngineAdopted,
+		).Scan(&nodeID, &nodeUUID, &wasAdopted)
 	}
 	err := upsert(displayName)
 	if err != nil && displayName != "" && isDisplayNameViolation(err) {
@@ -287,7 +300,57 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 		_ = s.events.Emit(ctx, "NODE_REGISTERED", "INFO", nodeID, msg, payload)
 	}
 
+	if in.EngineAdopted && !wasAdopted {
+		if err := s.startAdoptedInManual(ctx, nodeID, in.Hostname); err != nil {
+			return RegisterResult{}, err
+		}
+	}
+
 	return RegisterResult{NodeID: nodeID, NodeUUID: nodeUUID, AgentToken: token}, nil
+}
+
+// startAdoptedInManual puts a Node that joined with the operator's own Engine in Manual
+// (ADR-043): its torrents show in the Cluster as they are, and the admission controller does
+// not pause, start or rotate any of them until the operator moves the Node to SG. Manual only
+// exists under the Flex gate (ADR-024), so a Cluster in Full auto moves to Flex; the other
+// Nodes stay SG and behave as before. The gate row is locked so a concurrent SetGate cannot
+// interleave between reading the gate and setting the Node.
+func (s *Service) startAdoptedInManual(ctx context.Context, nodeID, hostname string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("adopted node mode: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var gate string
+	if err := tx.QueryRow(ctx,
+		`SELECT operation_mode FROM clusters WHERE id = $1 FOR UPDATE`, s.defaultClusterID).Scan(&gate); err != nil {
+		return fmt.Errorf("adopted node mode: read gate: %w", err)
+	}
+	gateMoved := gate == GateFullAuto
+	if gateMoved {
+		if _, err := tx.Exec(ctx,
+			`UPDATE clusters SET operation_mode = $2, updated_at = now() WHERE id = $1`,
+			s.defaultClusterID, GateFlex); err != nil {
+			return fmt.Errorf("adopted node mode: move gate to flex: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE nodes SET operation_mode = $2, updated_at = now() WHERE id = $1`,
+		nodeID, NodeModeManual); err != nil {
+		return fmt.Errorf("adopted node mode: set manual: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("adopted node mode: %w", err)
+	}
+	if s.events != nil {
+		msg := fmt.Sprintf("Seed Node %q joined with its own qBittorrent and starts in Manual: the admission controller leaves its torrents alone until it is moved to SG", hostname)
+		if gateMoved {
+			msg += " — the Cluster moved from Full auto to Flex for it; the other Nodes stay SG"
+		}
+		_ = s.events.Emit(ctx, "NODE_ADOPTED_MANUAL", "INFO", nodeID, msg,
+			map[string]any{"hostname": hostname, "gate_moved": gateMoved})
+	}
+	return nil
 }
 
 // AuthenticateAgent resolves an Agent's token to the corresponding Node id.
@@ -492,7 +555,7 @@ func (s *Service) List(ctx context.Context) ([]Node, error) {
 		`SELECT n.id::text, n.uuid::text, n.hostname, n.display_name, n.status,
 		        n.health_score, n.agent_version, n.engine, n.last_seen_at, n.registered_at,
 		        n.os_name, n.os_version, n.kernel_version, n.architecture, n.inventory_updated_at,
-		        n.bt_port, n.last_ip, n.operation_mode,
+		        n.bt_port, n.last_ip, n.operation_mode, n.engine_adopted,
 		        h.disk_total_bytes, h.disk_free_bytes, h.mem_total_bytes, h.mem_avail_bytes, h.load1, h.cpu_cores,
 		        h.uptime_seconds, n.host_uptime_seconds, n.engine_reachable, n.engine_started_at, n.engine_version,
 		        n.disk_io_util_pct, n.storage_ok, n.storage_detail,
@@ -514,7 +577,7 @@ func (s *Service) List(ctx context.Context) ([]Node, error) {
 			&n.ID, &n.UUID, &n.Hostname, &n.DisplayName, &n.Status,
 			&n.HealthScore, &n.AgentVersion, &n.Engine, &n.LastSeenAt, &n.RegisteredAt,
 			&n.OSName, &n.OSVersion, &n.KernelVersion, &n.Architecture, &n.InventoryUpdatedAt,
-			&n.BTPort, &n.LastIP, &n.OperationMode,
+			&n.BTPort, &n.LastIP, &n.OperationMode, &n.EngineAdopted,
 			&n.DiskTotalBytes, &n.DiskFreeBytes, &n.MemTotalBytes, &n.MemAvailBytes, &n.Load1, &n.CPUCores,
 			&n.UptimeSeconds, &n.HostUptimeSeconds, &n.EngineReachable, &n.EngineStartedAt, &n.EngineVersion,
 			&n.DiskIOUtilPct, &n.StorageOK, &n.StorageDetail,
@@ -719,6 +782,44 @@ func (s *Service) AssignPort(ctx context.Context, token string) (int, error) {
 		return 0, fmt.Errorf("reserve port: %w", err)
 	}
 	return port, nil
+}
+
+// ErrInvalidPort: a requested BitTorrent port outside 1-65535.
+var ErrInvalidPort = errors.New("invalid BitTorrent port")
+
+// ReserveEnginePort validates a join token and reserves for the Node the port its Engine
+// already listens on (ADR-043), instead of the next free one in the sequence: the operator's
+// port forward and firewall rule point at it. The port may be outside the sequence (the Node
+// then has no index, see IndexForPort). It may also be the port of another active Node, which
+// is accepted: two Nodes behind the same IPv4 cannot share a port forward, but two on different
+// networks can, and the Control Plane cannot tell. sharedWith names that Node ("" when none),
+// so the bootstrap can warn. hostname is the joining machine, left out of that check: running
+// the bootstrap again on a Node must not warn about itself.
+func (s *Service) ReserveEnginePort(ctx context.Context, token string, port int, hostname string) (sharedWith string, err error) {
+	if port < 1 || port > 65535 {
+		return "", ErrInvalidPort
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE enroll_tokens SET bt_port = $2
+		  WHERE token_sha256 = $1 AND used_at IS NULL AND expires_at > now()`,
+		sha256hex(token), port)
+	if err != nil {
+		return "", fmt.Errorf("reserve port: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return "", ErrInvalidEnrollToken
+	}
+	err = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(NULLIF(display_name, ''), hostname) FROM nodes
+		  WHERE deleted_at IS NULL AND bt_port = $1 AND hostname <> $2
+		  ORDER BY registered_at LIMIT 1`, port, hostname).Scan(&sharedWith)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("check port in use: %w", err)
+	}
+	return sharedWith, nil
 }
 
 // EnrollTokenInfo is what a still-open join token carries for registration.

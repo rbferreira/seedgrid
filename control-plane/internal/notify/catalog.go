@@ -75,6 +75,7 @@ var catalog = map[string]map[string]string{
 
 		"title.event.AGENT_UPDATE":               "Atualização do Agent solicitada",
 		"title.event.ENGINE_RESTART":             "Reinício do Torrent Engine solicitado",
+		"title.event.NODE_ADOPTED_MANUAL":        "Node entrou com o próprio qBittorrent, em Manual",
 		"title.event.NODE_CONFIG_SEEDED":         "Valores do .env viraram override por Node",
 		"title.event.NODE_DELETED":               "Node removido do cluster",
 		"title.event.NODE_REGISTERED":            "Node entrou no cluster",
@@ -163,6 +164,7 @@ var catalog = map[string]map[string]string{
 
 		"title.event.AGENT_UPDATE":               "Agent update requested",
 		"title.event.ENGINE_RESTART":             "Torrent Engine restart requested",
+		"title.event.NODE_ADOPTED_MANUAL":        "Node joined with its own qBittorrent, in Manual",
 		"title.event.NODE_CONFIG_SEEDED":         ".env values became per-Node overrides",
 		"title.event.NODE_DELETED":               "Node removed from the cluster",
 		"title.event.NODE_REGISTERED":            "Node joined the cluster",
