@@ -797,7 +797,82 @@ assert_eq "script without root: does not reach enroll" "0" "$(printf '%s
 STORAGE_REQUIRE_MOUNT=maybe CP_URL=http://controller.example JOIN_TOKEN=x sh "$SCRIPT" >/dev/null 2>&1
 assert_eq "script without root and with invalid value: exits 2 (usage), not 1" "2" "$?"
 unset FAKE_UID FAKE_USER
-assert_eq "final message points to the existing screen" "1" "$(grep -c '(Health & Metrics)' "$SCRIPT")"
+assert_eq "final messages (both onboardings) point to the existing screen" "2" "$(grep -c '(Health & Metrics)' "$SCRIPT")"
+
+# ---------------------------------------------------------------------------
+# ENGINE=existing — a qBittorrent the machine already runs (ADR-043).
+# ---------------------------------------------------------------------------
+load qbt_version_ok json_num json_str host_path engine_container container_path_map extract_exporter_compose
+
+# 4.5 is the first with torrents/export, which migration and the backfill need.
+for tc in "v4.5.0:0" "v4.6.7:0" "v5.0.2:0" "v10.1:0" "v4.4.5:1" "v3.3.16:1" "v4:1" "garbage:1" ":1"; do
+  qbt_version_ok "${tc%%:*}"
+  assert_eq "qbt_version_ok ${tc%%:*}" "${tc#*:}" "$?"
+done
+
+PREFS='{"listen_port":51413,"random_port":false,"save_path":"/downloads/","upnp":true}'
+assert_eq "json_num reads listen_port" "51413" "$(printf '%s' "$PREFS" | json_num listen_port)"
+assert_eq "json_str reads save_path" "/downloads/" "$(printf '%s' "$PREFS" | json_str save_path)"
+ENROLL='{"bt_port":51413,"bt_port_shared_with":"node-a"}'
+assert_eq "json_num reads the enroll port" "51413" "$(printf '%s' "$ENROLL" | json_num bt_port)"
+assert_eq "json_str reads the Node sharing the port" "node-a" "$(printf '%s' "$ENROLL" | json_str bt_port_shared_with)"
+assert_eq "json_str of a field that is not there is empty" "" "$(printf '%s' '{"bt_port":6881}' | json_str bt_port_shared_with)"
+
+MAP="/downloads=/mnt/user/torrents;/data=/srv/a;/data/movies=/srv/b"
+assert_eq "host_path of the mapped folder itself" "/mnt/user/torrents" "$(host_path "$MAP" /downloads/)"
+assert_eq "host_path under a mapped folder" "/mnt/user/torrents/complete" "$(host_path "$MAP" /downloads/complete)"
+assert_eq "host_path: the longest prefix wins" "/srv/b/x" "$(host_path "$MAP" /data/movies/x)"
+assert_eq "host_path: the shorter prefix for the rest" "/srv/a/tv" "$(host_path "$MAP" /data/tv)"
+assert_eq "host_path matches whole components only" "/database" "$(host_path "$MAP" /database)"
+assert_eq "host_path without a map: the same path" "/data" "$(host_path "" /data/)"
+assert_eq "host_path of a root mapping" "/host/x" "$(host_path "/=/host" /x)"
+
+stub docker 'case "$1" in
+  ps) printf "%s" "$FAKE_PS" ;;
+  inspect) printf "%s" "$FAKE_MOUNTS" ;;
+esac'
+export FAKE_PS FAKE_MOUNTS
+FAKE_PS='qbittorrent lscr.io/linuxserver/qbittorrent:4.6.7
+jellyfin jellyfin/jellyfin:latest
+'
+assert_eq "engine_container finds the only qBittorrent" "qbittorrent" "$(engine_container)"
+FAKE_PS='qbt-a lscr.io/linuxserver/qbittorrent:latest
+qbt-b ghcr.io/hotio/qBittorrent:release
+'
+engine_container >/dev/null 2>&1
+assert_eq "engine_container with two qBittorrents asks for QBT_CONTAINER" "1" "$?"
+assert_eq "QBT_CONTAINER chooses" "qbt-b" "$(QBT_CONTAINER=qbt-b engine_container)"
+FAKE_PS='jellyfin jellyfin/jellyfin:latest
+'
+assert_eq "engine_container without a qBittorrent container: native install" "" "$(engine_container)"
+
+FAKE_MOUNTS='/config=/srv/qbt/config
+/downloads=/mnt/user/torrents
+/movies=/mnt/user/media/movies
+'
+assert_eq "container_path_map leaves /config out" "/downloads=/mnt/user/torrents;/movies=/mnt/user/media/movies" \
+  "$(container_path_map qbittorrent)"
+
+EXP="$WORK/node-exporter.yml"
+extract_exporter_compose "$ROOT/deploy/agent/docker-compose.yml" > "$EXP"
+assert_eq "exporter compose keeps the project name" "name: seedgrid-node" "$(head -1 "$EXP")"
+assert_eq "exporter compose has the node-exporter service" "1" "$(grep -c '^  node-exporter:' "$EXP")"
+assert_eq "exporter compose keeps its image" "1" "$(grep -c 'image: prom/node-exporter' "$EXP")"
+assert_eq "exporter compose has no qBittorrent" "0" "$(grep -ci 'qbittorrent\|seedgrid-engine' "$EXP")"
+
+# The whole script: an invalid ENGINE is a usage error, and ENGINE=existing is onboarding only.
+ENGINE=transmission CP_URL=http://controller.example JOIN_TOKEN=x sh "$SCRIPT" >/dev/null 2>&1
+assert_eq "ENGINE with an unknown value: exits 2" "2" "$?"
+ENGINE=existing sh "$SCRIPT" --storage-only >/dev/null 2>&1
+assert_eq "ENGINE=existing with --storage-only: exits 2" "2" "$?"
+# A WebUI that does not answer stops it before the enroll (as root, with `id` stubbed: nothing
+# before that point touches the host).
+stub id 'case "$1" in -u) echo 0 ;; -un) echo root ;; esac'
+out=$(ENGINE=existing QBT_URL=http://127.0.0.1:9 CP_URL=http://127.0.0.1:9 JOIN_TOKEN=x sh "$SCRIPT" 2>&1); rc=$?
+assert_eq "ENGINE=existing with no WebUI: exits 1" "1" "$rc"
+assert_eq "ENGINE=existing with no WebUI: says nothing changed" "1" "$(printf '%s\n' "$out" | grep -c 'Nothing was changed')"
+assert_eq "ENGINE=existing with no WebUI: does not reach the enroll" "0" "$(printf '%s\n' "$out" | grep -c 'enroll no Control Plane')"
+rm -f "$STUBS/id" "$STUBS/docker"
 
 echo "== test-bootstrap-node: $pass ok, $fail failure(s)"
 [ "$fail" -eq 0 ]
