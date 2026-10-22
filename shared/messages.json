@@ -112,6 +112,19 @@
   },
   {
     "kind": "event",
+    "code": "NODE_ADOPTED_MANUAL",
+    "payload": [
+      "hostname",
+      "gate_moved"
+    ],
+    "variant": "gate_moved",
+    "variants": [
+      "false",
+      "true"
+    ]
+  },
+  {
+    "kind": "event",
     "code": "NODE_CONFIG_SEEDED",
     "payload": [
       "hostname",

@@ -272,3 +272,144 @@ func TestAuthenticateAgent_ThrottleLastUsed(t *testing.T) {
 		t.Errorf("stale last_used_at was not rewritten: %v", got)
 	}
 }
+
+// TestReserveEnginePort (ADR-043): a Node joining with the Engine it already runs keeps that
+// Engine's port. The port may be outside the sequence and may be another Node's — accepted,
+// naming that Node — but never the joining machine itself.
+func TestReserveEnginePort(t *testing.T) {
+	svc := setup(t)
+	ctx := context.Background()
+	const port = 41234 // outside the sequence, unlikely in other tests (shared database)
+
+	tok, _, err := svc.MintEnrollToken(ctx, time.Hour, "")
+	if err != nil {
+		t.Fatalf("MintEnrollToken: %v", err)
+	}
+	if shared, err := svc.ReserveEnginePort(ctx, tok, port, "adopt-port-a"); err != nil || shared != "" {
+		t.Fatalf("ReserveEnginePort first = (%q, %v), want (\"\", nil)", shared, err)
+	}
+	info, ok := svc.EnrollToken(ctx, tok)
+	if !ok || info.BTPort == nil || *info.BTPort != port {
+		t.Fatalf("the token does not carry the Engine's port: %+v ok=%v", info, ok)
+	}
+	p := port
+	if _, err := svc.Register(ctx, node.RegisterInput{Hostname: "adopt-port-a", Engine: "qbittorrent", BTPort: &p}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Another machine on the same port: accepted, naming the Node already on it.
+	tok2, _, err := svc.MintEnrollToken(ctx, time.Hour, "")
+	if err != nil {
+		t.Fatalf("MintEnrollToken 2: %v", err)
+	}
+	if shared, err := svc.ReserveEnginePort(ctx, tok2, port, "adopt-port-b"); err != nil || shared != "adopt-port-a" {
+		t.Errorf("ReserveEnginePort shared = (%q, %v), want (\"adopt-port-a\", nil)", shared, err)
+	}
+	// The bootstrap run again on the same machine does not warn about itself.
+	if shared, err := svc.ReserveEnginePort(ctx, tok2, port, "adopt-port-a"); err != nil || shared != "" {
+		t.Errorf("ReserveEnginePort same host = (%q, %v), want (\"\", nil)", shared, err)
+	}
+
+	if _, err := svc.ReserveEnginePort(ctx, tok2, 0, "x"); !errors.Is(err, node.ErrInvalidPort) {
+		t.Errorf("port 0: err = %v, want ErrInvalidPort", err)
+	}
+	if _, err := svc.ReserveEnginePort(ctx, tok2, 70000, "x"); !errors.Is(err, node.ErrInvalidPort) {
+		t.Errorf("port 70000: err = %v, want ErrInvalidPort", err)
+	}
+	if _, err := svc.ReserveEnginePort(ctx, "not-a-token", port, "x"); !errors.Is(err, node.ErrInvalidEnrollToken) {
+		t.Errorf("unknown token: err = %v, want ErrInvalidEnrollToken", err)
+	}
+}
+
+// TestRegister_AdoptedStartsInManual (ADR-043): a Node that joins with its own Engine starts
+// in Manual; a Cluster in Full auto moves to Flex for it, and an event says so. Registering
+// it again does not undo what the operator chose afterwards, and a Node SeedGrid installs
+// still starts in SG.
+func TestRegister_AdoptedStartsInManual(t *testing.T) {
+	svc := setup(t)
+	ctx := context.Background()
+	pool, err := db.Connect(ctx, os.Getenv("SEEDGRID_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if err := svc.SetGate(ctx, node.GateFullAuto); err != nil {
+		t.Fatalf("SetGate: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.SetGate(ctx, node.GateFullAuto) })
+
+	byHost := func(host string) node.Node {
+		t.Helper()
+		nodes, err := svc.List(ctx)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		for _, n := range nodes {
+			if n.Hostname == host {
+				return n
+			}
+		}
+		t.Fatalf("node %s not listed", host)
+		return node.Node{}
+	}
+	adoptedEvent := func(nodeID string) (found bool, gateMoved bool) {
+		t.Helper()
+		err := pool.QueryRow(ctx,
+			`SELECT (e.payload->>'gate_moved')::boolean FROM events e
+			   JOIN event_types et ON et.id = e.event_type_id
+			  WHERE et.code = 'NODE_ADOPTED_MANUAL' AND e.node_id = $1`, nodeID).Scan(&gateMoved)
+		if err != nil {
+			return false, false
+		}
+		return true, gateMoved
+	}
+
+	a, err := svc.Register(ctx, node.RegisterInput{Hostname: "adopted-manual-a", Engine: "qbittorrent", EngineAdopted: true})
+	if err != nil {
+		t.Fatalf("Register adopted: %v", err)
+	}
+	if n := byHost("adopted-manual-a"); n.OperationMode != node.NodeModeManual || !n.EngineAdopted {
+		t.Errorf("adopted Node: mode=%q adopted=%v, want manual/true", n.OperationMode, n.EngineAdopted)
+	}
+	if gate, _ := svc.Gate(ctx); gate != node.GateFlex {
+		t.Errorf("gate = %q, want flex", gate)
+	}
+	if found, moved := adoptedEvent(a.NodeID); !found || !moved {
+		t.Errorf("NODE_ADOPTED_MANUAL: found=%v gate_moved=%v, want true/true", found, moved)
+	}
+
+	// The operator moves it to SG; the Agent registering again (a lost credential) keeps that.
+	if err := svc.SetNodeMode(ctx, a.NodeID, node.NodeModeSG); err != nil {
+		t.Fatalf("SetNodeMode: %v", err)
+	}
+	if _, err := svc.Register(ctx, node.RegisterInput{Hostname: "adopted-manual-a", Engine: "qbittorrent", EngineAdopted: true}); err != nil {
+		t.Fatalf("Register again: %v", err)
+	}
+	if n := byHost("adopted-manual-a"); n.OperationMode != node.NodeModeSG {
+		t.Errorf("registering again changed the mode to %q, want sg", n.OperationMode)
+	}
+
+	// Already in Flex: the second adopted Node starts in Manual and the gate does not "move".
+	b, err := svc.Register(ctx, node.RegisterInput{Hostname: "adopted-manual-b", Engine: "qbittorrent", EngineAdopted: true})
+	if err != nil {
+		t.Fatalf("Register adopted b: %v", err)
+	}
+	if n := byHost("adopted-manual-b"); n.OperationMode != node.NodeModeManual {
+		t.Errorf("second adopted Node: mode=%q, want manual", n.OperationMode)
+	}
+	if found, moved := adoptedEvent(b.NodeID); !found || moved {
+		t.Errorf("NODE_ADOPTED_MANUAL b: found=%v gate_moved=%v, want true/false", found, moved)
+	}
+
+	// A Node SeedGrid installs: SG, not adopted, no event.
+	c, err := svc.Register(ctx, node.RegisterInput{Hostname: "adopted-manual-c", Engine: "qbittorrent"})
+	if err != nil {
+		t.Fatalf("Register installed: %v", err)
+	}
+	if n := byHost("adopted-manual-c"); n.OperationMode != node.NodeModeSG || n.EngineAdopted {
+		t.Errorf("installed Node: mode=%q adopted=%v, want sg/false", n.OperationMode, n.EngineAdopted)
+	}
+	if found, _ := adoptedEvent(c.NodeID); found {
+		t.Error("an installed Node emitted NODE_ADOPTED_MANUAL")
+	}
+}

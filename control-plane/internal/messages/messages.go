@@ -66,6 +66,8 @@ var Registry = []Message{
 	// Events.
 	{Kind: Event, Code: "AGENT_UPDATE", Payload: []string{"hostname", "from", "to"}},
 	{Kind: Event, Code: "ENGINE_RESTART", Payload: []string{"hostname"}},
+	{Kind: Event, Code: "NODE_ADOPTED_MANUAL", Payload: []string{"hostname", "gate_moved"},
+		Variant: "gate_moved", Variants: []string{"false", "true"}},
 	{Kind: Event, Code: "NODE_CONFIG_SEEDED", Payload: []string{"hostname", "overrides"}},
 	{Kind: Event, Code: "NODE_DELETED", Payload: []string{"hostname", "force", "torrents_removed"}},
 	{Kind: Event, Code: "NODE_REGISTERED", Payload: []string{"hostname", "agent_version", "name_dropped"},

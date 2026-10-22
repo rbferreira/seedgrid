@@ -116,16 +116,34 @@ func handleMintEnrollToken(d Deps) http.HandlerFunc {
 // returns the BT port assigned by the CP (ADR-017) and the Node index in the port
 // sequence (`node_index`, the origin of the deterministic IPv6 suffix — ADR-038). Called by the
 // Node bootstrap before starting the Torrent Engine.
+//
+// A Node joining with the Engine it already runs (ADR-043) sends that Engine's port in
+// `bt_port`, and the CP reserves exactly it; `bt_port_shared_with` names another active Node
+// already on that port, so the bootstrap can warn.
 func handleAgentEnroll(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Token string `json:"token"`
+			Token    string `json:"token"`
+			BTPort   int    `json:"bt_port"`
+			Hostname string `json:"hostname"`
 		}
 		if err := httpx.DecodeJSON(r, &body); err != nil || body.Token == "" {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "token is required")
 			return
 		}
-		port, err := d.Nodes.AssignPort(r.Context(), body.Token)
+		var port int
+		var sharedWith string
+		var err error
+		if body.BTPort != 0 {
+			port = body.BTPort
+			sharedWith, err = d.Nodes.ReserveEnginePort(r.Context(), body.Token, body.BTPort, body.Hostname)
+		} else {
+			port, err = d.Nodes.AssignPort(r.Context(), body.Token)
+		}
+		if errors.Is(err, node.ErrInvalidPort) {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "bt_port must be between 1 and 65535")
+			return
+		}
 		if errors.Is(err, node.ErrInvalidEnrollToken) {
 			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid, expired or already used join token")
 			return
@@ -138,6 +156,9 @@ func handleAgentEnroll(d Deps) http.HandlerFunc {
 		resp := map[string]any{"bt_port": port}
 		if idx, ok := node.IndexForPort(port); ok {
 			resp["node_index"] = idx
+		}
+		if sharedWith != "" {
+			resp["bt_port_shared_with"] = sharedWith
 		}
 		httpx.WriteJSON(w, http.StatusOK, resp)
 	}

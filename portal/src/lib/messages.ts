@@ -20,6 +20,7 @@ export type Payload = Record<string, unknown> | null | undefined;
 // VARIANT: the payload key whose value selects the phrase, when the same code describes
 // different situations. Mirror of the record; the contract test fails on divergence.
 export const VARIANT: Record<string, string> = {
+  "event/NODE_ADOPTED_MANUAL": "gate_moved",
   "event/NODE_REGISTERED": "name_dropped",
   "event/STORAGE_RECOVERY": "step",
   "event/TORRENT_CREATED": "origin",
