@@ -882,7 +882,10 @@ func (s *Service) OpenDownload(ctx context.Context, ticket string) (body io.Read
 		return nil, "", "", err
 	}
 	expiresAt := time.Now().Add(30 * time.Minute)
-	pl, _ := json.Marshal(map[string]any{"hash": hash, "token": tok, "expires_at": expiresAt.UTC().Format(time.RFC3339)})
+	// serve_only (#61): a download only reads the files, so the Agent must not stop the torrent the
+	// way it stops a migration's source — nothing would start it again. An Agent older than the
+	// field ignores it and still stops it.
+	pl, _ := json.Marshal(map[string]any{"hash": hash, "token": tok, "expires_at": expiresAt.UTC().Format(time.RFC3339), "serve_only": true})
 	cmdID, err := s.cmds.Enqueue(ctx, nodeID, "migrate_serve", pl)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("authorize download on Node: %w", err)

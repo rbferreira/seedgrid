@@ -645,6 +645,25 @@ func TestDownloadTicket(t *testing.T) {
 		t.Fatal("empty ticket")
 	}
 
+	// The command that authorizes the Node is serve-only (#61): a download must not stop the
+	// torrent the way a migration stops its source. No Agent answers here, so OpenDownload gives
+	// up when the context ends; what matters is the command it queued.
+	if _, err := pool.Exec(ctx, `UPDATE nodes SET last_ip = '127.0.0.1' WHERE id = $1`, reg.NodeID); err != nil {
+		t.Fatalf("set last_ip: %v", err)
+	}
+	short, cancel := context.WithTimeout(ctx, time.Second)
+	_, _, _, _ = svc.OpenDownload(short, tk)
+	cancel()
+	var serveOnly bool
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE((payload->>'serve_only')::boolean, false) FROM commands
+		  WHERE node_id = $1 AND type = 'migrate_serve' ORDER BY created_at DESC LIMIT 1`, reg.NodeID).Scan(&serveOnly); err != nil {
+		t.Fatalf("read the queued migrate_serve: %v", err)
+	}
+	if !serveOnly {
+		t.Error("the download's migrate_serve is not serve_only: the Agent would stop the torrent")
+	}
+
 	// Torrent without hash → ErrNoHash.
 	var noHash string
 	if err := pool.QueryRow(ctx,

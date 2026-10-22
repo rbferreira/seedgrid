@@ -435,3 +435,25 @@ func TestRestartEngine_RefusedOnAdoptedEngine(t *testing.T) {
 		t.Errorf("the failure does not say why: %q", res.Error)
 	}
 }
+
+// TestExecute_MigrateServeForADownloadKeepsSeeding (#61): a download from the Portal reuses
+// migrate_serve, and nothing starts the torrent again afterwards. With serve_only the torrent
+// is not stopped; the token is still authorized.
+func TestExecute_MigrateServeForADownloadKeepsSeeding(t *testing.T) {
+	fe := &fakeEngine{state: "SEEDING"}
+	fm := &fakeMigrator{}
+	exp := time.Now().Add(20 * time.Minute).UTC().Format(time.RFC3339)
+	res := NewExecutor(fe).EnableMigration(fm, "/data").Execute(context.Background(), client.Command{
+		Type:    "migrate_serve",
+		Payload: []byte(`{"hash":"h1","token":"tok","expires_at":"` + exp + `","serve_only":true}`),
+	})
+	if res.Status != "DONE" || fm.authHash != "h1" {
+		t.Fatalf("status = %q (%s), authorized %q", res.Status, res.Error, fm.authHash)
+	}
+	if fe.stopCalls != 0 {
+		t.Errorf("a download stopped the torrent (%d stops)", fe.stopCalls)
+	}
+	if string(res.Result) != `{"paused":false}` {
+		t.Errorf("result = %s, want {\"paused\":false}", res.Result)
+	}
+}

@@ -20,6 +20,13 @@ the configuration; each release says how to upgrade.
   marks such a Node and says which settings do not reach it. qBittorrent 4.x works, except for
   publishing to a tracker, which needs 5.0. See the deployment guide, §50.6.
 
+### Fixed
+
+- **Downloading from the Portal no longer stops the torrent (#61).** The download reused the
+  migration's authorization, which stops the torrent on its Node before serving it, and nothing
+  started it again: a seeding torrent stayed paused. The download now only reads the files. The
+  fix is in the Agent: update the Nodes' Agents from the Portal after updating the Control Plane.
+
 ## [0.2.0] — 2026-10-21
 
 The Control Plane can now be installed from published images with a single Compose file — see the

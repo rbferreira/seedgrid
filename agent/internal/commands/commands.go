@@ -124,6 +124,9 @@ type payload struct {
 	ExpiresAt  string `json:"expires_at"`  // RFC3339 (migrate_serve)
 	SourceHost string `json:"source_host"` // migrate_pull: where to pull from
 	SourcePort int    `json:"source_port"`
+	// ServeOnly (#61): the migrate_serve of a download from the Portal. A download only reads the
+	// files, so the torrent keeps running; only a migration stops the source (#8).
+	ServeOnly bool `json:"serve_only"`
 	// MinProgress (ADR-031): progress the destination must reach after recheck for
 	// the migration to be considered good — the progress the source had, minus tolerance.
 	// COMPLETE torrent migration sends ~1.0 (equivalent to "requires SEEDING" in ADR-018);
@@ -246,7 +249,11 @@ func (e *Executor) migrateServe(ctx context.Context, p payload) client.CommandRe
 	if ttl <= 0 {
 		return failed("transfer token already expired")
 	}
-	paused, err := e.pauseForMigration(ctx, p.Hash)
+	paused := false
+	var err error
+	if !p.ServeOnly {
+		paused, err = e.pauseForMigration(ctx, p.Hash)
+	}
 	if err != nil {
 		// Without a confirmed pause we don't serve: an aborted migration is recoverable
 		// (the torrent stays on the source, ADR-018), corrupted data is not.
