@@ -135,6 +135,9 @@ Certificates.
 Provisioning.
 Portal configurations.
 Control Plane configurations.
+
+**An install made from `deploy/compose.yaml` keeps its secrets in a volume (#30).** The database password, the Agent registration token and the internal webhook token live in the `seedgrid-secrets` volume, not in a file the operator edits. Back it up together with `seedgrid-postgres-data`: a database restored without it can no longer be opened by the controller. One way, with the stack stopped: `docker run --rm -v seedgrid-secrets:/s:ro -v "$PWD":/b alpine tar -czf /b/seedgrid-secrets.tgz -C /s .`. The `.env` next to `compose.yaml` holds only what the operator chose (the admin password, used only on the first start, and optional settings such as `SEEDGRID_HTTP_PORT`).
+
 # **19. Operational Data**
 Logs, metrics, and cache may follow their own policies.
 Their protection is recommended only when there is a need for historical investigation.

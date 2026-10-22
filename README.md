@@ -77,27 +77,28 @@ to the API.
 
 ## Quick start
 
-You need one Linux host with Docker for the Control Plane and one per Seed Node (a server, a
-VM, a mini PC or a Raspberry Pi).
+You need one Linux host with Docker for the Control Plane — a VM, a NAS, a mini PC, a Raspberry
+Pi 4/5 — and one per Seed Node.
 
 ```bash
-# 1. On the Control Plane host
-git clone https://github.com/rbferreira/seedgrid.git /opt/seedgrid && cd /opt/seedgrid
-sh scripts/bootstrap-controller.sh      # creates the secrets, starts everything, prints the Portal URL
+# 1. On the Control Plane host, in a directory of its own (Docker Compose 2.23.1 or later)
+curl -fsSLO https://github.com/rbferreira/seedgrid/releases/latest/download/compose.yaml
+echo 'SEEDGRID_ADMIN_PASSWORD=<choose one>' > .env
+docker compose up -d      # the Portal answers on port 80; SEEDGRID_HTTP_PORT in .env changes it
 
 # 2. On each Seed Node — the Portal gives you this line, token included (Health & Metrics → Add Node)
 curl -fsSL http://<control-plane>/node/bootstrap-node.sh | sudo CP_URL=http://<control-plane> JOIN_TOKEN=<token> sh
-
-# 3. Check the whole setup end to end
-sudo sh scripts/acceptance.sh
 ```
 
-Updating is `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` on the Control
-Plane host; Nodes update from the Portal. Opening the BitTorrent port (a port forward on IPv4, or inbound IPv6) is
-up to you — SeedGrid tells you which port each Node uses.
+The admin password is the only thing you choose; the other secrets are generated on the first
+start into the `seedgrid-secrets` volume — back it up together with the database. To update,
+download the `compose.yaml` of the new release and run `docker compose pull && docker compose up -d`;
+Nodes update from the Portal. Opening the BitTorrent port (a port forward on IPv4, or inbound IPv6)
+is up to you — SeedGrid tells you which port each Node uses.
 
-Everything else — topology, environment variables, networking, upgrades — is in
-[Deployment](docs/19%20-%20Deployment.md).
+To run a commit that is not a release yet, build on the host instead
+(`sh scripts/bootstrap-controller.sh` from a clone). That path, topology, environment variables,
+networking and upgrades are all in [Deployment](docs/19%20-%20Deployment.md).
 
 ## Documentation
 

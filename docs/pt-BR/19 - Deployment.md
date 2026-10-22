@@ -391,24 +391,9 @@ Quem prefere o caminho padrão do Docker pode usar os Dockerfiles multi-stage: `
 **Imagens publicadas (#30).** O workflow `Release images` monta `ghcr.io/rbferreira/seedgrid-controller` e `ghcr.io/rbferreira/seedgrid-portal` para `linux/amd64` e `linux/arm64` a partir desses Dockerfiles multi-stage. A publicação ocorre apenas a partir de uma tag `vX.Y.Z`, como `X.Y.Z`, `X.Y` e `latest`; pré-releases (`vX.Y.Z-rc.N`) recebem apenas sua tag exata. As etapas de build rodam na plataforma da máquina de CI e o Go faz cross-compile, sem emulação. A imagem do Portal inclui os binários do Agent para ambas as arquiteturas, `agents.json` e os arquivos de bootstrap da mesma versão. Eles são gerados por `scripts/node-artifacts.sh`, o mesmo script usado pelo `build-portal.sh`, garantindo que ambos os caminhos sirvam o mesmo `/node/`. Os dois Dockerfiles do controller o rodam com o mesmo usuário (UID 65532, a quem o `bootstrap-controller.sh` entrega o volume de targets). Em pull requests que alteram o conteúdo das imagens, o workflow as monta para ambas as arquiteturas sem publicar. Ele verifica a versão no controller, seu usuário e os artefatos de Node no Portal.
 
 # **43. Instalação e atualização**
-**Pré-requisitos:** Docker com o plugin Compose e `git` no host do Control Plane; nos Nodes, um Linux com `curl` e acesso `root` (o onboarding instala o Docker se faltar).
+**Pré-requisitos:** no host do Control Plane, Docker com Compose 2.23.1 ou superior (compilar no host também exige `git`); nos Nodes, um Linux com `curl` e acesso `root` (o onboarding instala o Docker se faltar).
 
-**Control Plane — do zero**, a partir do clone do repositório, como `root` ou com `sudo`:
-```sh
-git clone <url-do-repositório> /opt/seedgrid && cd /opt/seedgrid
-sh scripts/bootstrap-controller.sh
-#   cria o deploy/control-plane/.env e gera os segredos (§46); compila o controller,
-#   sobe Postgres+Controller, Observabilidade e Portal; no fim mostra a URL do Portal
-#   e o login do admin.
-```
-Não há nada para editar antes. Quem prefere escolher os valores cria o `.env` a partir do
-`.env.example` antes de rodar: o que já estiver preenchido é respeitado (§45). Só o Portal
-(`:80`) fica exposto na rede — a API é servida por ele em `/api`, e as portas `8080` (API) e
-`9090` (Prometheus) escutam apenas em `127.0.0.1` no host.
-
-`bootstrap-controller.sh` orquestra os três composes (`deploy/control-plane`, `deploy/observability`, `deploy/portal`).
-
-**Control Plane — a partir das imagens publicadas (#30, ADR-042).** O arquivo `deploy/compose.yaml` instala o mesmo Control Plane usando as imagens de release (§42), sem clone e sem build. Requer Docker Compose 2.23.1 ou superior, pois a configuração do Prometheus e do Alertmanager fica dentro do próprio arquivo. Em um diretório dedicado:
+**Control Plane — do zero (#30, ADR-042).** O arquivo `deploy/compose.yaml` instala o Control Plane usando as imagens de release (§42), sem clone e sem build. Requer Docker Compose 2.23.1 ou superior, pois a configuração do Prometheus e do Alertmanager fica dentro do próprio arquivo. Em um diretório dedicado:
 ```sh
 curl -fsSLO https://github.com/rbferreira/seedgrid/releases/latest/download/compose.yaml
 echo 'SEEDGRID_ADMIN_PASSWORD=<a senha que você usará no Portal>' > .env
@@ -423,6 +408,21 @@ docker compose up -d
 
 O CI executa `scripts/test-compose.sh` em uma máquina limpa para cada pull request que altere as imagens ou o arquivo Compose, e em cada release antes de anexar o `compose.yaml`. O script sobe a stack, verifica o login, `/node/`, os segredos e seus donos, o token de webhook, os targets do Prometheus e as portas publicadas. Depois, reinicia tudo e remove a stack com seus volumes. Ele se recusa a rodar se já existir um volume de banco do SeedGrid.
 
+**Control Plane — compilando no host**, para contribuidores e para rodar um commit que ainda não é release. A partir do clone do repositório, como `root` ou com `sudo`:
+```sh
+git clone <url-do-repositório> /opt/seedgrid && cd /opt/seedgrid
+sh scripts/bootstrap-controller.sh
+#   cria o deploy/control-plane/.env e gera os segredos (§46); compila o controller,
+#   sobe Postgres+Controller, Observabilidade e Portal; no fim mostra a URL do Portal
+#   e o login do admin.
+```
+Não há nada para editar antes. Quem prefere escolher os valores cria o `.env` a partir do
+`.env.example` antes de rodar: o que já estiver preenchido é respeitado (§45). Só o Portal
+(`:80`) fica exposto na rede — a API é servida por ele em `/api`, e as portas `8080` (API) e
+`9090` (Prometheus) escutam apenas em `127.0.0.1` no host.
+
+`bootstrap-controller.sh` orquestra os três composes (`deploy/control-plane`, `deploy/observability`, `deploy/portal`).
+
 **Seed Node — do zero:** um comando, executado no Node como `root`, sem clonar o repositório (onboarding
 zero-touch, §50). O Portal o mostra pronto, com o token, em **Saúde & Métricas → Adicionar Node**:
 ```sh
@@ -430,7 +430,7 @@ curl -fsSL http://<control-plane>/node/bootstrap-node.sh | sudo CP_URL=http://<c
 ```
 O `sudo` é para quem não está logado como `root`; sem privilégio o script para na primeira linha e diz como rodar.
 
-**Atualização do Control Plane:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — o mesmo script da instalação. Ele reconstrói as imagens e recria só o que mudou; o `.env`, os segredos e os volumes (banco, métricas) são preservados. O `fetch --tags` garante que a versão exibida acompanhe a tag nova. Prometheus e Alertmanager sempre reiniciam: a configuração vem de arquivos que o `git pull` substitui, e um container em execução continua lendo o arquivo com que iniciou (#30).
+**Atualização do Control Plane — compilando no host:** `git pull && git fetch --tags && sh scripts/bootstrap-controller.sh` — o mesmo script da instalação. Ele reconstrói as imagens e recria só o que mudou; o `.env`, os segredos e os volumes (banco, métricas) são preservados. O `fetch --tags` garante que a versão exibida acompanhe a tag nova. Prometheus e Alertmanager sempre reiniciam: a configuração vem de arquivos que o `git pull` substitui, e um container em execução continua lendo o arquivo com que iniciou (#30).
 
 **O node-exporter do host deixou o `172.18.0.1` (#30).** Antes ele rodava na rede do host escutando em `172.18.0.1`, gateway da `seedgrid-core` — endereço que só existia quando o Docker atribuía essa faixa à rede. Agora ele entra na `seedgrid-core` como os demais serviços, não publica porta e o Prometheus o alcança pelo nome (`seedgrid-node-exporter:9100`). Os contadores de rede são do próprio container.
 
