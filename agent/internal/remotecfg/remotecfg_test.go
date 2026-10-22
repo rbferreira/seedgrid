@@ -424,3 +424,18 @@ func TestNoHooksDoesNotBreak(t *testing.T) {
 		t.Errorf("Applied = %+v / %q", b, v)
 	}
 }
+
+// TestApplied_AdoptedEngine (ADR-043): on the operator's own qBittorrent the engine.* values
+// reach the Agent but are never written to the Engine, so the log of what was applied leaves
+// them out; on any other Node it reports everything.
+func TestApplied_AdoptedEngine(t *testing.T) {
+	values := map[string]string{"agent.log_level": "info", "engine.max_active_downloads": "10"}
+	adopted := &Manager{hooks: Hooks{EngineAdopted: true}}
+	if got := adopted.applied(values); len(got) != 1 || got["agent.log_level"] != "info" {
+		t.Errorf("adopted: applied = %v, want only the agent.* key", got)
+	}
+	installed := &Manager{}
+	if got := installed.applied(values); len(got) != 2 {
+		t.Errorf("installed: applied = %v, want both keys", got)
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +51,9 @@ type Hooks struct {
 	// caller uses it to also pin down machine-specific settings (BT port, save_path), which the
 	// cluster configuration never changes.
 	ApplyEngine func(ctx context.Context, q config.QueueSettings, first bool) error
+	// EngineAdopted: the Engine is the operator's own qBittorrent (ADR-043) and ApplyEngine does
+	// not touch it. The engine.* values then stay out of what the log reports as applied.
+	EngineAdopted bool
 }
 
 // Manager holds the state of the negotiation and what has been applied. The methods are safe for concurrent
@@ -220,10 +224,30 @@ func (m *Manager) apply(ctx context.Context, target config.Behavior, version, so
 		m.version = version
 	}
 	if first {
-		m.logger.Info("Agent configuration applied", "source", source, "version", version, "values", m.cur.Values())
-	} else if changed := config.Diff(prev, m.cur); len(changed) > 0 {
+		if m.hooks.EngineAdopted {
+			m.logger.Info("Agent configuration applied", "source", source, "version", version,
+				"values", m.applied(m.cur.Values()), "engine", "not applied: the operator's own qBittorrent (ADR-043)")
+		} else {
+			m.logger.Info("Agent configuration applied", "source", source, "version", version, "values", m.cur.Values())
+		}
+	} else if changed := m.applied(config.Diff(prev, m.cur)); len(changed) > 0 {
 		m.logger.Info("Agent configuration hot-reloaded", "source", source, "version", version, "changes", sortedPairs(changed))
 	}
+}
+
+// applied drops the engine.* keys from values when the Engine is adopted (ADR-043): they reach
+// the Agent, but it never writes them to that Engine, and the log must not say otherwise.
+func (m *Manager) applied(values map[string]string) map[string]string {
+	if !m.hooks.EngineAdopted {
+		return values
+	}
+	out := make(map[string]string, len(values))
+	for k, v := range values {
+		if !strings.HasPrefix(k, "engine.") {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // applyEngine applies the queue to the Engine; failure is recorded for the next heartbeat to retry.

@@ -183,6 +183,7 @@ func run() error {
 		SetHeartbeatInterval: func(d time.Duration) { hbInterval.Store(int64(d)) },
 		SetPollInterval:      poller.SetInterval,
 		ApplyEngine:          applyEngine,
+		EngineAdopted:        cfg.EngineAdopted,
 	})
 
 	// Torrent state synchronization loop (Engine → Control Plane).
