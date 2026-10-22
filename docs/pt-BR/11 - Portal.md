@@ -345,6 +345,8 @@ Atualizar inventário.
 Visualizar logs.
 Consultar métricas.
 
+**Node com qBittorrent próprio (ADR-043, #32).** Um Node que entrou com o qBittorrent que a máquina já rodava recebe `engine_adopted` e exibe o selo **qBittorrent próprio** no cartão (Health & Metrics) e nos detalhes. A ação **Reiniciar Engine** não aparece — o Agent recusa o comando, pois esse Engine pode não ter política de reinício. Em **Configuração deste Node**, um aviso informa que os valores do Engine não afetam esse qBittorrent. Cada linha `engine.*` aparece riscada com "não aplicado"; as linhas `agent.*` funcionam normalmente como em qualquer Node.
+
 **Configuração deste Node (ADR-039, #144).** Seção do detalhe do Node entre Inventário/Recursos e a lista
 de torrents. É uma tabela com **Parâmetro · Valor efetivo · Origem · Ações**:
 - **Valor efetivo** é o que o Agent recebe; **Origem** é *cluster* ou **valor deste Node** (em destaque — é

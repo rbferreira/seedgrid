@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NodeConfigView, canWriteNodeConfig } from "./NodeConfigPanel";
+import { NodeConfigView, canWriteNodeConfig, notAppliedHere } from "./NodeConfigPanel";
 import { NodeOverridesList } from "./NodeOverridesPanel";
 import type { NodeSettingItem, NodeSettings, SettingOverride } from "../api";
 import { setLang } from "../i18n";
@@ -158,5 +158,26 @@ describe("NodeOverridesList — those with their own value (Settings)", () => {
     const html = renderToStaticMarkup(<NodeOverridesList rows={[]} />);
     expect(html).toContain("Nenhum Node tem valor próprio");
     expect(html).not.toContain("<table");
+  });
+});
+
+describe("NodeConfigView — a Node with its own qBittorrent (ADR-043)", () => {
+  // Rendered inside each test: the language is set in beforeEach, after the describe body runs.
+  const adopted = () =>
+    renderToStaticMarkup(<NodeConfigView data={data("in_sync")} canWrite={false} engineAdopted onSave={noop} onReset={noop} />);
+
+  it("says the Engine values do not reach that qBittorrent", () => {
+    expect(adopted()).toContain("não chegam lá");
+  });
+
+  it("marks only the engine.* rows as not applied", () => {
+    expect((adopted().match(/não aplicado: qBittorrent próprio do Node/g) ?? []).length).toBe(2);
+    expect(notAppliedHere("engine.max_active_downloads", true)).toBe(true);
+    expect(notAppliedHere("agent.heartbeat_interval", true)).toBe(false);
+    expect(notAppliedHere("engine.max_active_downloads", false)).toBe(false);
+  });
+
+  it("a Node SeedGrid installs shows no such notice", () => {
+    expect(render(data("in_sync"), false)).not.toContain("não aplicado");
   });
 });

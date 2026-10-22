@@ -102,6 +102,8 @@ export const health: Catalog["health"] = {
       firewalledTitleGeneric: "No inbound connections received — check that the BitTorrent port is allowed through the firewall.",
       reachable: "Reachable",
       reachableTitle: "The Engine has accepted external connections — the BitTorrent port is reachable.",
+      adopted: "Own qBittorrent",
+      adoptedTitle: "This Node joined with the qBittorrent the machine already ran: SeedGrid does not change its settings (port, folders, queue) or restart it.",
     },
     actions: {
       details: "Details →",
