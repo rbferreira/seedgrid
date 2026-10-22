@@ -41,10 +41,13 @@ type grant struct {
 
 // Server serves, under a token, the content of torrents during migrations. Runs on
 // the source. contentPath resolves the data path of a torrent (on disk) from
-// the hash; storagePath confines what can be served (anti-traversal).
+// the hash; storagePath and the extra roots confine what can be served (anti-traversal).
 type Server struct {
 	addr        string
 	storagePath string
+	// roots are the directories data may be served from: storagePath, plus the host side of an
+	// adopted Engine's bind mounts (ADR-043), whose torrents may live outside the Node's storage.
+	roots       []string
 	contentPath func(ctx context.Context, hash string) (string, error)
 	logger      *slog.Logger
 
@@ -65,6 +68,7 @@ func NewServer(port int, storagePath string, contentPath func(ctx context.Contex
 	return &Server{
 		addr:        ":" + strconv.Itoa(port),
 		storagePath: filepath.Clean(storagePath),
+		roots:       []string{filepath.Clean(storagePath)},
 		contentPath: contentPath,
 		logger:      logger,
 		grants:      make(map[string]grant),
@@ -77,6 +81,16 @@ func NewServer(port int, storagePath string, contentPath func(ctx context.Contex
 // Server itself to chain into NewServer.
 func (s *Server) WithCreator(fn func(ctx context.Context, sourcePath string, trackers []string, private bool, source string) ([]byte, error)) *Server {
 	s.createTorrent = fn
+	return s
+}
+
+// WithRoots adds directories, besides the storage, that torrent data may be served from — the
+// host side of an adopted Engine's bind mounts (ADR-043). Returns the Server itself to chain
+// into NewServer.
+func (s *Server) WithRoots(roots []string) *Server {
+	for _, r := range roots {
+		s.roots = append(s.roots, filepath.Clean(r))
+	}
 	return s
 }
 
@@ -173,10 +187,10 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "torrent content not found", http.StatusNotFound)
 		return
 	}
-	// Anti-traversal: the content must be under the allowed storagePath.
+	// Anti-traversal: the content must be under the storage or a mapped Engine directory.
 	root = filepath.Clean(root)
-	if !underRoot(s.storagePath, root) {
-		s.logger.Warn("refusing to serve path outside storage", "root", root, "storage", s.storagePath)
+	if !underAnyRoot(s.roots, root) {
+		s.logger.Warn("refusing to serve path outside storage", "root", root, "roots", s.roots)
 		http.Error(w, "path not allowed", http.StatusForbidden)
 		return
 	}
@@ -266,6 +280,10 @@ func (s *Server) handleContent(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("create publish directory", "dir", destDir, "error", err)
 		http.Error(w, "failed to prepare storage", http.StatusInternalServerError)
 		return
+	}
+	// The folder takes the storage's owner, and extractTar gives its content the same one.
+	if uid, gid, ok := ownerOf(s.storagePath); ok {
+		chownBestEffort(destDir, uid, gid)
 	}
 	if err := extractTar(r.Body, destDir); err != nil {
 		s.logger.Error("extract published content", "error", err)
@@ -449,8 +467,11 @@ func Pull(ctx context.Context, sourceHost string, sourcePort int, token, destPat
 	return extractTar(resp.Body, filepath.Clean(destPath))
 }
 
-// extractTar extracts a tar to destPath, rejecting entries with traversal.
+// extractTar extracts a tar to destPath, rejecting entries with traversal. What it creates gets
+// destPath's owner (ADR-043): the Agent runs as root, and an Engine in a container usually does
+// not — it must be able to keep writing to a partially migrated torrent.
 func extractTar(r io.Reader, destPath string) error {
+	uid, gid, own := ownerOf(destPath)
 	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
@@ -469,9 +490,15 @@ func extractTar(r io.Reader, destPath string) error {
 			if err := os.MkdirAll(target, 0o755); err != nil { //nolint:gosec // G301: content read by the Engine (qBittorrent), needs to be accessible
 				return err
 			}
+			if own {
+				chownBestEffort(target, uid, gid)
+			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { //nolint:gosec // G301: idem
 				return err
+			}
+			if own && filepath.Dir(target) != destPath {
+				chownBestEffort(filepath.Dir(target), uid, gid)
 			}
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644) //nolint:gosec // G304/G306: target validated by underRoot() above; needs to be readable by the Engine
 			if err != nil {
@@ -486,8 +513,21 @@ func extractTar(r io.Reader, destPath string) error {
 				return err
 			}
 			_ = f.Close()
+			if own {
+				chownBestEffort(target, uid, gid)
+			}
 		}
 	}
+}
+
+// underAnyRoot reports whether path is contained in one of roots (all already cleaned).
+func underAnyRoot(roots []string, path string) bool {
+	for _, r := range roots {
+		if underRoot(r, path) {
+			return true
+		}
+	}
+	return false
 }
 
 // underRoot reports whether path is contained in root (both already cleaned).

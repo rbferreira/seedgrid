@@ -43,6 +43,9 @@ type RegisterRequest struct {
 	AgentVersion  string `json:"agent_version,omitempty"`
 	Engine        string `json:"engine,omitempty"`
 	EngineVersion string `json:"engine_version,omitempty"`
+	// EngineAdopted: the Node runs against the qBittorrent the machine already had (ADR-043).
+	// Sent only when true, so the body of every other Node is what it always was.
+	EngineAdopted bool `json:"engine_adopted,omitempty"`
 }
 
 // RegisterResponse is the registration response.

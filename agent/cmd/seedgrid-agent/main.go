@@ -24,6 +24,7 @@ import (
 	"github.com/rbferreira/seedgrid/agent/internal/engine/qbittorrent"
 	"github.com/rbferreira/seedgrid/agent/internal/identity"
 	"github.com/rbferreira/seedgrid/agent/internal/inventory"
+	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 	"github.com/rbferreira/seedgrid/agent/internal/remotecfg"
 	"github.com/rbferreira/seedgrid/agent/internal/resources"
 	"github.com/rbferreira/seedgrid/agent/internal/transfer"
@@ -107,8 +108,17 @@ func run() error {
 	holder.set(initial)
 	logger.Info("node registered", "node_id", initial.NodeID, "hostname", inv.Hostname)
 
-	// Command loop (polling) → Torrent Engine.
-	engine := qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword)
+	// Command loop (polling) → Torrent Engine. The path map (ADR-043) is empty on the Nodes
+	// SeedGrid installs; config.Load already refused a malformed one.
+	paths, err := pathmap.Parse(cfg.EnginePathMap)
+	if err != nil {
+		return err
+	}
+	engine := qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword).WithPaths(paths)
+	if cfg.EngineAdopted {
+		logger.Info("adopted Engine: its preferences, port and restarts are the operator's (ADR-043)",
+			"storage", cfg.StoragePath, "path_map", cfg.EnginePathMap)
+	}
 
 	// The BT port, save_path, and Engine queue are NO longer set here on boot: the queue
 	// comes from the Control Plane (ADR-039) and the right value is only known after the first heartbeat.
@@ -121,10 +131,14 @@ func run() error {
 	// token (source) and pulls from the source (destination). It also receives publication
 	// uploads and creates the .torrent in the Engine (ADR-019, via WithCreator).
 	xfer := transfer.NewServer(cfg.MigrationPort, cfg.StoragePath, engine.ContentPathOf, logger).
-		WithCreator(engine.CreateTorrent)
+		WithCreator(engine.CreateTorrent).
+		WithRoots(paths.HostRoots())
 	go xfer.Run(ctx)
 
 	executor := commands.NewExecutor(engine).EnableMigration(xfer, cfg.StoragePath)
+	if cfg.EngineAdopted {
+		executor.AdoptedEngine()
+	}
 	// ADR-027: after an update_agent swaps the binary (and the CP has already received the ack), exiting
 	// with 0 is enough — systemd (Restart=always) brings the Agent back up on the new binary.
 	poller := commands.NewPoller(cli, holder.token, executor, cfg.CommandPollInterval, logger).
@@ -137,6 +151,11 @@ func run() error {
 	var hbInterval atomic.Int64
 	hbInterval.Store(int64(cfg.HeartbeatInterval))
 	applyEngine := func(actx context.Context, q config.QueueSettings, first bool) error {
+		if cfg.EngineAdopted {
+			// The operator's own qBittorrent (ADR-043): its port, download folder and queue are
+			// theirs. The engine.* settings are not applied, and the Portal says so on this Node.
+			return nil
+		}
 		lctx, lcancel := context.WithTimeout(actx, 15*time.Second)
 		defer lcancel()
 		ec := qbittorrent.EngineConfig{
@@ -164,6 +183,7 @@ func run() error {
 		SetHeartbeatInterval: func(d time.Duration) { hbInterval.Store(int64(d)) },
 		SetPollInterval:      poller.SetInterval,
 		ApplyEngine:          applyEngine,
+		EngineAdopted:        cfg.EngineAdopted,
 	})
 
 	// Torrent state synchronization loop (Engine → Control Plane).
@@ -229,6 +249,14 @@ func run() error {
 		// the incoming verdict comes from the Engine ("" if it didn't respond — the CP treats
 		// unknown as "don't know", never as firewalled).
 		connectable, _ := engine.ConnectionStatus(hbCtx)
+		// The BitTorrent port: the one the CP assigned, or, on an adopted Engine (ADR-043), the one
+		// the operator set in qBittorrent — read each time, so a change shows in the Portal.
+		btPort := cfg.BTPort
+		if cfg.EngineAdopted {
+			if p, perr := engine.ListenPort(hbCtx); perr == nil {
+				btPort = p
+			}
+		}
 		// Latest incoming connection sample; nil while never sampled (#155).
 		var incoming *int
 		if v := incomingPeers.Load(); v >= 0 {
@@ -245,7 +273,7 @@ func run() error {
 			DiskFreeBytes:     res.DiskFreeBytes,
 			MemTotalBytes:     res.MemTotalBytes,
 			MemAvailBytes:     res.MemAvailBytes,
-			BTPort:            cfg.BTPort,
+			BTPort:            btPort,
 			Load1:             res.Load1,
 			CPUCores:          res.CPUCores,
 			DiskIOUtilPct:     diskUtil,
@@ -515,6 +543,7 @@ func register(ctx context.Context, cfg config.Config, cli *client.Client, inv in
 		Architecture:  inv.Architecture,
 		AgentVersion:  version,
 		Engine:        cfg.Engine,
+		EngineAdopted: cfg.EngineAdopted,
 	})
 	if err != nil {
 		return identity.Identity{}, err
