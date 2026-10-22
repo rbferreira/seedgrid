@@ -13,6 +13,17 @@
 #   STORAGE_DEVICE=/dev/sda2   points to the partition exactly
 #   STORAGE_FORMAT=1           formats ext4 if the partition has no filesystem (destructive)
 #
+# A machine that already runs qBittorrent (ADR-043) — keep it, with its port, folders and torrents:
+#   curl -fsSL http://<IP_DO_CP>/node/bootstrap-node.sh | sudo CP_URL=http://<IP_DO_CP> \
+#     JOIN_TOKEN=<token> ENGINE=existing QBT_PASSWORD=<WebUI password> sh
+#   QBT_URL=http://127.0.0.1:8080   the WebUI (default); QBT_USERNAME=admin (default)
+#   QBT_CONTAINER=<name>            the qBittorrent container, when Docker runs more than one
+#   ENGINE_PATH_MAP=/downloads=/mnt/torrents   container path=host path (default: read from Docker)
+# It checks the WebUI and the version (4.5 or later) before enrolling, keeps the Engine's
+# listening port and download folder, and installs only the Agent (and a node-exporter, when
+# nothing answers on port 9100 and Docker is present). It installs no Docker and changes no disk or
+# network. The Node joins in Manual: SeedGrid leaves its torrents alone until you move it to SG.
+#
 # Dedicated disk, or system disk (#221): the script WRITES to /etc/seedgrid-agent.env whether the Agent
 # should require /data to be a mountpoint (SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT). It is declared here,
 # during install, and never inferred later: an unmounted disk looks like a local folder.
@@ -57,7 +68,7 @@ for arg in "$@"; do
     --storage-only) MODE=storage ;;
     --network-only) MODE=network ;;
     -h|--help)
-      sed -n '2,51p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "!! unknown argument: $arg (use --storage-only, --network-only or --help)"; exit 2 ;;
   esac
@@ -86,6 +97,16 @@ case "${STORAGE_REQUIRE_MOUNT:-}" in
   ''|true|false) ;;
   *) echo "!! STORAGE_REQUIRE_MOUNT must be true or false (got '$STORAGE_REQUIRE_MOUNT')"; exit 2 ;;
 esac
+# ENGINE: install (default) brings up SeedGrid's own qBittorrent; existing keeps the one the machine
+# already runs (ADR-043). Only the onboarding chooses it.
+case "${ENGINE:-install}" in
+  install|existing) ;;
+  *) echo "!! ENGINE must be install or existing (got '$ENGINE')"; exit 2 ;;
+esac
+if [ "${ENGINE:-install}" = existing ] && [ "$MODE" != full ]; then
+  echo "!! ENGINE=existing is for the onboarding; --storage-only and --network-only do not take it"
+  exit 2
+fi
 if [ "$MODE" = storage ] && [ "${STORAGE_REQUIRE_MOUNT:-}" = false ]; then
   echo "!! --storage-only attaches a dedicated disk: incompatible with STORAGE_REQUIRE_MOUNT=false"
   exit 2
@@ -833,9 +854,246 @@ configure_ipv6_suffix() {
   return 0
 }
 
+# install_agent_binary downloads the Agent for this machine's architecture and proves it runs.
+# The binary is published BY ARCHITECTURE (ADR-027). Previously there was a single /node/seedgrid-agent,
+# cross-compiled ARM64 for the RPi — on an amd64 Node it downloaded but wouldn't run.
+# Resolving the arch here is what makes onboarding correct in both worlds.
+install_agent_binary() {
+  case "$(uname -m)" in
+    x86_64|amd64)  NODE_ARCH=amd64 ;;
+    aarch64|arm64) NODE_ARCH=arm64 ;;
+    *) echo "!! unsupported architecture: $(uname -m) (the CP publishes amd64 and arm64)"; exit 1 ;;
+  esac
+  echo "==> downloading Agent for $NODE_ARCH"
+  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent
+  chmod 0755 /usr/local/bin/seedgrid-agent
+  # Proves the binary runs HERE before installing the service — same smoke-test that the
+  # self-update uses (ADR-027); failing early with a clear message is better than a systemd in
+  # a restart loop.
+  /usr/local/bin/seedgrid-agent --version >/dev/null 2>&1 || {
+    echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
+}
+
+# start_agent_service installs the Agent's systemd unit and starts it.
+start_agent_service() {
+  install -m0644 "$INSTALL_DIR/seedgrid-agent.service" "$AGENT_UNIT"
+  systemctl daemon-reload
+  systemctl enable --now seedgrid-agent
+}
+
+# ---------------------------------------------------------------------------
+# A qBittorrent the machine already runs (ENGINE=existing, ADR-043).
+#
+# The Engine stays the operator's: its port forward, firewall rule, download folders, settings and
+# torrents are what they want to keep. The bootstrap reads the port and the folder instead of
+# choosing them, and checks everything it needs BEFORE enrolling — nothing is enrolled with an
+# Engine the Agent cannot use.
+# ---------------------------------------------------------------------------
+
+# qbt_curl ARGS... calls the WebUI with the session cookie and the Referer qBittorrent's CSRF
+# protection wants. QBT_COOKIES is the cookie jar of this run.
+qbt_curl() {
+  curl -sS -b "$QBT_COOKIES" -c "$QBT_COOKIES" -H "Referer: $QBT_URL" "$@"
+}
+
+# qbt_login logs in to the WebUI. qBittorrent answers "Ok." (4.x) or 204 (5.x) on success and
+# "Fails." on wrong credentials. With "bypass authentication for clients on localhost" turned on,
+# the login itself can fail and the API still answer: what counts is app/version answering.
+qbt_login() {
+  qbt_curl -o /dev/null --data-urlencode "username=$QBT_USERNAME" --data-urlencode "password=${QBT_PASSWORD:-}" \
+    "$QBT_URL/api/v2/auth/login" 2>/dev/null || true
+  [ "$(qbt_curl -o /dev/null -w '%{http_code}' "$QBT_URL/api/v2/app/version" 2>/dev/null)" = 200 ]
+}
+
+# qbt_version_ok VERSION: is it qBittorrent 4.5 or later? 4.5 is the first with torrents/export,
+# which migration and the .torrent backfill use. VERSION is what app/version answers ("v4.6.7").
+qbt_version_ok() {
+  v=${1#v}
+  major=${v%%.*}
+  rest=${v#*.}
+  minor=${rest%%.*}
+  case "$major$minor" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$major" -gt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -ge 5 ]; }
+}
+
+# json_num KEY / json_str KEY read one top-level field of the JSON on stdin (app/preferences, the
+# enroll response). Enough for the fields read here; the bootstrap does not depend on jq.
+json_num() {
+  sed -n "s/.*\"$1\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" | head -1
+}
+json_str() {
+  sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1
+}
+
+# engine_container prints the name of the running qBittorrent container: QBT_CONTAINER when given,
+# otherwise the only running container whose image is a qBittorrent. Prints nothing for a
+# qBittorrent installed on the host (or without Docker); returns 1 when there are several and
+# none was chosen.
+engine_container() {
+  if [ -n "${QBT_CONTAINER:-}" ]; then
+    echo "$QBT_CONTAINER"
+    return 0
+  fi
+  command -v docker >/dev/null 2>&1 || return 0
+  found=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($2) ~ /qbittorrent/ { print $1 }')
+  case "$(printf '%s\n' "$found" | grep -c .)" in
+    0) return 0 ;;
+    1) echo "$found" ;;
+    *) echo "!! several qBittorrent containers are running ($(echo "$found" | tr '\n' ' ')): choose one with QBT_CONTAINER=<name>" >&2
+       return 1 ;;
+  esac
+}
+
+# container_path_map NAME prints the container's mounts as `engine path=host path;...`, the format
+# of SEEDGRID_ENGINE_PATH_MAP. /config (qBittorrent's own settings, with the WebUI password hash) is
+# left out: no torrent lives there, and the Agent may serve data from every mapped folder.
+container_path_map() {
+  docker inspect -f '{{range .Mounts}}{{.Destination}}={{.Source}}{{"\n"}}{{end}}' "$1" 2>/dev/null \
+    | awk -F= 'NF == 2 && $1 != "/config" && $1 != "" { printf "%s%s", sep, $0; sep = ";" }'
+}
+
+# host_path MAP PATH translates an Engine path to the host, by the longest matching prefix of MAP
+# (`engine=host;...`), whole components only. Without a match the path is the same on both sides.
+host_path() {
+  printf '%s\n' "$1" | tr ';' '\n' | awk -F= -v p="${2%/}" '
+    NF == 2 {
+      from = $1; sub(/\/$/, "", from); to = $2; sub(/\/$/, "", to)
+      if ((p == from || index(p, from "/") == 1) && length(from) >= best) {
+        best = length(from); out = to substr(p, length(from) + 1); found = 1
+      }
+    }
+    END { if (found) print (out == "" ? "/" : out); else print (p == "" ? "/" : p) }'
+}
+
+# extract_exporter_compose FILE prints, from the Node compose (FILE), a compose with only the
+# node-exporter service. An adopted Node gets this one instead of the full file: with the full
+# file in /opt/seedgrid-node, a `docker compose up -d` there would start a second qBittorrent on
+# the operator's WebUI port.
+extract_exporter_compose() {
+  awk '
+    /^name:/ { print; next }
+    /^services:/ { print; insvc = 1; next }
+    insvc && /^  [A-Za-z0-9_-]+:/ { keep = ($0 ~ /^  node-exporter:/) }
+    insvc && keep { print }
+  ' "$1"
+}
+
+# write_adopted_agent_env writes the Agent env of a Node joining with its own qBittorrent. The
+# storage is the host folder of the Engine's save_path; there is no dedicated-disk requirement,
+# because SeedGrid did not mount that disk.
+write_adopted_agent_env() {
+  {
+    echo "SEEDGRID_CONTROL_PLANE_URL=$CP_URL"
+    echo "SEEDGRID_AGENT_REGISTRATION_TOKEN=$JOIN_TOKEN"
+    echo "SEEDGRID_ENGINE_QBT_URL=$QBT_URL"
+    echo "SEEDGRID_ENGINE_QBT_USERNAME=$QBT_USERNAME"
+    echo "SEEDGRID_ENGINE_QBT_PASSWORD=${QBT_PASSWORD:-}"
+    echo "SEEDGRID_ENGINE_BT_PORT=$BT_PORT"
+    echo "SEEDGRID_ENGINE_ADOPTED=true"
+    [ -z "$ENGINE_CONTAINER" ] || echo "SEEDGRID_ENGINE_CONTAINER=$ENGINE_CONTAINER"
+    [ -z "$PATH_MAP" ] || echo "SEEDGRID_ENGINE_PATH_MAP=$PATH_MAP"
+    echo "SEEDGRID_AGENT_STORAGE_PATH=$HOST_SAVE"
+    echo "SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false"
+  } > "$AGENT_ENV"
+  chmod 0600 "$AGENT_ENV"
+}
+
+# adopt_existing_engine is the whole onboarding of ENGINE=existing.
+adopt_existing_engine() {
+  QBT_URL="${QBT_URL:-http://127.0.0.1:8080}"
+  QBT_URL="${QBT_URL%/}"
+  QBT_USERNAME="${QBT_USERNAME:-admin}"
+  QBT_COOKIES=$(mktemp)
+  trap 'rm -f "$QBT_COOKIES"' EXIT
+
+  echo "==> checking the qBittorrent at $QBT_URL (ADR-043)"
+  if ! qbt_login; then
+    echo "!! the WebUI at $QBT_URL did not accept QBT_USERNAME/QBT_PASSWORD (or does not answer)."
+    echo "   Nothing was changed. Check the address and the credentials in qBittorrent → Options → WebUI."
+    exit 1
+  fi
+  QBT_VERSION=$(qbt_curl "$QBT_URL/api/v2/app/version")
+  if ! qbt_version_ok "$QBT_VERSION"; then
+    echo "!! qBittorrent $QBT_VERSION: SeedGrid needs 4.5 or later. Nothing was changed."
+    exit 1
+  fi
+  PREFS=$(qbt_curl "$QBT_URL/api/v2/app/preferences")
+  ENGINE_PORT=$(printf '%s' "$PREFS" | json_num listen_port)
+  SAVE_PATH=$(printf '%s' "$PREFS" | json_str save_path)
+  if [ -z "$ENGINE_PORT" ] || [ "$ENGINE_PORT" -eq 0 ] || [ -z "$SAVE_PATH" ]; then
+    echo "!! could not read the listening port and the download folder from qBittorrent. Nothing was changed."
+    exit 1
+  fi
+  echo "   qBittorrent $QBT_VERSION — port $ENGINE_PORT, downloads in $SAVE_PATH"
+  case "$QBT_VERSION" in
+    v4.*) echo "   (qBittorrent 4.x: publishing to a tracker from this Node needs 5.0; the rest works)" ;;
+  esac
+
+  ENGINE_CONTAINER=$(engine_container) || exit 1
+  PATH_MAP="${ENGINE_PATH_MAP:-}"
+  if [ -z "$PATH_MAP" ] && [ -n "$ENGINE_CONTAINER" ]; then
+    PATH_MAP=$(container_path_map "$ENGINE_CONTAINER")
+  fi
+  [ -z "$ENGINE_CONTAINER" ] || echo "   container: $ENGINE_CONTAINER"
+  [ -z "$PATH_MAP" ] || echo "   paths (container=host): $PATH_MAP"
+  HOST_SAVE=$(host_path "$PATH_MAP" "$SAVE_PATH")
+  if [ ! -d "$HOST_SAVE" ]; then
+    echo "!! qBittorrent saves to $SAVE_PATH, which is $HOST_SAVE on this machine — and that folder does not exist here."
+    echo "   If qBittorrent runs in a container, pass ENGINE_PATH_MAP=<container path>=<host path>. Nothing was changed."
+    exit 1
+  fi
+  echo "   storage: $HOST_SAVE ($(df -h "$HOST_SAVE" 2>/dev/null | awk 'NR==2{print $4" free of "$2}'))"
+
+  # enroll with the Engine's own port: the Control Plane reserves exactly it.
+  echo "==> enroll no Control Plane"
+  ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" -H 'Content-Type: application/json' \
+    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,\"hostname\":\"$(hostname)\"}") || ENROLL_JSON=""
+  BT_PORT=$(printf '%s' "$ENROLL_JSON" | json_num bt_port)
+  [ -n "$BT_PORT" ] || { echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
+  SHARED=$(printf '%s' "$ENROLL_JSON" | json_str bt_port_shared_with)
+  if [ -n "$SHARED" ]; then
+    echo "   !! port $BT_PORT is also the port of Node «$SHARED». Behind the same IPv4 only one of them can"
+    echo "      have the port forward; on different networks this is fine."
+  fi
+
+  mkdir -p "$INSTALL_DIR"
+  curl -fsSL "$ARTIFACTS/node/seedgrid-agent.service" -o "$INSTALL_DIR/seedgrid-agent.service"
+  save_self
+  install_agent_binary
+
+  # Host metrics (node-exporter on :9100, scraped by Prometheus).
+  if curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:9100/metrics 2>/dev/null; then
+    echo "==> port 9100 already serves metrics — using that exporter"
+  elif command -v docker >/dev/null 2>&1; then
+    echo "==> starting node-exporter (host metrics)"
+    TMP_COMPOSE=$(mktemp)
+    curl -fsSL "$ARTIFACTS/node/docker-compose.yml" -o "$TMP_COMPOSE"
+    extract_exporter_compose "$TMP_COMPOSE" > "$INSTALL_DIR/node-exporter.yml"
+    rm -f "$TMP_COMPOSE"
+    ( cd "$INSTALL_DIR" && docker compose -f node-exporter.yml up -d )
+  else
+    echo "   !! no Docker and nothing on port 9100: the Node joins without host metrics (CPU, network)."
+    echo "      Install prometheus-node-exporter from your distribution to get them."
+  fi
+
+  write_adopted_agent_env
+  start_agent_service
+
+  echo "==> done. The Node registered with the Control Plane keeping qBittorrent as it is:"
+  echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH."
+  echo "    It joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or rotate"
+  echo "    them until you move the Node to SG (Dashboard → Mode)."
+  echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
+}
+
 # --storage-only: attach a disk to an existing Node. Does not touch Docker, enroll,
 # Agent binary or Engine password.
 if [ "$MODE" = storage ]; then
+  if grep -q '^SEEDGRID_ENGINE_ADOPTED=true' "$AGENT_ENV" 2>/dev/null; then
+    echo "!! this Node runs the qBittorrent the machine already had (ADR-043): its disks are yours, not"
+    echo "   SeedGrid's to mount. Change the folder in qBittorrent and SEEDGRID_AGENT_STORAGE_PATH instead."
+    exit 1
+  fi
   echo "==> SeedGrid bootstrap-node --storage-only — CP=$CP_URL"
   if ! setup_storage; then
     echo "!! no disk to attach. Connect the disk and run again, or specify it with"
@@ -872,6 +1130,12 @@ if [ "$MODE" = network ]; then
   configure_ipv6_suffix "$NODE_INDEX"
   echo "==> done. If the IPv6 address changed, restart the Engine (it needs to reopen the socket) and"
   echo "    reannounce to the trackers; without reannouncing, the tracker keeps the verdict gathered from the old address."
+  exit 0
+fi
+
+# A machine that already runs qBittorrent: its own path, from here to the end (ADR-043).
+if [ "${ENGINE:-install}" = existing ]; then
+  adopt_existing_engine
   exit 0
 fi
 
@@ -934,22 +1198,7 @@ for f in docker-compose.yml seedgrid-agent.service seedgrid-storage-reattach.sh 
 done
 save_self   # the copy that --storage-only / --network-only use later
 
-# The binary is published BY ARCHITECTURE (ADR-027). Previously there was a single /node/seedgrid-agent,
-# cross-compiled ARM64 for the RPi — on an amd64 Node it downloaded but wouldn't run.
-# Resolving the arch here is what makes onboarding correct in both worlds.
-case "$(uname -m)" in
-  x86_64|amd64)  NODE_ARCH=amd64 ;;
-  aarch64|arm64) NODE_ARCH=arm64 ;;
-  *) echo "!! unsupported architecture: $(uname -m) (the CP publishes amd64 and arm64)"; exit 1 ;;
-esac
-echo "==> downloading Agent for $NODE_ARCH"
-curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent
-chmod 0755 /usr/local/bin/seedgrid-agent
-# Proves the binary runs HERE before installing the service — same smoke-test that the
-# self-update uses (ADR-027); failing early with a clear message is better than a systemd in
-# a restart loop.
-/usr/local/bin/seedgrid-agent --version >/dev/null 2>&1 || {
-  echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
+install_agent_binary
 
 # 4) storage: mounts the data disk at /data and installs hotplug auto-recovery.
 #    Both live in functions (top of the script) because the disk doesn't always arrive with the
@@ -1006,9 +1255,7 @@ rm -f "$CJ"
 
 # 7) configures the Agent (the join token serves as the registration token — one-time) and brings up the service
 write_agent_env
-install -m0644 "$INSTALL_DIR/seedgrid-agent.service" "$AGENT_UNIT"
-systemctl daemon-reload
-systemctl enable --now seedgrid-agent
+start_agent_service
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 # The address to allow is the token's, when it is up; otherwise, the first global one (public

@@ -717,3 +717,21 @@ The cluster defaults in the catalog were chosen to **match what most use**. Resu
 **Revert.** Restore the previous Agent binary (`seedgrid-agent.prev`, ADR-027): the old Agent goes back to reading only the `.env`, which was not touched. To undo **only** a Node's custom value, use *Revert to Cluster*. What seeding created is also removed this way — and **does not reappear** (seeding is a one-time operation per Node).
 
 **If the Control Plane is reverted** with new Agents already up to date, one heartbeat fails (the only one that still carries `config_version`) and subsequent ones already go out without new fields; the Node does not end up going offline (90 s limit). The Agents keep the last applied value.
+
+## 50.6 A machine that already runs qBittorrent (ADR-043, #32)
+A Node can join with the qBittorrent the machine already runs, keeping its port forward, folders, settings and torrents. The same command, with `ENGINE=existing` and the WebUI password:
+
+```sh
+curl -fsSL http://<cp>/node/bootstrap-node.sh | sudo CP_URL=http://<cp> JOIN_TOKEN=<token> \
+  ENGINE=existing QBT_PASSWORD=<WebUI password> sh
+```
+
+`QBT_URL` (default `http://127.0.0.1:8080`) and `QBT_USERNAME` (default `admin`) point at the WebUI; `QBT_CONTAINER` chooses the container when Docker runs more than one qBittorrent; `ENGINE_PATH_MAP` overrides the path mapping read from Docker.
+
+**Before enrolling**, the script checks that the WebUI accepts the credentials and that the version is **4.5 or later**, and reads the Engine's listening port and download folder. If any of this fails, or the download folder does not exist on the host, it stops with "Nothing was changed". If qBittorrent runs in a container, the script finds it (the only running container whose image is a qBittorrent) and reads its mounts as the path mapping, leaving `/config` out.
+
+**What it does:** the enroll reserves the **Engine's own port** (§50.1 step 3 assigns the next free one only on the normal path) and warns when another Node already has it; it installs the Agent with `SEEDGRID_ENGINE_ADOPTED=true`, the mapping, the storage (the host folder of the Engine's `save_path`) and `SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false`. For host metrics it uses whatever already answers on port 9100; otherwise, with Docker present, it starts only the node-exporter, from `/opt/seedgrid-node/node-exporter.yml`.
+
+**What it does not do:** install Docker or the Engine, change the WebUI password, mount disks or install the disk recovery, or touch the network (§50.2: no IPv6 suffix, no privacy extensions — `--network-only` remains available). `--storage-only` refuses to run on such a Node.
+
+**In the Portal:** the Node joins in **Manual** — its torrents appear as they are, and admission does not pause, start or rotate any of them until it is moved to SG. If the Cluster was in Full auto, it moves to Flex (Event `NODE_ADOPTED_MANUAL`); the other Nodes stay SG. The Node's `engine.*` settings are not applied, the Engine is not restarted from the Portal, and on qBittorrent 4.x the Node cannot publish to a tracker (5.0 needed).
