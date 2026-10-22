@@ -169,3 +169,29 @@ func TestEngineContainerMatchesDeployArtifacts(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_AdoptedEngine (ADR-043): an Agent running against the operator's own qBittorrent is
+// off by default, and a malformed path map is refused at startup, not on the first migration.
+func TestLoad_AdoptedEngine(t *testing.T) {
+	t.Setenv("SEEDGRID_CONTROL_PLANE_URL", "http://cp:8080")
+	t.Setenv("SEEDGRID_ENGINE_ADOPTED", "")
+	t.Setenv("SEEDGRID_ENGINE_PATH_MAP", "")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.EngineAdopted || c.EnginePathMap != "" {
+		t.Errorf("defaults: adopted=%v map=%q, want false and empty", c.EngineAdopted, c.EnginePathMap)
+	}
+
+	t.Setenv("SEEDGRID_ENGINE_ADOPTED", "true")
+	t.Setenv("SEEDGRID_ENGINE_PATH_MAP", "/downloads=/mnt/user/torrents")
+	if c, err = Load(); err != nil || !c.EngineAdopted || c.EnginePathMap != "/downloads=/mnt/user/torrents" {
+		t.Errorf("adopted: (%+v, %v)", c, err)
+	}
+
+	t.Setenv("SEEDGRID_ENGINE_PATH_MAP", "downloads=/mnt")
+	if _, err := Load(); err == nil {
+		t.Error("a relative path in SEEDGRID_ENGINE_PATH_MAP was accepted")
+	}
+}

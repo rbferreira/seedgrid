@@ -520,6 +520,16 @@ O objetivo é simplificar instalação, atualização e manutenção.
 Exemplos de binários externos exigidos por funcionalidades específicas de publicação (opcionais, best-effort — a ausência não deverá impedir o restante do Agent):
 - `mediainfo`: extrai metadados técnicos do arquivo de mídia principal do torrent, usados na publicação em trackers UNIT3D (ADR-020).
 - `ffmpeg`/`ffprobe`: extraem frames (screenshots) do arquivo de mídia principal, também para publicação em trackers UNIT3D (ADR-026). Exigido em todos os Nodes, incluindo arquitetura ARM64 (RPi 3B+).
+## 44.1 Um Engine que o operador já executava (ADR-043)
+Um Node pode entrar com o qBittorrent que a máquina já roda (`bootstrap-node.sh ENGINE=existing`). O Agent então roda com `SEEDGRID_ENGINE_ADOPTED=true`, e o Engine continua sob responsabilidade do operador:
+- o Agent **nunca escreve nas preferências do Engine** — sem `listen_port`, UPnP, porta aleatória, `save_path` ou fila de download; as configurações `engine.*` do Node (ADR-039) não são aplicadas;
+- a porta BitTorrent reportada no heartbeat é aquela que ele **lê do Engine** a cada vez, então uma mudança feita no qBittorrent aparece no Portal;
+- `restart_engine` é **recusado** com o motivo: esse Engine pode não ter política de reinício, e um desligamento poderia deixá-lo parado;
+- o Node se registra com `engine_adopted`, e o Control Plane o inicia em Manual (ADR-024).
+
+**Caminhos.** Quando o Engine roda em um container, os caminhos que ele reporta são os do container. `SEEDGRID_ENGINE_PATH_MAP` lista seus bind mounts como pares `caminho no Engine=caminho no host` separados por `;` (por exemplo `/downloads=/mnt/user/torrents`); o bootstrap escreve isso a partir do `docker inspect`. O Agent traduz todo caminho que o Engine reporta antes de ler dados (origem de migração, screenshots, MediaInfo) e todo caminho que entrega ao Engine (destino de migração, origem de publicação), usando o prefixo correspondente mais longo. Um mapa malformado impede o Agent de iniciar. Os dados podem ser servidos para uma migração a partir do storage (`SEEDGRID_AGENT_STORAGE_PATH`, a pasta do host correspondente ao `save_path` do Engine) ou de qualquer pasta mapeada do host.
+
+**Propriedade.** O Agent roda como root, e um Engine em container geralmente não. O que o Agent extrai — um pull de migração, um upload de publicação — recebe o proprietário da pasta de destino, para que o Engine possa continuar escrevendo em um torrent parcialmente migrado. Nos Nodes que o SeedGrid instala, tudo pertence ao root e nada muda. Uma falha no `chown` (uma exportação NFS com `root_squash`, por exemplo) não interrompe a cópia.
 # **45. Testabilidade**
 A arquitetura deverá permitir testes independentes para cada módulo.
 A falha de um módulo não deverá impedir a validação dos demais.

@@ -15,7 +15,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
 
 // slotLimitRe extracts the DL slot limit per account from the UNIT3D tracker message
@@ -29,6 +32,12 @@ type Adapter struct {
 	username string
 	password string
 	http     *http.Client
+	// paths translates between the Engine's paths and the host's (ADR-043). The zero value is
+	// the identity, which is what a Node SeedGrid installs needs (`/data` is `/data` on both sides).
+	paths pathmap.Map
+	// legacyStartStop: the Engine answered 404 to torrents/stop or torrents/start, which only
+	// exist since qBittorrent 5.0; from then on the 4.x names (pause/resume) are used directly.
+	legacyStartStop atomic.Bool
 }
 
 // New creates the adapter. baseURL e.g.: http://127.0.0.1:8080
@@ -40,6 +49,14 @@ func New(baseURL, username, password string) *Adapter {
 		password: password,
 		http:     &http.Client{Timeout: 20 * time.Second, Jar: jar},
 	}
+}
+
+// WithPaths sets the translation between the Engine's paths and the host's (ADR-043): every
+// path the adapter returns is the host's, and every path it receives is translated before it
+// reaches the Engine. Returns the Adapter itself to chain into New.
+func (a *Adapter) WithPaths(m pathmap.Map) *Adapter {
+	a.paths = m
+	return a
 }
 
 // Torrent is a summary view of a torrent in the Engine.
@@ -66,7 +83,7 @@ type Torrent struct {
 	ETA                int64
 	Downloaded         int64
 	Uploaded           int64
-	ContentPath        string // path to data on disk (file for single, folder for multi)
+	ContentPath        string // path to data on disk, as the host sees it (file for single, folder for multi)
 }
 
 // Login authenticates with the WebUI (required before any other operations).
@@ -101,7 +118,7 @@ func (a *Adapter) AddFile(ctx context.Context, data []byte) error {
 	return a.uploadWithRetry(ctx, "/api/v2/torrents/add", "torrents", "upload.torrent", data, nil)
 }
 
-// AddFileTo adds a torrent pinning savepath and content_layout=Original
+// AddFileTo adds a torrent pinning savepath (a host path, translated to the Engine's) and content_layout=Original
 // explicitly (autoTMM=false so the savepath is not ignored). Used
 // exclusively in migration (ADR-018/031): Pull() already extracted the data into
 // savePath respecting the original .torrent structure (transfer.go
@@ -112,7 +129,7 @@ func (a *Adapter) AddFile(ctx context.Context, data []byte) error {
 // Heron" to SG-1 duplicated 2.9GB on disk.
 func (a *Adapter) AddFileTo(ctx context.Context, data []byte, savePath string) error {
 	extra := url.Values{
-		"savepath":      {savePath},
+		"savepath":      {a.paths.ToEngine(savePath)},
 		"contentLayout": {"Original"},
 		"autoTMM":       {"false"},
 	}
@@ -206,14 +223,44 @@ func (a *Adapter) setPreferences(ctx context.Context, prefs map[string]any) erro
 	return a.opWithRetry(ctx, "/api/v2/app/setPreferences", form)
 }
 
-// Stop pauses (stop) a torrent by hash (qBittorrent 5.x).
+// Stop pauses (stop) a torrent by hash. qBittorrent 4.x calls it pause (ADR-043).
 func (a *Adapter) Stop(ctx context.Context, hash string) error {
-	return a.opWithRetry(ctx, "/api/v2/torrents/stop", url.Values{"hashes": {hash}})
+	return a.startStop(ctx, "/api/v2/torrents/stop", "/api/v2/torrents/pause", url.Values{"hashes": {hash}})
 }
 
-// Start resumes (start) a torrent by hash (qBittorrent 5.x).
+// Start resumes (start) a torrent by hash. qBittorrent 4.x calls it resume (ADR-043).
 func (a *Adapter) Start(ctx context.Context, hash string) error {
-	return a.opWithRetry(ctx, "/api/v2/torrents/start", url.Values{"hashes": {hash}})
+	return a.startStop(ctx, "/api/v2/torrents/start", "/api/v2/torrents/resume", url.Values{"hashes": {hash}})
+}
+
+// startStop calls the qBittorrent 5.x endpoint and, when the Engine does not know it (404, a
+// 4.x the operator already ran — ADR-043), the 4.x one; after the first 404 it goes straight to
+// the 4.x name. The Nodes SeedGrid installs run 5.x and never take the second path.
+func (a *Adapter) startStop(ctx context.Context, path, legacy string, form url.Values) error {
+	if a.legacyStartStop.Load() {
+		return a.opWithRetry(ctx, legacy, form)
+	}
+	body, status, err := a.post(ctx, path, form, true)
+	if err != nil {
+		return err
+	}
+	if status == http.StatusForbidden {
+		if err := a.Login(ctx); err != nil {
+			return err
+		}
+		body, status, err = a.post(ctx, path, form, true)
+		if err != nil {
+			return err
+		}
+	}
+	if status == http.StatusNotFound {
+		a.legacyStartStop.Store(true)
+		return a.opWithRetry(ctx, legacy, form)
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("%s: status %d: %s", path, status, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
 
 // Recheck forces verification of a torrent by hash.
@@ -269,14 +316,14 @@ func (a *Adapter) Export(ctx context.Context, hash string) ([]byte, error) {
 }
 
 // CreateTorrent creates a .torrent in the Engine from sourcePath (a file or
-// folder already on disk), with the given trackers, private flag and source (embedded
+// folder already on disk, as a host path), with the given trackers, private flag and source (embedded
 // tag), and immediately starts seeding (torrentcreator + startSeeding). Waits
 // for the task to complete and returns the bytes of the generated .torrent (the CP extracts the infohash and
 // persists it). Used in local content publishing (ADR-019). The source (ADR-020)
 // matches the infohash with the UNIT3D site's (e.g.: the site's tag) — empty = no source.
 func (a *Adapter) CreateTorrent(ctx context.Context, sourcePath string, trackers []string, private bool, source string) ([]byte, error) {
 	form := url.Values{
-		"sourcePath":        {sourcePath},
+		"sourcePath":        {a.paths.ToEngine(sourcePath)},
 		"format":            {"v1"}, // maximum compatibility with clients/trackers
 		"private":           {fmt.Sprintf("%t", private)},
 		"startSeeding":      {"true"},
@@ -407,6 +454,38 @@ func (a *Adapter) Shutdown(ctx context.Context) error {
 		_, _, _ = a.post(ctx, "/api/v2/app/shutdown", url.Values{}, true)
 	}
 	return nil
+}
+
+// ListenPort reads the BitTorrent port the Engine listens on (`listen_port`). On an adopted
+// Engine (ADR-043) the port is the operator's, and the Agent reports what it reads here, so a
+// change made in qBittorrent shows in the Portal.
+func (a *Adapter) ListenPort(ctx context.Context) (int, error) {
+	body, status, err := a.get(ctx, "/api/v2/app/preferences")
+	if err != nil {
+		return 0, err
+	}
+	if status == http.StatusForbidden {
+		if lerr := a.Login(ctx); lerr != nil {
+			return 0, lerr
+		}
+		body, status, err = a.get(ctx, "/api/v2/app/preferences")
+		if err != nil {
+			return 0, err
+		}
+	}
+	if status != http.StatusOK {
+		return 0, fmt.Errorf("app/preferences: status %d", status)
+	}
+	var prefs struct {
+		ListenPort int `json:"listen_port"`
+	}
+	if err := json.Unmarshal(body, &prefs); err != nil {
+		return 0, fmt.Errorf("app/preferences: %w", err)
+	}
+	if prefs.ListenPort < 1 || prefs.ListenPort > 65535 {
+		return 0, fmt.Errorf("app/preferences: listen_port %d", prefs.ListenPort)
+	}
+	return prefs.ListenPort, nil
 }
 
 // Version queries the Engine version (also serves as a reachability probe:
@@ -660,7 +739,7 @@ func (a *Adapter) Info(ctx context.Context) ([]Torrent, error) {
 			NumSeeds: pick(t.NumComplete, t.NumSeeds), NumLeechs: pick(t.NumIncomplete, t.NumLeechs),
 			NumSeedsConnected: t.NumSeeds, NumLeechsConnected: t.NumLeechs,
 			DlSpeed: t.DlSpeed, UpSpeed: t.UpSpeed, Size: t.Size, Ratio: t.Ratio, ETA: t.ETA,
-			Downloaded: t.Downloaded, Uploaded: t.Uploaded, ContentPath: t.ContentPath,
+			Downloaded: t.Downloaded, Uploaded: t.Uploaded, ContentPath: a.paths.ToHost(t.ContentPath),
 		})
 	}
 	return out, nil

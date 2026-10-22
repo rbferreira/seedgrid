@@ -59,6 +59,10 @@ type Executor struct {
 	storagePath  string        // pull extraction destination
 	pullRetryFor time.Duration // pull retry window (absorbs the source/destination race)
 
+	// engineAdopted: the Engine is the operator's own qBittorrent (ADR-043). restart_engine is
+	// refused — it relies on a restart policy SeedGrid set, which that Engine may not have.
+	engineAdopted bool
+
 	// pendingExit: an update_agent (ADR-027) swapped the binary and the process must die
 	// for systemd to respawn it on the new one — but only AFTER the ack, otherwise the command stays
 	// DISPATCHED forever. The Poller consumes it, via TakePendingExit(). The Executor
@@ -99,6 +103,13 @@ func (e *Executor) EnableMigration(mig Migrator, storagePath string) *Executor {
 	e.mig = mig
 	e.storagePath = storagePath
 	e.pullRetryFor = 90 * time.Second
+	return e
+}
+
+// AdoptedEngine marks the Engine as the operator's own (ADR-043): commands that would act on the
+// Engine itself, rather than on its torrents, are refused.
+func (e *Executor) AdoptedEngine() *Executor {
+	e.engineAdopted = true
 	return e
 }
 
@@ -191,6 +202,9 @@ func (e *Executor) Execute(ctx context.Context, cmd client.Command) client.Comma
 	case "prepare_upload":
 		return e.prepareUpload(p)
 	case "restart_engine":
+		if e.engineAdopted {
+			return failed("the Engine is the operator's own qBittorrent (ADR-043): SeedGrid does not restart it")
+		}
 		err = e.engine.Shutdown(ctx)
 	case "extract_screenshots":
 		return e.extractScreenshots(ctx, p)

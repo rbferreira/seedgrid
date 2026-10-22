@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
 
 // DefaultEngineContainer is the name of the Torrent Engine container the Agent looks for
@@ -52,6 +54,14 @@ type Config struct {
 	// Default: DefaultEngineContainer.
 	EngineContainer string
 	LogLevel        string
+	// EngineAdopted: the Engine is the qBittorrent the machine already ran (ADR-043,
+	// SEEDGRID_ENGINE_ADOPTED). It stays the operator's: the Agent never writes its preferences
+	// (port, download folder, queue), reports the port it reads from it, and does not restart it.
+	EngineAdopted bool
+	// EnginePathMap: the Engine's bind mounts, `engine path=host path;...`
+	// (SEEDGRID_ENGINE_PATH_MAP, ADR-043). Empty when the Engine sees the host's paths. Parsed by
+	// pathmap.Parse, which Load runs to refuse a malformed value at startup.
+	EnginePathMap string
 }
 
 // Load reads the configuration from the environment and validates required fields.
@@ -69,6 +79,8 @@ func Load() (Config, error) {
 		BTPort:              getenvInt("SEEDGRID_ENGINE_BT_PORT", 6881),
 		MigrationPort:       getenvInt("SEEDGRID_AGENT_MIGRATION_PORT", 6900),
 		EngineContainer:     getenv("SEEDGRID_ENGINE_CONTAINER", DefaultEngineContainer),
+		EngineAdopted:       getenvBool("SEEDGRID_ENGINE_ADOPTED", false),
+		EnginePathMap:       os.Getenv("SEEDGRID_ENGINE_PATH_MAP"),
 		LogLevel:            getenv("SEEDGRID_LOG_LEVEL", "info"),
 		HeartbeatInterval:   30 * time.Second,
 		CommandPollInterval: 5 * time.Second,
@@ -122,6 +134,9 @@ func Load() (Config, error) {
 
 	if c.ControlPlaneURL == "" {
 		return c, fmt.Errorf("SEEDGRID_CONTROL_PLANE_URL is required")
+	}
+	if _, err := pathmap.Parse(c.EnginePathMap); err != nil {
+		return c, fmt.Errorf("invalid SEEDGRID_ENGINE_PATH_MAP: %w", err)
 	}
 	return c, nil
 }
