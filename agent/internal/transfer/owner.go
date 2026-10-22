@@ -7,7 +7,7 @@ import (
 
 // ownerOf returns the owner of path; ok=false when it cannot be read.
 func ownerOf(path string) (uid, gid int, ok bool) {
-	fi, err := os.Stat(path)
+	fi, err := os.Stat(path) //nolint:gosec // G703: path is the Agent's storage, or a folder under it already checked by underRoot
 	if err != nil {
 		return 0, 0, false
 	}
