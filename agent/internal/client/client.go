@@ -18,6 +18,10 @@ import (
 // ErrUnauthorized indicates rejected credential (e.g.: revoked Node) — requires new registration.
 var ErrUnauthorized = errors.New("unauthorized")
 
+// ErrNodeRemoved: the registration was refused because this machine's Node was removed from the
+// Cluster (410, ADR-044) and the Agent registered with the shared token. A join token brings it back.
+var ErrNodeRemoved = errors.New("this Node was removed from the Cluster")
+
 // Client talks to the Control Plane.
 type Client struct {
 	baseURL string
@@ -46,6 +50,11 @@ type RegisterRequest struct {
 	// EngineAdopted: the Node runs against the qBittorrent the machine already had (ADR-043).
 	// Sent only when true, so the body of every other Node is what it always was.
 	EngineAdopted bool `json:"engine_adopted,omitempty"`
+	// MachineID and NodeID identify the machine (ADR-044): /etc/machine-id, and the Node id of the
+	// identity file when there is one. They tell a removed Node coming back from another machine
+	// with the same hostname.
+	MachineID string `json:"machine_id,omitempty"`
+	NodeID    string `json:"node_id,omitempty"`
 }
 
 // RegisterResponse is the registration response.
@@ -295,6 +304,9 @@ func (c *Client) roundTrip(ctx context.Context, method, path string, body any, d
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
+	}
+	if resp.StatusCode == http.StatusGone {
+		return nil, ErrNodeRemoved
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))

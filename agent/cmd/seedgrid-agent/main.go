@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -54,6 +55,12 @@ func (h *identityHolder) set(id identity.Identity) {
 	h.mu.Lock()
 	h.id = id
 	h.mu.Unlock()
+}
+
+func (h *identityHolder) nodeID() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.id.NodeID
 }
 
 func (h *identityHolder) token() string {
@@ -249,6 +256,8 @@ func run() error {
 	start := time.Now()
 	ioSampler := resources.NewIOSampler(cfg.StoragePath) // disk util% between heartbeats
 	cpuSampler := resources.NewCPUSampler()              // CPU util% between heartbeats (#151)
+	// After a refused re-registration (ADR-044): when to try again.
+	var removedUntil time.Time
 	sendHeartbeat := func() {
 		hbCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
@@ -303,8 +312,16 @@ func run() error {
 		case nil:
 			logger.Debug("heartbeat sent")
 		case client.ErrUnauthorized:
+			if time.Now().Before(removedUntil) {
+				return // removed from the Cluster (ADR-044): retry slowly
+			}
 			logger.Warn("credential rejected; re-registering")
-			newID, rerr := register(ctx, cfg, cli, inv)
+			newID, rerr := register(ctx, cfg, cli, inv, holder.nodeID())
+			if errors.Is(rerr, client.ErrNodeRemoved) {
+				logger.Error(removedMsg)
+				removedUntil = time.Now().Add(removedRetry)
+				return
+			}
 			if rerr != nil {
 				logger.Error("failed to re-register", "error", rerr)
 				return
@@ -529,7 +546,16 @@ func ensureRegistered(ctx context.Context, logger *slog.Logger, cfg config.Confi
 		logger.Info("local identity found", "node_id", id.NodeID)
 		return id, nil
 	}
-	newID, err := register(ctx, cfg, cli, inv)
+	newID, err := register(ctx, cfg, cli, inv, "")
+	for errors.Is(err, client.ErrNodeRemoved) {
+		logger.Error(removedMsg)
+		select {
+		case <-ctx.Done():
+			return identity.Identity{}, ctx.Err()
+		case <-time.After(removedRetry):
+		}
+		newID, err = register(ctx, cfg, cli, inv, "")
+	}
 	if err != nil {
 		return identity.Identity{}, err
 	}
@@ -539,7 +565,16 @@ func ensureRegistered(ctx context.Context, logger *slog.Logger, cfg config.Confi
 	return newID, nil
 }
 
-func register(ctx context.Context, cfg config.Config, cli *client.Client, inv inventory.Info) (identity.Identity, error) {
+// removedMsg and removedRetry: the registration was refused because this Node was removed from
+// the Cluster (ADR-044). The removal sticks; the Agent keeps trying, slowly, and says how to undo it.
+const (
+	removedMsg   = "this Node was removed from the Cluster; to bring it back, issue a join token in the Portal and run the bootstrap again"
+	removedRetry = 5 * time.Minute
+)
+
+// register registers the Node. prevNodeID is the Node id of the identity file, when the Agent has
+// one: with the machine-id, it tells the Control Plane this is the same machine (ADR-044).
+func register(ctx context.Context, cfg config.Config, cli *client.Client, inv inventory.Info, prevNodeID string) (identity.Identity, error) {
 	regCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	resp, err := cli.Register(regCtx, cfg.RegistrationToken, client.RegisterRequest{
@@ -551,6 +586,8 @@ func register(ctx context.Context, cfg config.Config, cli *client.Client, inv in
 		AgentVersion:  version,
 		Engine:        cfg.Engine,
 		EngineAdopted: cfg.EngineAdopted,
+		MachineID:     inv.MachineID,
+		NodeID:        prevNodeID,
 	})
 	if err != nil {
 		return identity.Identity{}, err
