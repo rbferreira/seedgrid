@@ -30,6 +30,16 @@ the configuration; each release says how to upgrade.
 
 ### Fixed
 
+- **A removed Node that joins again is no longer invisible (#62, ADR-044).** The registration
+  landed in the removed row, which no list showed. Now the hostname is unique among live Nodes
+  only, and the Control Plane tells the machine by its `machine-id` (or the Node id the Agent kept):
+  - **the same machine, through the bootstrap:** it comes back as itself, with its history, mode,
+    settings, the torrents removed with it and, when free, its old port;
+  - **the same machine's Agent retrying on its own:** it is refused, so a removal sticks;
+  - **a different machine:** it joins as a new Node.
+
+  Update the Agents after the Control Plane: an older Agent does not send its machine.
+
 - **Downloading from the Portal no longer stops the torrent (#61).** The download reused the
   migration's authorization, which stops the torrent on its Node before serving it, and nothing
   started it again: a seeding torrent stayed paused. The download now only reads the files. The

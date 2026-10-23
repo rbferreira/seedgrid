@@ -125,7 +125,9 @@ slots per account; the passkey is shared). Applied in
 >
 > Rationale: without adoption, manual pause was a **point of no return** from orchestration — the torrent does not count in `countActive` nor enters `promotableHolds`, becoming invisible to the controller. The symptom is the cluster running below L with the queue appearing stuck and the Feed showing no admission decisions.
 >
-> **A Node that joins with its own qBittorrent starts in Manual (ADR-043).** Its torrents show in the Cluster as they are, and the controller does not pause, start or rotate any of them until the operator moves the Node to SG. Manual only exists under Flex: if the Cluster is in Full auto when such a Node registers, the gate moves to Flex (Event `NODE_ADOPTED_MANUAL`, with `gate_moved`), and the other Nodes stay SG — the Cluster behaves as before. Its active downloads count towards L, like any Manual Node's. Registering the same Node again (a lost credential) does not change the mode the operator chose afterwards.
+> **A Node that joins with the qBittorrent it already runs starts in Manual (ADR-043).** Its torrents show in the Cluster as they are, and the controller does not pause, start or rotate any of them until the operator, having reviewed the Node's settings, moves it to SG; from then on it is orchestrated like any Node. Manual only exists under Flex: if the Cluster is in Full auto when such a Node registers, the gate moves to Flex (Event `NODE_ADOPTED_MANUAL`, with `gate_moved`), and the other Nodes stay SG — the Cluster behaves as before. Its active downloads count towards L, like any Manual Node's. Registering the same Node again (a lost credential) does not change the mode the operator chose afterwards.
+>
+> **A removed Node comes back as itself only when it is the same machine (ADR-044).** The hostname is unique among live Nodes only. A registration whose `machine_id` (or previous Node id) matches a removed row with the same hostname brings that Node back — id, history, mode, overrides, and the torrents removed with it (a hash live again on the Node is skipped; a display name another Node took is dropped) — when it carries a join token; with the shared token it is refused (`410 node_removed`), so a removal is not undone by an Agent nobody stopped. Any other machine registers as a new Node.
 
 > ⚡ **Manual queue prioritization (F3) — operator override over the peer-aware order.** The operator prioritizes a torrent via the ⚡ button on the Dashboard (`POST /torrents/{id}/prioritize`; remove = `DELETE`). It marks `torrents.prioritized_at` — state only in the Control Plane, **does not** queue a command on the Node; the controller applies the effect on the next pass. Two effects:
 > - **Queue jumping:** in `promotableHolds`, `prioritized_at IS NOT NULL` is the **first** sorting criterion (before viable→progress) and **ignores the rotation cooldown** — the prioritized one is the next to be admitted when a slot opens. In the surplus hold (`hold`), it is the **last** to be held.
@@ -196,6 +198,8 @@ for the key; (4) the Cluster value for the key **was not defined by the operator
 value could overwhelm precisely the Node that had its own value). It is a safety net — the
 recommended procedure remains creating the overrides **before** updating each Agent
 (`19 - Deployment.md` §50.5).
+
+**A Node that joined with its own qBittorrent (ADR-043)** reports the queue it reads from that running Engine, not from `.env`. For those `engine.*` keys rule (4) does not apply — an explicit Cluster value would change the Engine at entry — and a value outside the `Spec` range is brought into it instead of skipped: qBittorrent's "no limit" (`-1`) becomes the maximum, below the minimum becomes the minimum. The Event is `NODE_ENGINE_SEEDED`. The `agent.*` keys of the same report follow the rules above.
 
 ## 3.1.2 Notifications / telemetry (`notify.*`) — ADR-028
 

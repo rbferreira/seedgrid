@@ -718,8 +718,8 @@ The cluster defaults in the catalog were chosen to **match what most use**. Resu
 
 **If the Control Plane is reverted** with new Agents already up to date, one heartbeat fails (the only one that still carries `config_version`) and subsequent ones already go out without new fields; the Node does not end up going offline (90 s limit). The Agents keep the last applied value.
 
-## 50.6 A machine that already runs qBittorrent (ADR-043, #32)
-A Node can join with the qBittorrent the machine already runs, keeping its port forward, folders, settings and torrents. The same command, with `ENGINE=existing` and the WebUI password:
+## 50.6 A machine that already runs qBittorrent (ADR-043, #32, #64)
+A Node can join with the qBittorrent the machine already runs, keeping its port forward, folders, queue settings and torrents. Joining changes nothing in it; once in the Cluster it is managed like any Node. The same command, with `ENGINE=existing` and the WebUI password:
 
 ```sh
 curl -fsSL http://<cp>/node/bootstrap-node.sh | sudo CP_URL=http://<cp> JOIN_TOKEN=<token> \
@@ -728,10 +728,22 @@ curl -fsSL http://<cp>/node/bootstrap-node.sh | sudo CP_URL=http://<cp> JOIN_TOK
 
 `QBT_URL` (default `http://127.0.0.1:8080`) and `QBT_USERNAME` (default `admin`) point at the WebUI; `QBT_CONTAINER` chooses the container when Docker runs more than one qBittorrent; `ENGINE_PATH_MAP` overrides the path mapping read from Docker.
 
-**Before enrolling**, the script checks that the WebUI accepts the credentials and that the version is **4.5 or later**, and reads the Engine's listening port and download folder. If any of this fails, or the download folder does not exist on the host, it stops with "Nothing was changed". If qBittorrent runs in a container, the script finds it (the only running container whose image is a qBittorrent) and reads its mounts as the path mapping, leaving `/config` out.
+**Before enrolling**, the script checks that the WebUI accepts the credentials and that the version is **5.0 or later** (4.x is refused: publishing needs 5.0), and reads the Engine's listening port and download folder. If qBittorrent runs in a container, the script finds it (the only running container whose image is a qBittorrent) and reads its mounts as the path mapping, leaving `/config` out. It then finds **what restarts qBittorrent**, because the Portal's restart shuts it down and relies on something bringing it back: a container whose restart policy is `always` or `unless-stopped`, or a system service (found from the process listening on the WebUI port). A qBittorrent started by hand, from a desktop session or as a user service is refused. If any of this fails, or the download folder does not exist on the host, it stops with "Nothing was changed". It also says, before enrolling, the one thing that changes: **UPnP and the random port are turned off**, as on every Node. If the router opened the port through UPnP, forward it by hand; otherwise the connectability alerts (ADR-034) will say so.
 
-**What it does:** the enroll reserves the **Engine's own port** (§50.1 step 3 assigns the next free one only on the normal path) and warns when another Node already has it; it installs the Agent with `SEEDGRID_ENGINE_ADOPTED=true`, the mapping, the storage (the host folder of the Engine's `save_path`) and `SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false`. For host metrics it uses whatever already answers on port 9100; otherwise, with Docker present, it starts only the node-exporter, from `/opt/seedgrid-node/node-exporter.yml`.
+**What it does:**
+- **Port:** the enroll reserves the **Engine's own port** (§50.1 step 3 assigns the next free one only on the normal path) and warns when another Node already has it.
+- **Restart:** a container that would not restart gets `unless-stopped` (with a reminder to add `restart: unless-stopped` to its Compose file, if it has one). A service gets the drop-in `/etc/systemd/system/<unit>.d/seedgrid-restart.conf` with `Restart=always`.
+- **Agent:** installed with `SEEDGRID_ENGINE_ADOPTED=true`, the mapping, the storage (the host folder of the Engine's `save_path`) and `SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false`.
+- **Host metrics:** it uses whatever already answers on port 9100. Otherwise, with Docker present, it starts only the node-exporter, from `/opt/seedgrid-node/node-exporter.yml`.
 
-**What it does not do:** install Docker or the Engine, change the WebUI password, mount disks or install the disk recovery, or touch the network (§50.2: no IPv6 suffix, no privacy extensions — `--network-only` remains available). `--storage-only` refuses to run on such a Node.
+**What it does not do:** install Docker or the Engine, change the WebUI password, mount disks or install the disk recovery, or touch the network (§50.2: no IPv6 suffix, no privacy extensions — `--network-only` remains available). `--storage-only` refuses to run on such a Node: its storage is the folder qBittorrent saves to.
 
-**In the Portal:** the Node joins in **Manual** — its torrents appear as they are, and admission does not pause, start or rotate any of them until it is moved to SG. If the Cluster was in Full auto, it moves to Flex (Event `NODE_ADOPTED_MANUAL`); the other Nodes stay SG. The Node's `engine.*` settings are not applied, the Engine is not restarted from the Portal, and on qBittorrent 4.x the Node cannot publish to a tracker (5.0 needed).
+**In the Portal:** the Node joins in **Manual**: its torrents appear as they are, and admission does not pause, start or rotate any of them. If the Cluster was in Full auto, it moves to Flex (Event `NODE_ADOPTED_MANUAL`); the other Nodes stay SG. On the Agent's first contact, the queue settings qBittorrent had become the Node's **overrides** (Event `NODE_ENGINE_SEEDED`). Review them in the Node's settings and keep, change or clear each one; a cleared one follows the Cluster value. Then move the Node to SG. From then on it is a Node like any other: its settings apply, the Engine restarts from the Portal, and nothing in the Portal tells it apart.
+
+## 50.7 A removed Node that joins again (ADR-044, #62)
+Removing a Node keeps its row, for history. When a machine with the same hostname joins again, the Control Plane tells whether it is the same machine. It goes by `/etc/machine-id`, which the bootstrap and the Agent send, or by the Node id of the Agent's identity file, when a previous install left one.
+- **Same machine, through the bootstrap** (a new join token): the Node **comes back as itself** — same id, history, mode, settings, and the torrents removed with it — and gets its old BitTorrent port back when no live Node took it, so the port forward still points at it. Event `NODE_RETURNED`.
+- **Same machine, Agent retrying by itself** (the removal revoked its credential; it registers with the shared token): refused (`410 node_removed`; an Agent installed with a join token, already used, gets `401`), so the removal sticks. The Agent logs how to bring the Node back and retries every 5 minutes. To bring it back, issue a join token and run the bootstrap; to stop it, stop the Agent (`systemctl disable --now seedgrid-agent`).
+- **A different machine** with that hostname: a **new Node**, inheriting nothing. The removed row stays in the history.
+
+A reinstalled operating system has a new `machine-id` and no identity file, and joins as a new Node.

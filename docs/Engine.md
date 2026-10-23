@@ -37,7 +37,7 @@ Examples:
 - Transmission Adapter (future);
 - Deluge Adapter (future).
 ## 6.1 Supported qBittorrent versions (ADR-043)
-The Nodes SeedGrid installs run qBittorrent 5.x. A Node that joins with the qBittorrent it already runs needs **4.5 or later**, the first with `torrents/export`, which migration and the `.torrent` backfill use. On 4.x the adapter falls back from `torrents/stop`/`torrents/start` (5.0) to `torrents/pause`/`torrents/resume` the first time the Engine answers 404, and keeps using them. Publishing from a Node (ADR-019) needs **5.0**, the first with the torrent creator (`torrentcreator/*`).
+Every Node runs qBittorrent **5.0 or later**: the Nodes SeedGrid installs run 5.x, and a Node that joins with the qBittorrent it already runs must too. 5.0 is the first with the torrent creator (`torrentcreator/*`), which publishing (ADR-019) needs, and with `torrents/stop`/`torrents/start`, which the adapter uses. The bootstrap refuses a 4.x and asks to update it; a Node that could not publish would be a second kind of Node.
 # **7. Adapter Contract**
 Every Engine Adapter must expose at least the following operations to the Torrent Manager:
 - add torrent (.torrent file or magnet). When the source is a `.torrent` file, the adapter must pass the **original bytes** to the Engine (do not reduce to a magnet/infohash): this preserves the metadata — preventing the Engine from needing to fetch it from the network (`metaDL` state) — and honors the torrent's `private` flag, which is essential for private trackers, where there is no DHT to recover metadata;
