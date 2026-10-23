@@ -925,6 +925,31 @@ json_num() {
 json_str() {
   sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1
 }
+# machine_id prints the machine's systemd identity (ADR-044): the first of /etc/machine-id and
+# /var/lib/dbus/machine-id that identifies something. MACHINE_ID_FILES overrides the list (tests).
+machine_id() {
+  for f in ${MACHINE_ID_FILES:-/etc/machine-id /var/lib/dbus/machine-id}; do
+    [ -r "$f" ] || continue
+    v=$(tr -d '[:space:]' < "$f")
+    case "$v" in ''|uninitialized) continue ;; esac
+    echo "$v"
+    return 0
+  done
+}
+
+# enroll_identity prints the JSON fields that identify this machine to the enroll (ADR-044): its
+# hostname, machine-id, and the Node id of the Agent's identity file when a previous install left
+# one. A removed Node coming back gets its old port; any other machine, the next free one.
+enroll_identity() {
+  printf '"hostname":"%s"' "$(hostname)"
+  mid=$(machine_id)
+  [ -z "$mid" ] || printf ',"machine_id":"%s"' "$mid"
+  idf="${AGENT_DATA_DIR:-/var/lib/seedgrid-agent}/identity.json"
+  [ -r "$idf" ] || return 0
+  nid=$(json_str node_id < "$idf")
+  [ -z "$nid" ] || printf ',"node_id":"%s"' "$nid"
+}
+
 json_true() {
   grep -q "\"$1\":[[:space:]]*true"
 }
@@ -1150,7 +1175,7 @@ adopt_existing_engine() {
   # enroll with the Engine's own port: the Control Plane reserves exactly it.
   echo "==> enroll no Control Plane"
   ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" -H 'Content-Type: application/json' \
-    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,\"hostname\":\"$(hostname)\"}") || ENROLL_JSON=""
+    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,$(enroll_identity)}") || ENROLL_JSON=""
   BT_PORT=$(printf '%s' "$ENROLL_JSON" | json_num bt_port)
   [ -n "$BT_PORT" ] || { echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
   SHARED=$(printf '%s' "$ENROLL_JSON" | json_str bt_port_shared_with)
@@ -1287,7 +1312,7 @@ fi
 # 2) enroll → the CP assigns the BitTorrent port (lowest free in the sequence)
 echo "==> enroll no Control Plane"
 ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" \
-  -H 'Content-Type: application/json' -d "{\"token\":\"$JOIN_TOKEN\"}") || ENROLL_JSON=""
+  -H 'Content-Type: application/json' -d "{\"token\":\"$JOIN_TOKEN\",$(enroll_identity)}") || ENROLL_JSON=""
 BT_PORT=$(printf '%s' "$ENROLL_JSON" | sed -n 's/.*"bt_port":[[:space:]]*\([0-9]*\).*/\1/p')
 [ -n "$BT_PORT" ] || { echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
 echo "   BitTorrent port assigned by CP: $BT_PORT"

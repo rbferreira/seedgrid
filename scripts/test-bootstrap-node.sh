@@ -803,7 +803,8 @@ assert_eq "final messages (both onboardings) point to the existing screen" "2" "
 # ENGINE=existing — a qBittorrent the machine already runs (ADR-043).
 # ---------------------------------------------------------------------------
 load qbt_version_ok json_num json_str json_true host_path engine_container container_path_map extract_exporter_compose \
-  url_port container_restarts listening_pid system_unit unit_restarts plan_engine_restart apply_engine_restart
+  url_port container_restarts listening_pid system_unit unit_restarts plan_engine_restart apply_engine_restart \
+  machine_id enroll_identity
 
 # 5.0 is the first with the torrent creator, which publishing needs (ADR-043 revised): 4.x is refused.
 for tc in "v5.0.0:0" "v5.0.2:0" "v5.1.4:0" "v10.1:0" "v4.6.7:1" "v4.5.0:1" "v3.3.16:1" "v5:0" "garbage:1" ":1"; do
@@ -827,6 +828,25 @@ assert_eq "url_port with an explicit port" "8090" "$(url_port http://127.0.0.1:8
 assert_eq "url_port with a path" "8080" "$(url_port http://localhost:8080/qbt/)"
 assert_eq "url_port of http without a port" "80" "$(url_port http://qbt.lan)"
 assert_eq "url_port of https without a port" "443" "$(url_port https://qbt.lan/)"
+
+# The machine on enroll (ADR-044): machine-id, and the Node id a previous install left.
+printf '\n' > "$WORK/mid-empty"
+printf 'uninitialized\n' > "$WORK/mid-uninit"
+printf '0123456789abcdef0123456789abcdef\n' > "$WORK/mid-good"
+assert_eq "machine_id skips empty and uninitialized" "0123456789abcdef0123456789abcdef" \
+  "$(MACHINE_ID_FILES="$WORK/missing $WORK/mid-empty $WORK/mid-uninit $WORK/mid-good" machine_id)"
+assert_eq "machine_id with none" "" "$(MACHINE_ID_FILES="$WORK/missing $WORK/mid-empty" machine_id)"
+stub hostname 'echo node-a'
+mkdir -p "$WORK/agent-data"
+assert_eq "enroll_identity of a new machine" '"hostname":"node-a","machine_id":"0123456789abcdef0123456789abcdef"' \
+  "$(MACHINE_ID_FILES="$WORK/mid-good" AGENT_DATA_DIR="$WORK/agent-data" enroll_identity)"
+printf '{"node_id":"b4f312bb-cd99-4463-9fd3-276e626b17ff","agent_token":"x"}' > "$WORK/agent-data/identity.json"
+assert_eq "enroll_identity with a previous install" \
+  '"hostname":"node-a","machine_id":"0123456789abcdef0123456789abcdef","node_id":"b4f312bb-cd99-4463-9fd3-276e626b17ff"' \
+  "$(MACHINE_ID_FILES="$WORK/mid-good" AGENT_DATA_DIR="$WORK/agent-data" enroll_identity)"
+assert_eq "enroll_identity never sends the token" "0" \
+  "$(MACHINE_ID_FILES="$WORK/mid-good" AGENT_DATA_DIR="$WORK/agent-data" enroll_identity | grep -c agent_token)"
+rm -f "$STUBS/hostname"
 
 MAP="/downloads=/mnt/user/torrents;/data=/srv/a;/data/movies=/srv/b"
 assert_eq "host_path of the mapped folder itself" "/mnt/user/torrents" "$(host_path "$MAP" /downloads/)"
