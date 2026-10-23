@@ -359,3 +359,23 @@ func TestEnvExampleDoesNotEnableBehavior(t *testing.T) {
 		}
 	}
 }
+
+// TestEngineValues (ADR-043): the queue read from an Engine becomes the engine.* catalog values,
+// nothing else, with qBittorrent's -1 kept for the Control Plane.
+func TestEngineValues(t *testing.T) {
+	got := EngineValues(QueueSettings{Enabled: false, MaxActiveDownloads: 4, MaxActiveUploads: -1, SlowInactiveTimer: 60})
+	if len(got) != 9 {
+		t.Errorf("EngineValues = %v, want the 9 engine.* keys", got)
+	}
+	for k, want := range map[string]string{
+		"engine.queueing_enabled": "false", "engine.max_active_downloads": "4",
+		"engine.max_active_uploads": "-1", "engine.slow_inactive_timer": "60",
+	} {
+		if got[k] != want {
+			t.Errorf("%s = %q, want %q", k, got[k], want)
+		}
+	}
+	if _, ok := got["agent.log_level"]; ok {
+		t.Error("an agent.* key is not the Engine's")
+	}
+}

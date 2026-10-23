@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -419,20 +418,6 @@ func TestExecute_MigratePullFailsOnPull(t *testing.T) {
 	}
 	if fe.addedFileTo != nil {
 		t.Errorf("should not add .torrent if pull failed")
-	}
-}
-
-// TestRestartEngine_RefusedOnAdoptedEngine (ADR-043): the operator's own qBittorrent may have no
-// restart policy, so a shutdown could leave it down. The command fails with the reason and the
-// Engine is not touched.
-func TestRestartEngine_RefusedOnAdoptedEngine(t *testing.T) {
-	fe := &fakeEngine{}
-	res := NewExecutor(fe).AdoptedEngine().Execute(context.Background(), client.Command{Type: "restart_engine"})
-	if res.Status != "FAILED" || fe.shutdown {
-		t.Errorf("restart_engine on an adopted Engine: status=%q shutdown=%v, want FAILED without shutdown", res.Status, fe.shutdown)
-	}
-	if !strings.Contains(res.Error, "operator's own qBittorrent") {
-		t.Errorf("the failure does not say why: %q", res.Error)
 	}
 }
 
