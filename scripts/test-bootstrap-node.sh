@@ -802,10 +802,11 @@ assert_eq "final messages (both onboardings) point to the existing screen" "2" "
 # ---------------------------------------------------------------------------
 # ENGINE=existing — a qBittorrent the machine already runs (ADR-043).
 # ---------------------------------------------------------------------------
-load qbt_version_ok json_num json_str host_path engine_container container_path_map extract_exporter_compose
+load qbt_version_ok json_num json_str json_true host_path engine_container container_path_map extract_exporter_compose \
+  url_port container_restarts listening_pid system_unit unit_restarts plan_engine_restart apply_engine_restart
 
-# 4.5 is the first with torrents/export, which migration and the backfill need.
-for tc in "v4.5.0:0" "v4.6.7:0" "v5.0.2:0" "v10.1:0" "v4.4.5:1" "v3.3.16:1" "v4:1" "garbage:1" ":1"; do
+# 5.0 is the first with the torrent creator, which publishing needs (ADR-043 revised): 4.x is refused.
+for tc in "v5.0.0:0" "v5.0.2:0" "v5.1.4:0" "v10.1:0" "v4.6.7:1" "v4.5.0:1" "v3.3.16:1" "v5:0" "garbage:1" ":1"; do
   qbt_version_ok "${tc%%:*}"
   assert_eq "qbt_version_ok ${tc%%:*}" "${tc#*:}" "$?"
 done
@@ -817,6 +818,15 @@ ENROLL='{"bt_port":51413,"bt_port_shared_with":"node-a"}'
 assert_eq "json_num reads the enroll port" "51413" "$(printf '%s' "$ENROLL" | json_num bt_port)"
 assert_eq "json_str reads the Node sharing the port" "node-a" "$(printf '%s' "$ENROLL" | json_str bt_port_shared_with)"
 assert_eq "json_str of a field that is not there is empty" "" "$(printf '%s' '{"bt_port":6881}' | json_str bt_port_shared_with)"
+printf '%s' "$PREFS" | json_true upnp
+assert_eq "json_true reads upnp on" "0" "$?"
+printf '%s' "$PREFS" | json_true random_port
+assert_eq "json_true reads random_port off" "1" "$?"
+
+assert_eq "url_port with an explicit port" "8090" "$(url_port http://127.0.0.1:8090)"
+assert_eq "url_port with a path" "8080" "$(url_port http://localhost:8080/qbt/)"
+assert_eq "url_port of http without a port" "80" "$(url_port http://qbt.lan)"
+assert_eq "url_port of https without a port" "443" "$(url_port https://qbt.lan/)"
 
 MAP="/downloads=/mnt/user/torrents;/data=/srv/a;/data/movies=/srv/b"
 assert_eq "host_path of the mapped folder itself" "/mnt/user/torrents" "$(host_path "$MAP" /downloads/)"
@@ -859,6 +869,91 @@ assert_eq "exporter compose keeps the project name" "name: seedgrid-node" "$(hea
 assert_eq "exporter compose has the node-exporter service" "1" "$(grep -c '^  node-exporter:' "$EXP")"
 assert_eq "exporter compose keeps its image" "1" "$(grep -c 'image: prom/node-exporter' "$EXP")"
 assert_eq "exporter compose has no qBittorrent" "0" "$(grep -ci 'qbittorrent\|seedgrid-engine' "$EXP")"
+
+# What brings qBittorrent back after the Portal's restart (ADR-043 item 7).
+stub docker 'case "$1 $3" in
+  "inspect {{.HostConfig.RestartPolicy.Name}}") printf "%s\n" "$FAKE_POLICY" ;;
+  "inspect {{index .Config.Labels \"com.docker.compose.project\"}}") printf "%s\n" "$FAKE_PROJECT" ;;
+  update*) echo "$@" >> "$WORK/docker-update.log" ;;
+esac'
+export FAKE_POLICY FAKE_PROJECT WORK
+for tc in "unless-stopped:0" "always:0" "on-failure:1" "no:1" ":1"; do
+  FAKE_POLICY=${tc%%:*}
+  container_restarts qbittorrent
+  assert_eq "container_restarts with policy '${tc%%:*}'" "${tc#*:}" "$?"
+done
+
+stub ss 'printf "%s\n" "$FAKE_SS"'
+export FAKE_SS
+FAKE_SS='LISTEN 0 50 *:8080 *:* users:(("qbittorrent-nox",pid=4242,fd=12))'
+assert_eq "listening_pid reads the PID" "4242" "$(listening_pid 8080)"
+FAKE_SS=''
+assert_eq "listening_pid with nothing listening" "" "$(listening_pid 8080)"
+
+PROC="$WORK/proc"
+export PROC
+cgroup() { mkdir -p "$PROC/$1"; printf '%s\n' "$2" > "$PROC/$1/cgroup"; }
+cgroup 10 '0::/system.slice/system-qbittorrent\x2dnox.slice/qbittorrent-nox@rafa.service'
+cgroup 11 '0::/system.slice/qbittorrent.service'
+cgroup 12 '0::/user.slice/user-1000.slice/user@1000.service/app.slice/qbittorrent.service'
+cgroup 13 '0::/user.slice/user-1000.slice/session-3.scope'
+cgroup 14 '12:pids:/system.slice/qbittorrent.service
+1:name=systemd:/system.slice/qbittorrent.service'
+assert_eq "system_unit of a template instance" "qbittorrent-nox@rafa.service" "$(system_unit 10)"
+assert_eq "system_unit of a plain service" "qbittorrent.service" "$(system_unit 11)"
+system_unit 12 >/dev/null
+assert_eq "system_unit refuses a user service" "1" "$?"
+system_unit 13 >/dev/null
+assert_eq "system_unit refuses a session" "1" "$?"
+assert_eq "system_unit on cgroup v1" "qbittorrent.service" "$(system_unit 14)"
+system_unit 99 >/dev/null
+assert_eq "system_unit without the process" "1" "$?"
+
+stub systemctl 'case "$1" in show) printf "%s\n" "$FAKE_RESTART" ;; daemon-reload) : > "$WORK/daemon-reload" ;; esac'
+export FAKE_RESTART
+FAKE_RESTART=always; unit_restarts qbittorrent.service
+assert_eq "unit_restarts with Restart=always" "0" "$?"
+FAKE_RESTART=on-failure; unit_restarts qbittorrent.service
+assert_eq "unit_restarts with Restart=on-failure" "1" "$?"
+
+export QBT_URL=http://127.0.0.1:8080
+ENGINE_CONTAINER=qbittorrent FAKE_POLICY=unless-stopped
+plan_engine_restart >/dev/null
+assert_eq "plan: a container that restarts is left alone" "container" "$RESTART_HOW"
+FAKE_POLICY=no
+plan_engine_restart >/dev/null
+assert_eq "plan: a container that does not restart gets fixed" "container-fix" "$RESTART_HOW"
+ENGINE_CONTAINER="" FAKE_SS='LISTEN 0 50 *:8080 *:* users:(("qbittorrent-nox",pid=10,fd=12))' FAKE_RESTART=no
+plan_engine_restart >/dev/null
+assert_eq "plan: a system service without Restart=always gets fixed" "unit-fix" "$RESTART_HOW"
+assert_eq "plan: and names its unit" "qbittorrent-nox@rafa.service" "$RESTART_UNIT"
+FAKE_RESTART=always
+plan_engine_restart >/dev/null
+assert_eq "plan: a system service that restarts is left alone" "unit" "$RESTART_HOW"
+FAKE_SS='LISTEN 0 50 *:8080 *:* users:(("qbittorrent",pid=13,fd=12))'
+out=$(plan_engine_restart); rc=$?
+assert_eq "plan: qBittorrent in a desktop session is refused" "1" "$rc"
+assert_eq "plan: the refusal says nothing changed" "1" "$(printf '%s\n' "$out" | grep -c 'Nothing was changed')"
+FAKE_SS=''
+plan_engine_restart >/dev/null
+assert_eq "plan: nothing listening on the WebUI port is refused" "1" "$?"
+
+ENGINE_CONTAINER=qbittorrent RESTART_HOW=container-fix FAKE_PROJECT=media
+out=$(apply_engine_restart)
+assert_eq "apply: the container gets unless-stopped" "update --restart unless-stopped qbittorrent" "$(cat "$WORK/docker-update.log")"
+assert_eq "apply: a Compose container gets the reminder" "1" "$(printf '%s\n' "$out" | grep -c 'restart: unless-stopped')"
+SYSTEMD_DIR="$WORK/systemd" RESTART_HOW=unit-fix RESTART_UNIT=qbittorrent-nox@rafa.service
+export SYSTEMD_DIR
+apply_engine_restart >/dev/null
+assert_eq "apply: the service gets the drop-in" "Restart=always" \
+  "$(grep '^Restart=' "$WORK/systemd/qbittorrent-nox@rafa.service.d/seedgrid-restart.conf")"
+assert_eq "apply: systemd reloads it" "1" "$([ -f "$WORK/daemon-reload" ] && echo 1)"
+RESTART_HOW=container
+rm -f "$WORK/docker-update.log"
+apply_engine_restart >/dev/null
+assert_eq "apply: nothing to do changes nothing" "0" "$([ -f "$WORK/docker-update.log" ] && echo 1 || echo 0)"
+unset PROC SYSTEMD_DIR
+rm -f "$STUBS/ss" "$STUBS/systemctl"
 
 # The whole script: an invalid ENGINE is a usage error, and ENGINE=existing is onboarding only.
 ENGINE=transmission CP_URL=http://controller.example JOIN_TOKEN=x sh "$SCRIPT" >/dev/null 2>&1

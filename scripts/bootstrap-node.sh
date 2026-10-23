@@ -19,10 +19,11 @@
 #   QBT_URL=http://127.0.0.1:8080   the WebUI (default); QBT_USERNAME=admin (default)
 #   QBT_CONTAINER=<name>            the qBittorrent container, when Docker runs more than one
 #   ENGINE_PATH_MAP=/downloads=/mnt/torrents   container path=host path (default: read from Docker)
-# It checks the WebUI and the version (4.5 or later) before enrolling, keeps the Engine's
-# listening port and download folder, and installs only the Agent (and a node-exporter, when
-# nothing answers on port 9100 and Docker is present). It installs no Docker and changes no disk or
-# network. The Node joins in Manual: SeedGrid leaves its torrents alone until you move it to SG.
+# It checks the WebUI, the version (5.0 or later) and what restarts qBittorrent before enrolling,
+# keeps the Engine's listening port, download folder and queue settings, and installs only the Agent
+# (and a node-exporter, when nothing answers on port 9100 and Docker is present). It installs no
+# Docker and changes no disk or network. The Node joins in Manual: review its settings in the
+# Portal and move it to SG; from then on it is managed like any Node.
 #
 # Dedicated disk, or system disk (#221): the script WRITES to /etc/seedgrid-agent.env whether the Agent
 # should require /data to be a mountpoint (SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT). It is declared here,
@@ -68,7 +69,7 @@ for arg in "$@"; do
     --storage-only) MODE=storage ;;
     --network-only) MODE=network ;;
     -h|--help)
-      sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,63p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "!! unknown argument: $arg (use --storage-only, --network-only or --help)"; exit 2 ;;
   esac
@@ -884,10 +885,11 @@ start_agent_service() {
 # ---------------------------------------------------------------------------
 # A qBittorrent the machine already runs (ENGINE=existing, ADR-043).
 #
-# The Engine stays the operator's: its port forward, firewall rule, download folders, settings and
-# torrents are what they want to keep. The bootstrap reads the port and the folder instead of
-# choosing them, and checks everything it needs BEFORE enrolling — nothing is enrolled with an
-# Engine the Agent cannot use.
+# Joining changes nothing in it: its port forward, firewall rule, download folders, queue settings
+# and torrents are what the operator wants to keep. The bootstrap reads the port and the folder
+# instead of choosing them (the Agent reads the queue), and checks everything it needs BEFORE
+# enrolling — nothing is enrolled with an Engine the Agent cannot use. Once in the Cluster the Node
+# is managed like any other.
 # ---------------------------------------------------------------------------
 
 # qbt_curl ARGS... calls the WebUI with the session cookie and the Referer qBittorrent's CSRF
@@ -905,15 +907,14 @@ qbt_login() {
   [ "$(qbt_curl -o /dev/null -w '%{http_code}' "$QBT_URL/api/v2/app/version" 2>/dev/null)" = 200 ]
 }
 
-# qbt_version_ok VERSION: is it qBittorrent 4.5 or later? 4.5 is the first with torrents/export,
-# which migration and the .torrent backfill use. VERSION is what app/version answers ("v4.6.7").
+# qbt_version_ok VERSION: is it qBittorrent 5.0 or later? 5.0 is the first with the torrent creator,
+# which publishing (ADR-019) needs, and with torrents/stop|start; a Node that could not publish
+# would be a second kind of Node. VERSION is what app/version answers ("v5.0.2").
 qbt_version_ok() {
   v=${1#v}
   major=${v%%.*}
-  rest=${v#*.}
-  minor=${rest%%.*}
-  case "$major$minor" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$major" -gt 4 ] || { [ "$major" -eq 4 ] && [ "$minor" -ge 5 ]; }
+  case "$major" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$major" -ge 5 ]
 }
 
 # json_num KEY / json_str KEY read one top-level field of the JSON on stdin (app/preferences, the
@@ -923,6 +924,93 @@ json_num() {
 }
 json_str() {
   sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1
+}
+json_true() {
+  grep -q "\"$1\":[[:space:]]*true"
+}
+
+# url_port URL prints the port of an http(s) URL: the explicit one, or 80/443.
+url_port() {
+  hp=${1#*://}
+  hp=${hp%%/*}
+  case "$hp" in
+    *:*) echo "${hp##*:}" ;;
+    *) case "$1" in https://*) echo 443 ;; *) echo 80 ;; esac ;;
+  esac
+}
+
+# container_restarts NAME: does the container's restart policy bring it back after qBittorrent
+# exits cleanly (the Portal's restart asks it to shut down)? on-failure does not: the exit is 0.
+container_restarts() {
+  case "$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$1" 2>/dev/null)" in
+    always|unless-stopped) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# listening_pid PORT prints the PID of the process listening on TCP PORT (empty when none).
+listening_pid() {
+  ss -Hltnp "sport = :$1" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1
+}
+
+# system_unit PID prints the systemd system service that runs PID. Nothing — and status 1 — for a
+# user service, a desktop or terminal session, or no systemd: SeedGrid can only make a system
+# service restart qBittorrent. PROC is /proc (the tests point it elsewhere).
+system_unit() {
+  cg=$(sed -n 's/^0::\(.*\)/\1/p; s/^[0-9]*:name=systemd:\(.*\)/\1/p' "${PROC:-/proc}/$1/cgroup" 2>/dev/null | head -1)
+  case "$cg" in
+    */user@*|*/session-*.scope|'') return 1 ;;
+  esac
+  unit=${cg##*/}
+  case "$unit" in
+    *.service) echo "$unit" ;;
+    *) return 1 ;;
+  esac
+}
+
+# unit_restarts UNIT: is the service already Restart=always?
+unit_restarts() {
+  [ "$(systemctl show -p Restart --value "$1" 2>/dev/null)" = always ]
+}
+
+# plan_engine_restart decides how qBittorrent comes back after the Portal's restart (ADR-043 item 7)
+# and sets RESTART_HOW: "container" or "unit" (already restarts), "container-fix" or "unit-fix"
+# (the bootstrap sets it after the enroll). Status 1, with the reason, when nothing would bring it back.
+plan_engine_restart() {
+  RESTART_UNIT=""
+  if [ -n "$ENGINE_CONTAINER" ]; then
+    if container_restarts "$ENGINE_CONTAINER"; then RESTART_HOW=container; else RESTART_HOW="container-fix"; fi
+    return 0
+  fi
+  pid=$(listening_pid "$(url_port "$QBT_URL")")
+  if [ -n "$pid" ] && RESTART_UNIT=$(system_unit "$pid"); then
+    if unit_restarts "$RESTART_UNIT"; then RESTART_HOW=unit; else RESTART_HOW="unit-fix"; fi
+    return 0
+  fi
+  echo "!! could not find what runs this qBittorrent: it is not in a Docker container nor a system"
+  echo "   service. Restarting the Engine from the Portal shuts it down and relies on something bringing"
+  echo "   it back. Run qBittorrent in a container or as a system service (e.g. qbittorrent-nox@<user>)"
+  echo "   and run this again. Nothing was changed."
+  return 1
+}
+
+# apply_engine_restart makes what runs qBittorrent bring it back, when it would not (after the enroll).
+apply_engine_restart() {
+  case "$RESTART_HOW" in
+    container-fix)
+      docker update --restart unless-stopped "$ENGINE_CONTAINER" >/dev/null
+      echo "   container $ENGINE_CONTAINER: restart policy set to unless-stopped (the Portal's restart needs it)"
+      if [ -n "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$ENGINE_CONTAINER" 2>/dev/null)" ]; then
+        echo "   !! it comes from a Compose file: add  restart: unless-stopped  to its service there, or the"
+        echo "      next docker compose up puts the old policy back."
+      fi ;;
+    unit-fix)
+      dir="${SYSTEMD_DIR:-/etc/systemd/system}/$RESTART_UNIT.d"
+      mkdir -p "$dir"
+      printf '[Service]\nRestart=always\nRestartSec=5\n' > "$dir/seedgrid-restart.conf"
+      systemctl daemon-reload
+      echo "   service $RESTART_UNIT: Restart=always (drop-in seedgrid-restart.conf; the Portal's restart needs it)" ;;
+  esac
 }
 
 # engine_container prints the name of the running qBittorrent container: QBT_CONTAINER when given,
@@ -1014,7 +1102,9 @@ adopt_existing_engine() {
   fi
   QBT_VERSION=$(qbt_curl "$QBT_URL/api/v2/app/version")
   if ! qbt_version_ok "$QBT_VERSION"; then
-    echo "!! qBittorrent $QBT_VERSION: SeedGrid needs 4.5 or later. Nothing was changed."
+    echo "!! qBittorrent $QBT_VERSION: SeedGrid needs 5.0 or later — publishing to a tracker uses its"
+    echo "   torrent creator. Update qBittorrent (your torrents and settings stay) and run this again."
+    echo "   Nothing was changed."
     exit 1
   fi
   PREFS=$(qbt_curl "$QBT_URL/api/v2/app/preferences")
@@ -1025,9 +1115,6 @@ adopt_existing_engine() {
     exit 1
   fi
   echo "   qBittorrent $QBT_VERSION — port $ENGINE_PORT, downloads in $SAVE_PATH"
-  case "$QBT_VERSION" in
-    v4.*) echo "   (qBittorrent 4.x: publishing to a tracker from this Node needs 5.0; the rest works)" ;;
-  esac
 
   ENGINE_CONTAINER=$(engine_container) || exit 1
   PATH_MAP="${ENGINE_PATH_MAP:-}"
@@ -1043,6 +1130,22 @@ adopt_existing_engine() {
     exit 1
   fi
   echo "   storage: $HOST_SAVE ($(df -h "$HOST_SAVE" 2>/dev/null | awk 'NR==2{print $4" free of "$2}'))"
+  plan_engine_restart || exit 1
+  case "$RESTART_HOW" in
+    container) echo "   restart: container $ENGINE_CONTAINER brings it back" ;;
+    unit) echo "   restart: service $RESTART_UNIT brings it back" ;;
+    container-fix) echo "   restart: the container's policy will be set to unless-stopped" ;;
+    unit-fix) echo "   restart: service $RESTART_UNIT will get Restart=always" ;;
+  esac
+  # The one thing that changes (ADR-043 item 5): the Agent pins the port, as on every Node.
+  if printf '%s' "$PREFS" | json_true upnp; then
+    echo "   !! UPnP is on in this qBittorrent. SeedGrid turns it off, as on every Node: if the router"
+    echo "      opened port $ENGINE_PORT through UPnP, forward it by hand, or the Node stops receiving"
+    echo "      connections (the Portal warns when that happens)."
+  fi
+  if printf '%s' "$PREFS" | json_true random_port; then
+    echo "   !! qBittorrent picks a random port at each start. SeedGrid keeps it at $ENGINE_PORT."
+  fi
 
   # enroll with the Engine's own port: the Control Plane reserves exactly it.
   echo "==> enroll no Control Plane"
@@ -1076,13 +1179,16 @@ adopt_existing_engine() {
     echo "      Install prometheus-node-exporter from your distribution to get them."
   fi
 
+  apply_engine_restart
   write_adopted_agent_env
   start_agent_service
 
   echo "==> done. The Node registered with the Control Plane keeping qBittorrent as it is:"
-  echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH."
+  echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH,"
+  echo "    and its queue settings, which become this Node's settings in SeedGrid."
   echo "    It joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or rotate"
-  echo "    them until you move the Node to SG (Dashboard → Mode)."
+  echo "    them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
+  echo "    from then on SeedGrid manages it like any Node."
   echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
 }
 
@@ -1090,8 +1196,9 @@ adopt_existing_engine() {
 # Agent binary or Engine password.
 if [ "$MODE" = storage ]; then
   if grep -q '^SEEDGRID_ENGINE_ADOPTED=true' "$AGENT_ENV" 2>/dev/null; then
-    echo "!! this Node runs the qBittorrent the machine already had (ADR-043): its disks are yours, not"
-    echo "   SeedGrid's to mount. Change the folder in qBittorrent and SEEDGRID_AGENT_STORAGE_PATH instead."
+    echo "!! this Node joined with the qBittorrent the machine already had (ADR-043): --storage-only"
+    echo "   mounts a disk at /data, which that qBittorrent may not see. Mount the disk where qBittorrent"
+    echo "   sees it, set SEEDGRID_AGENT_STORAGE_PATH in $AGENT_ENV to it, and restart the Agent."
     exit 1
   fi
   echo "==> SeedGrid bootstrap-node --storage-only — CP=$CP_URL"
