@@ -74,8 +74,6 @@ export const nodes = {
     termNodeValue: "valor deste Node",
     overriddenCount: "({count} neste Node)",
     appliedAt: "aplicada pelo Agent em {time}",
-    adoptedNotice: "Este Node roda o qBittorrent que a máquina já tinha: o SeedGrid não grava as configurações dele, então os valores do Engine abaixo não chegam lá — mude-os no próprio qBittorrent. Os valores do Agent continuam valendo.",
-    notAppliedAdopted: "não aplicado: qBittorrent próprio do Node",
     colParam: "Parâmetro",
     colValue: "Valor efetivo",
     colSource: "Origem",
@@ -105,8 +103,6 @@ export const nodes = {
     renameTitle: "Dar um nome a este Node no SeedGrid (não altera o hostname da máquina)",
     rename: "Renomear",
     restartEngineTitle: "Reiniciar o Torrent Engine deste Node",
-    adopted: "qBittorrent próprio",
-    adoptedTitle: "Este Node entrou com o qBittorrent que a máquina já rodava: o SeedGrid não muda as configurações dele (porta, pastas, fila) nem o reinicia.",
     restartEngine: "Reiniciar Engine",
     metrics: {
       downloadNow: "↓ Download agora",

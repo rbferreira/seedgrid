@@ -345,8 +345,6 @@ Update inventory.
 View logs.
 View metrics.
 
-**A Node with its own qBittorrent (ADR-043, #32).** A Node that joined with the qBittorrent the machine already ran carries `engine_adopted` and shows the **Own qBittorrent** badge on its card (Health & Metrics) and in its details. The **Restart Engine** action is not offered on it — the Agent refuses the command, because that Engine may have no restart policy. In **This Node's Configuration**, a notice says the Engine values do not reach that qBittorrent, and each `engine.*` row is struck through with "not applied"; the `agent.*` rows apply as on any Node.
-
 **This Node's Configuration (ADR-039, #144).** Section in the Node details between Inventory/Resources and the torrent
 list. It is a table with **Parameter · Effective Value · Origin · Actions**:
 - **Effective Value** is what the Agent receives; **Origin** is *cluster* or **this Node's value** (highlighted — it is

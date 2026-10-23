@@ -130,14 +130,6 @@ export function NodeCard({
               {t("health.nodeCard.badges.reachable")}
             </span>
           )}
-          {n.engine_adopted && (
-            <span
-              title={t("health.nodeCard.badges.adoptedTitle")}
-              className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-400 ring-1 ring-inset ring-sky-500/30"
-            >
-              {t("health.nodeCard.badges.adopted")}
-            </span>
-          )}
           <HealthBadge score={n.health_score} />
           <a
             href={href(`/nodes/${n.id}`)}
@@ -163,18 +155,14 @@ export function NodeCard({
               >
                 {t("health.nodeCard.actions.drain")}
               </button>
-              {/* The operator's own qBittorrent is not restarted by SeedGrid (ADR-043): it may have no
-                  restart policy, and the Agent refuses the command. */}
-              {!n.engine_adopted && (
-                <button
-                  onClick={onRestartEngine}
-                  disabled={busy || running.size > 0}
-                  title={t("health.nodeCard.actions.restartEngineTitle")}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
-                >
-                  {running.has(n.id) ? <Spinner /> : "⟳"} {t("health.nodeCard.actions.restartEngine")}
-                </button>
-              )}
+              <button
+                onClick={onRestartEngine}
+                disabled={busy || running.size > 0}
+                title={t("health.nodeCard.actions.restartEngineTitle")}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-2.5 py-1 text-xs text-amber-400 transition hover:bg-slate-800 disabled:opacity-40"
+              >
+                {running.has(n.id) ? <Spinner /> : "⟳"} {t("health.nodeCard.actions.restartEngine")}
+              </button>
               <button
                 onClick={onDelete}
                 disabled={busy}
