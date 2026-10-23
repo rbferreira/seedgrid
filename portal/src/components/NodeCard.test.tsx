@@ -82,20 +82,3 @@ describe("NodeCard — alias (#145)", () => {
     expect(html.match(/seedgrid-node-02/g)).toHaveLength(1);
   });
 });
-
-describe("NodeCard — a Node with its own qBittorrent (ADR-043)", () => {
-  const adopted: Node = { ...node, engine_adopted: true };
-
-  it("shows the badge and offers no Engine restart, even to who can operate Nodes", () => {
-    const html = render(adopted, () => true);
-    expect(html).toContain("qBittorrent próprio");
-    expect(html).not.toContain("Reiniciar Engine");
-    for (const buttonLabel of ["Renomear", "Esvaziar", "Remover"]) {
-      expect(html).toContain(buttonLabel);
-    }
-  });
-
-  it("a Node SeedGrid installs has no badge", () => {
-    expect(render(node, () => true)).not.toContain("qBittorrent próprio");
-  });
-});

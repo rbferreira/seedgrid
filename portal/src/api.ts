@@ -50,9 +50,6 @@ export type Node = {
   engine_started_at?: string; // Engine container startup (best-effort)
   engine_version?: string;
   operation_mode?: NodeMode; // per-Node mode (ADR-024); only takes effect under the Flex gate
-  // The Node joined with the qBittorrent it already ran (ADR-043): SeedGrid does not write that
-  // Engine's preferences (the engine.* settings) or restart it.
-  engine_adopted?: boolean;
 };
 
 // Operation mode (ADR-024). Cluster-wide gate + per-Node mode.

@@ -145,14 +145,6 @@ export function NodeDetail({
             )}
           </div>
           {node && <Badge label={node.status} />}
-          {node?.engine_adopted && (
-            <span
-              title={t("nodes.nodeDetail.adoptedTitle")}
-              className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-400 ring-1 ring-inset ring-sky-500/30"
-            >
-              {t("nodes.nodeDetail.adopted")}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-3">
           {node?.health_score != null && (
@@ -167,7 +159,7 @@ export function NodeDetail({
               ✎ {t("nodes.nodeDetail.rename")}
             </button>
           )}
-          {node && canOperate && !node.engine_adopted && (
+          {node && canOperate && (
             <button
               onClick={onRestartEngine}
               disabled={running.size > 0}
@@ -282,7 +274,7 @@ export function NodeDetail({
 
       {/* Behavior configuration for this Node's Agent/Engine (ADR-039): effective value,
           where it comes from (Node or cluster) and override. The button gate is on the panel itself. */}
-      {node && <NodeConfigPanel nodeId={nodeId} can={can} onLogout={onLogout} engineAdopted={node.engine_adopted === true} />}
+      {node && <NodeConfigPanel nodeId={nodeId} can={can} onLogout={onLogout} />}
 
       {/* Node Torrents */}
       <Panel title={t("nodes.nodeDetail.torrents.title", { count: torrents.length })}>

@@ -9,16 +9,24 @@ the configuration; each release says how to upgrade.
 
 ### Added
 
-- **A Node can join with the qBittorrent it already runs (#32, ADR-043).** `bootstrap-node.sh`
-  with `ENGINE=existing` and the WebUI password keeps the machine's qBittorrent — its port forward,
-  folders, settings and torrents — instead of installing another one. It checks the WebUI and the
-  version (4.5 or later) before enrolling, reserves the Engine's own port, finds the container and
-  its mounts to translate paths, and installs only the Agent: no Docker, disk or network changes.
-  The Agent never writes that Engine's preferences, does not restart it, and gives the files it
-  extracts the destination folder's owner. The Node joins in Manual, so admission leaves its
-  torrents alone until you move it to SG; a Cluster in Full auto moves to Flex for it. The Portal
-  marks such a Node and says which settings do not reach it. qBittorrent 4.x works, except for
-  publishing to a tracker, which needs 5.0. See the deployment guide, §50.6.
+- **A Node can join with the qBittorrent it already runs (#32, #64, ADR-043).** `bootstrap-node.sh`
+  with `ENGINE=existing` and the WebUI password keeps the machine's qBittorrent instead of installing
+  another one, and joining changes nothing in it. Its port forward, folders, queue settings and
+  torrents all stay:
+  - the bootstrap reserves the Engine's own port;
+  - it reads the container's mounts to translate paths;
+  - the Agent seeds the queue settings as the Node's settings in SeedGrid.
+
+  The bootstrap installs only the Agent: no Docker, disk or network changes. The Node joins in
+  Manual: review its settings, move it to SG, and from then on it is managed like any Node, restart
+  from the Portal included. A Cluster in Full auto moves to Flex for it.
+
+  Before enrolling, the bootstrap checks:
+  - the WebUI and the version, which must be qBittorrent **5.0 or later**;
+  - what restarts qBittorrent. It sets the container's restart policy or a systemd drop-in when
+    needed, and refuses a qBittorrent run from a session.
+
+  It also warns that UPnP is turned off, as on every Node. See the deployment guide, §50.6.
 
 ### Fixed
 
