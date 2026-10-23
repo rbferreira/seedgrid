@@ -520,16 +520,19 @@ The objective is to simplify installation, updates, and maintenance.
 Examples of external binaries required by specific publishing features (optional, best-effort — their absence must not prevent the rest of the Agent from functioning):
 - `mediainfo`: extracts technical metadata from the torrent's main media file, used for publishing to UNIT3D trackers (ADR-020).
 - `ffmpeg`/`ffprobe`: extract frames (screenshots) from the main media file, also for publishing to UNIT3D trackers (ADR-026). Required on all Nodes, including ARM64 architecture (RPi 3B+).
-## 44.1 An Engine the operator already ran (ADR-043)
-A Node can join with the qBittorrent the machine already runs (`bootstrap-node.sh ENGINE=existing`). The Agent then runs with `SEEDGRID_ENGINE_ADOPTED=true`, and the Engine stays the operator's:
-- the Agent **never writes the Engine's preferences** — no `listen_port`, UPnP, random port, `save_path` or download queue; the Node's `engine.*` settings (ADR-039) are not applied;
-- the BitTorrent port it reports in the heartbeat is the one it **reads from the Engine** each time, so a change made in qBittorrent shows in the Portal;
-- `restart_engine` is **refused** with the reason: that Engine may have no restart policy, and a shutdown could leave it down;
-- the Node registers with `engine_adopted`, and the Control Plane starts it in Manual (ADR-024).
+## 44.1 An Engine the machine already ran (ADR-043)
+A Node can join with the qBittorrent the machine already runs (`bootstrap-node.sh ENGINE=existing`). Joining changes nothing in that Engine, and once in the Cluster the Node is managed like any other. The Agent runs with `SEEDGRID_ENGINE_ADOPTED=true`, which only changes the start:
+- the Node registers with `engine_adopted`, and the Control Plane starts it in Manual (ADR-024) for the operator to review;
+- on its first contact the Agent **reads the Engine's queue** (`app/preferences`) and reports it, instead of its environment, for the seeding of the Node's overrides (ADR-039 §7). The read values also become its baseline. Until the read succeeds the Agent applies nothing and reports nothing, not even after the boot grace period: applying the environment would be the change at entry this avoids;
+- the first application then pins what the Engine already had: the BitTorrent port the enroll reserved (the Engine's own), `save_path` at the storage (the host folder of the Engine's `save_path`, translated back through the path map), and the queue the Control Plane seeded. UPnP and the random port are turned off, as on every Node.
 
-**Paths.** When the Engine runs in a container, the paths it reports are the container's. `SEEDGRID_ENGINE_PATH_MAP` lists its bind mounts as `engine path=host path` pairs separated by `;` (for example `/downloads=/mnt/user/torrents`); the bootstrap writes it from `docker inspect`. The Agent translates every path the Engine reports before reading data (migration source, screenshots, MediaInfo) and every path it hands to the Engine (migration destination, publishing source), using the longest matching prefix. A malformed map stops the Agent at startup. Data can be served for a migration from the storage (`SEEDGRID_AGENT_STORAGE_PATH`, the host folder of the Engine's `save_path`) or from any mapped host folder.
+From then on the Node's `engine.*` settings apply, `restart_engine` works (the bootstrap made sure something restarts qBittorrent), and the heartbeat reports the reserved port.
+
+**Paths.** When the Engine runs in a container, the paths it reports are the container's. `SEEDGRID_ENGINE_PATH_MAP` lists its bind mounts as `engine path=host path` pairs separated by `;` (for example `/downloads=/mnt/user/torrents`); the bootstrap writes it from `docker inspect`. The Agent translates every path the Engine reports before reading data (migration source, screenshots, MediaInfo) and every path it hands to the Engine (`save_path`, migration destination, publishing source), using the longest matching prefix. A malformed map stops the Agent at startup. Data can be served for a migration from the storage (`SEEDGRID_AGENT_STORAGE_PATH`) or from any mapped host folder.
 
 **Ownership.** The Agent runs as root, and an Engine in a container usually does not. What the Agent extracts — a migration pull, a publishing upload — gets the owner of the folder it lands in, so the Engine can keep writing to a partially migrated torrent. On the Nodes SeedGrid installs everything is root's, and nothing changes. A failed `chown` (an NFS export with `root_squash`, for example) does not fail the copy.
+
+**Machine identity (ADR-044).** The registration carries `machine_id` (`/etc/machine-id`, or `/var/lib/dbus/machine-id`) and, when the Agent re-registers, the `node_id` of its identity file. With them the Control Plane tells a removed Node coming back from another machine with the same hostname. A `410 node_removed` means this machine's Node was removed and the Agent registered with the shared token: the Agent logs how to bring it back (a join token and the bootstrap) and tries again every 5 minutes, instead of every heartbeat.
 # **45. Testability**
 The architecture must allow independent testing for each module.
 The failure of one module must not prevent the validation of the others.
