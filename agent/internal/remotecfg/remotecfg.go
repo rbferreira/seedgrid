@@ -23,7 +23,6 @@ import (
 	"context"
 	"log/slog"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,9 +50,13 @@ type Hooks struct {
 	// caller uses it to also pin down machine-specific settings (BT port, save_path), which the
 	// cluster configuration never changes.
 	ApplyEngine func(ctx context.Context, q config.QueueSettings, first bool) error
-	// EngineAdopted: the Engine is the operator's own qBittorrent (ADR-043) and ApplyEngine does
-	// not touch it. The engine.* values then stay out of what the log reports as applied.
-	EngineAdopted bool
+	// EngineValues reads the Engine's current queue as catalog values (engine.* → value). Set only
+	// on a Node that joined with the qBittorrent it already ran (ADR-043): there the queue to keep
+	// is the Engine's, not the env's. Before anything is applied the Manager reads it once, and
+	// makes it both the baseline and the seeding report, so the first application changes nothing.
+	// Until it succeeds nothing is applied — applying the env instead would be the change at entry
+	// this exists to prevent, and with the Engine unreachable it would fail anyway.
+	EngineValues func(ctx context.Context) (map[string]string, error)
 }
 
 // Manager holds the state of the negotiation and what has been applied. The methods are safe for concurrent
@@ -84,12 +87,45 @@ type Manager struct {
 	// version is the CP version successfully APPLIED ("" = none: the Agent runs on env).
 	version      string
 	lastEngineEr string
+	// engineRead: EngineValues already succeeded (or there is none). lastReadEr deduplicates its log.
+	engineRead bool
+	lastReadEr string
 }
 
 // New creates the Manager. baseline is the env+defaults behavior (cfg.Behavior()); explicit is
 // the explicit env (config.ExplicitEnv()).
 func New(logger *slog.Logger, baseline config.Behavior, explicit map[string]string, hooks Hooks) *Manager {
-	return &Manager{logger: logger, env: baseline, explicit: explicit, hooks: hooks, cur: baseline, target: baseline}
+	return &Manager{logger: logger, env: baseline, explicit: explicit, hooks: hooks, cur: baseline, target: baseline,
+		engineRead: hooks.EngineValues == nil}
+}
+
+// readEngine runs EngineValues once (ADR-043): the Engine's queue becomes the baseline and goes
+// into the seeding report in place of the env. false = not read yet, and nothing may be applied.
+func (m *Manager) readEngine(ctx context.Context) bool {
+	if m.engineRead {
+		return true
+	}
+	vals, err := m.hooks.EngineValues(ctx)
+	if err != nil {
+		if msg := err.Error(); msg != m.lastReadEr {
+			m.logger.Warn("could not read the Engine's settings; nothing is applied until it answers", "error", err)
+			m.lastReadEr = msg
+		}
+		return false
+	}
+	explicit := make(map[string]string, len(m.explicit)+len(vals))
+	for k, v := range m.explicit {
+		explicit[k] = v
+	}
+	for k, v := range vals {
+		explicit[k] = v
+	}
+	// The baseline takes what the Agent accepts; the report carries the values as the Engine has
+	// them (-1 = no limit), for the Control Plane to bring into the catalog range.
+	m.env, _ = m.env.Overlay(vals)
+	m.explicit, m.cur, m.target, m.engineRead = explicit, m.env, m.env, true
+	m.logger.Info("Engine settings read: they are this Node's starting values (ADR-043)", "values", vals)
+	return true
 }
 
 // Prepare fills the negotiation fields in the heartbeat to be sent — and ONLY them if the
@@ -143,6 +179,9 @@ func (m *Manager) Handle(ctx context.Context, resp client.HeartbeatResponse, err
 		// it restarts (then it starts from env). Only the boot needs to wrap up: apply the env, once.
 		m.speaks, m.report = false, false
 		if !m.resolved {
+			if !m.readEngine(ctx) {
+				return
+			}
 			m.apply(ctx, m.env, "", "env (Control Plane did not send configuration)")
 		} else {
 			m.retryEngine(ctx)
@@ -153,6 +192,11 @@ func (m *Manager) Handle(ctx context.Context, resp client.HeartbeatResponse, err
 		// in might be exactly what would overload this Node, and the seeding (which runs on the
 		// CP when the report arrives) exists to protect the env value. Reports on the next
 		// heartbeat and applies what comes back.
+		if !m.readEngine(ctx) {
+			// The report must carry the Engine's values: hold, without counting toward the grace.
+			m.speaks, m.report = true, false
+			return
+		}
 		m.speaks, m.report = true, true
 		m.unresolved(ctx)
 
@@ -180,7 +224,7 @@ func (m *Manager) unresolved(ctx context.Context) {
 		return
 	}
 	m.misses++
-	if m.misses >= bootGrace {
+	if m.misses >= bootGrace && m.readEngine(ctx) {
 		m.apply(ctx, m.env, "", "env (Control Plane did not respond in time)")
 	}
 }
@@ -224,30 +268,10 @@ func (m *Manager) apply(ctx context.Context, target config.Behavior, version, so
 		m.version = version
 	}
 	if first {
-		if m.hooks.EngineAdopted {
-			m.logger.Info("Agent configuration applied", "source", source, "version", version,
-				"values", m.applied(m.cur.Values()), "engine", "not applied: the operator's own qBittorrent (ADR-043)")
-		} else {
-			m.logger.Info("Agent configuration applied", "source", source, "version", version, "values", m.cur.Values())
-		}
-	} else if changed := m.applied(config.Diff(prev, m.cur)); len(changed) > 0 {
+		m.logger.Info("Agent configuration applied", "source", source, "version", version, "values", m.cur.Values())
+	} else if changed := config.Diff(prev, m.cur); len(changed) > 0 {
 		m.logger.Info("Agent configuration hot-reloaded", "source", source, "version", version, "changes", sortedPairs(changed))
 	}
-}
-
-// applied drops the engine.* keys from values when the Engine is adopted (ADR-043): they reach
-// the Agent, but it never writes them to that Engine, and the log must not say otherwise.
-func (m *Manager) applied(values map[string]string) map[string]string {
-	if !m.hooks.EngineAdopted {
-		return values
-	}
-	out := make(map[string]string, len(values))
-	for k, v := range values {
-		if !strings.HasPrefix(k, "engine.") {
-			out[k] = v
-		}
-	}
-	return out
 }
 
 // applyEngine applies the queue to the Engine; failure is recorded for the next heartbeat to retry.

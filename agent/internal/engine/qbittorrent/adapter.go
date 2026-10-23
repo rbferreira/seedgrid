@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
@@ -35,9 +34,6 @@ type Adapter struct {
 	// paths translates between the Engine's paths and the host's (ADR-043). The zero value is
 	// the identity, which is what a Node SeedGrid installs needs (`/data` is `/data` on both sides).
 	paths pathmap.Map
-	// legacyStartStop: the Engine answered 404 to torrents/stop or torrents/start, which only
-	// exist since qBittorrent 5.0; from then on the 4.x names (pause/resume) are used directly.
-	legacyStartStop atomic.Bool
 }
 
 // New creates the adapter. baseURL e.g.: http://127.0.0.1:8080
@@ -141,7 +137,8 @@ func (a *Adapter) AddFileTo(ctx context.Context, data []byte, savePath string) e
 type EngineConfig struct {
 	// BTPort is the BitTorrent listen port (matches the operator's port forward).
 	BTPort int
-	// SavePath is the directory where data is written (the Node's storage, e.g.: /data).
+	// SavePath is the directory where data is written (the Node's storage, e.g.: /data), as the
+	// host sees it; ConfigureEngine translates it for an Engine in a container (ADR-043).
 	SavePath string
 	// QueueingEnabled enables qBittorrent's queueing system. When enabled (default), it limits
 	// how many torrents are active at the same time — essential to avoid saturating I/O
@@ -183,7 +180,7 @@ func (a *Adapter) ConfigureEngine(ctx context.Context, ec EngineConfig) error {
 		prefs[k] = v
 	}
 	if ec.SavePath != "" {
-		prefs["save_path"] = ec.SavePath
+		prefs["save_path"] = a.paths.ToEngine(ec.SavePath) // a host path, as every path the adapter receives
 	}
 	return a.setPreferences(ctx, prefs)
 }
@@ -223,44 +220,14 @@ func (a *Adapter) setPreferences(ctx context.Context, prefs map[string]any) erro
 	return a.opWithRetry(ctx, "/api/v2/app/setPreferences", form)
 }
 
-// Stop pauses (stop) a torrent by hash. qBittorrent 4.x calls it pause (ADR-043).
+// Stop pauses (stop) a torrent by hash (qBittorrent 5.x).
 func (a *Adapter) Stop(ctx context.Context, hash string) error {
-	return a.startStop(ctx, "/api/v2/torrents/stop", "/api/v2/torrents/pause", url.Values{"hashes": {hash}})
+	return a.opWithRetry(ctx, "/api/v2/torrents/stop", url.Values{"hashes": {hash}})
 }
 
-// Start resumes (start) a torrent by hash. qBittorrent 4.x calls it resume (ADR-043).
+// Start resumes (start) a torrent by hash (qBittorrent 5.x).
 func (a *Adapter) Start(ctx context.Context, hash string) error {
-	return a.startStop(ctx, "/api/v2/torrents/start", "/api/v2/torrents/resume", url.Values{"hashes": {hash}})
-}
-
-// startStop calls the qBittorrent 5.x endpoint and, when the Engine does not know it (404, a
-// 4.x the operator already ran — ADR-043), the 4.x one; after the first 404 it goes straight to
-// the 4.x name. The Nodes SeedGrid installs run 5.x and never take the second path.
-func (a *Adapter) startStop(ctx context.Context, path, legacy string, form url.Values) error {
-	if a.legacyStartStop.Load() {
-		return a.opWithRetry(ctx, legacy, form)
-	}
-	body, status, err := a.post(ctx, path, form, true)
-	if err != nil {
-		return err
-	}
-	if status == http.StatusForbidden {
-		if err := a.Login(ctx); err != nil {
-			return err
-		}
-		body, status, err = a.post(ctx, path, form, true)
-		if err != nil {
-			return err
-		}
-	}
-	if status == http.StatusNotFound {
-		a.legacyStartStop.Store(true)
-		return a.opWithRetry(ctx, legacy, form)
-	}
-	if status < 200 || status >= 300 {
-		return fmt.Errorf("%s: status %d: %s", path, status, strings.TrimSpace(string(body)))
-	}
-	return nil
+	return a.opWithRetry(ctx, "/api/v2/torrents/start", url.Values{"hashes": {hash}})
 }
 
 // Recheck forces verification of a torrent by hash.
@@ -456,36 +423,51 @@ func (a *Adapter) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// ListenPort reads the BitTorrent port the Engine listens on (`listen_port`). On an adopted
-// Engine (ADR-043) the port is the operator's, and the Agent reports what it reads here, so a
-// change made in qBittorrent shows in the Portal.
-func (a *Adapter) ListenPort(ctx context.Context) (int, error) {
+// ReadQueue reads the Engine's current queue preferences — what queuePrefs writes. A Node that
+// joined with the qBittorrent it already ran (ADR-043) reports them on its first contact, so the
+// Control Plane seeds them as the Node's overrides and the first application changes nothing.
+// Values come as qBittorrent has them: -1 is its "no limit", which the Control Plane maps.
+func (a *Adapter) ReadQueue(ctx context.Context) (EngineConfig, error) {
 	body, status, err := a.get(ctx, "/api/v2/app/preferences")
 	if err != nil {
-		return 0, err
+		return EngineConfig{}, err
 	}
 	if status == http.StatusForbidden {
 		if lerr := a.Login(ctx); lerr != nil {
-			return 0, lerr
+			return EngineConfig{}, lerr
 		}
-		body, status, err = a.get(ctx, "/api/v2/app/preferences")
-		if err != nil {
-			return 0, err
+		if body, status, err = a.get(ctx, "/api/v2/app/preferences"); err != nil {
+			return EngineConfig{}, err
 		}
 	}
 	if status != http.StatusOK {
-		return 0, fmt.Errorf("app/preferences: status %d", status)
+		return EngineConfig{}, fmt.Errorf("app/preferences: status %d", status)
 	}
-	var prefs struct {
-		ListenPort int `json:"listen_port"`
+	var p struct {
+		QueueingEnabled            bool `json:"queueing_enabled"`
+		MaxActiveDownloads         int  `json:"max_active_downloads"`
+		MaxActiveUploads           int  `json:"max_active_uploads"`
+		MaxActiveTorrents          int  `json:"max_active_torrents"`
+		MaxActiveCheckingTorrents  int  `json:"max_active_checking_torrents"`
+		DontCountSlowTorrents      bool `json:"dont_count_slow_torrents"`
+		SlowTorrentDlRateThreshold int  `json:"slow_torrent_dl_rate_threshold"`
+		SlowTorrentUlRateThreshold int  `json:"slow_torrent_ul_rate_threshold"`
+		SlowTorrentInactiveTimer   int  `json:"slow_torrent_inactive_timer"`
 	}
-	if err := json.Unmarshal(body, &prefs); err != nil {
-		return 0, fmt.Errorf("app/preferences: %w", err)
+	if err := json.Unmarshal(body, &p); err != nil {
+		return EngineConfig{}, fmt.Errorf("app/preferences: %w", err)
 	}
-	if prefs.ListenPort < 1 || prefs.ListenPort > 65535 {
-		return 0, fmt.Errorf("app/preferences: listen_port %d", prefs.ListenPort)
-	}
-	return prefs.ListenPort, nil
+	return EngineConfig{
+		QueueingEnabled:            p.QueueingEnabled,
+		MaxActiveDownloads:         p.MaxActiveDownloads,
+		MaxActiveUploads:           p.MaxActiveUploads,
+		MaxActiveTorrents:          p.MaxActiveTorrents,
+		MaxActiveCheckingTorrents:  p.MaxActiveCheckingTorrents,
+		DontCountSlowTorrents:      p.DontCountSlowTorrents,
+		SlowTorrentDlRateThreshold: p.SlowTorrentDlRateThreshold,
+		SlowTorrentUlRateThreshold: p.SlowTorrentUlRateThreshold,
+		SlowTorrentInactiveTimer:   p.SlowTorrentInactiveTimer,
+	}, nil
 }
 
 // Version queries the Engine version (also serves as a reachability probe:

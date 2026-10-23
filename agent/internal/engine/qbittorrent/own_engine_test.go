@@ -8,62 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
-
-// TestStartStop_QBittorrent4 (ADR-043): an adopted Engine may be a qBittorrent 4.x, which has
-// no torrents/stop or torrents/start (404) and calls them pause and resume. The adapter falls
-// back to the 4.x name, and after the first 404 goes there directly.
-func TestStartStop_QBittorrent4(t *testing.T) {
-	var mu sync.Mutex
-	var calls []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		calls = append(calls, r.URL.Path)
-		mu.Unlock()
-		switch r.URL.Path {
-		case "/api/v2/torrents/pause", "/api/v2/torrents/resume":
-			w.WriteHeader(http.StatusOK)
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer srv.Close()
-
-	a := New(srv.URL, "admin", "pw")
-	ctx := context.Background()
-	if err := a.Stop(ctx, "abc"); err != nil {
-		t.Fatalf("Stop: %v", err)
-	}
-	if err := a.Start(ctx, "abc"); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	want := []string{"/api/v2/torrents/stop", "/api/v2/torrents/pause", "/api/v2/torrents/resume"}
-	if strings.Join(calls, " ") != strings.Join(want, " ") {
-		t.Errorf("calls = %v, want %v", calls, want)
-	}
-}
-
-// TestStartStop_QBittorrent5 keeps the 5.x names on a 5.x Engine: no extra request.
-func TestStartStop_QBittorrent5(t *testing.T) {
-	var calls []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls = append(calls, r.URL.Path)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	a := New(srv.URL, "admin", "pw")
-	if err := a.Stop(context.Background(), "abc"); err != nil {
-		t.Fatalf("Stop: %v", err)
-	}
-	if len(calls) != 1 || calls[0] != "/api/v2/torrents/stop" {
-		t.Errorf("calls = %v, want only torrents/stop", calls)
-	}
-}
 
 // TestPaths_EngineInAContainer (ADR-043): with the Engine in a container that mounts
 // /mnt/user/torrents as /downloads, the paths it reports reach the Agent as host paths, and the
@@ -121,23 +69,57 @@ func TestPaths_EngineInAContainer(t *testing.T) {
 	}
 }
 
-func TestListenPort(t *testing.T) {
-	body := `{"listen_port":51413,"save_path":"/downloads/"}`
+// TestReadQueue (ADR-043): the queue a Node that joined with its own qBittorrent reports on its
+// first contact is what the Engine has, as qBittorrent has it (-1 = no limit).
+func TestReadQueue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v2/app/preferences" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_, _ = io.WriteString(w, body)
+		_, _ = io.WriteString(w, `{"listen_port":51413,"queueing_enabled":true,"max_active_downloads":3,
+			"max_active_uploads":-1,"max_active_torrents":5,"max_active_checking_torrents":1,
+			"dont_count_slow_torrents":true,"slow_torrent_dl_rate_threshold":2,
+			"slow_torrent_ul_rate_threshold":2,"slow_torrent_inactive_timer":60}`)
 	}))
 	defer srv.Close()
 
-	a := New(srv.URL, "admin", "pw")
-	if port, err := a.ListenPort(context.Background()); err != nil || port != 51413 {
-		t.Errorf("ListenPort = (%d, %v), want 51413", port, err)
+	got, err := New(srv.URL, "admin", "pw").ReadQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ReadQueue: %v", err)
 	}
-	body = `{"listen_port":0}`
-	if _, err := a.ListenPort(context.Background()); err == nil {
-		t.Error("listen_port 0 was accepted")
+	want := EngineConfig{
+		QueueingEnabled: true, MaxActiveDownloads: 3, MaxActiveUploads: -1, MaxActiveTorrents: 5,
+		MaxActiveCheckingTorrents: 1, DontCountSlowTorrents: true, SlowTorrentDlRateThreshold: 2,
+		SlowTorrentUlRateThreshold: 2, SlowTorrentInactiveTimer: 60,
+	}
+	if got != want {
+		t.Errorf("ReadQueue = %+v, want %+v", got, want)
+	}
+}
+
+// TestConfigureEngine_SavePathInAContainer (ADR-043): the Agent pins save_path to its storage,
+// a host folder; an Engine in a container gets the container's path for it.
+func TestConfigureEngine_SavePathInAContainer(t *testing.T) {
+	var sent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/app/setPreferences" {
+			_ = r.ParseForm()
+			sent = r.PostFormValue("json")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	m, err := pathmap.Parse("/downloads=/mnt/user/torrents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(srv.URL, "admin", "pw").WithPaths(m)
+	if err := a.ConfigureEngine(context.Background(), EngineConfig{BTPort: 51413, SavePath: "/mnt/user/torrents"}); err != nil {
+		t.Fatalf("ConfigureEngine: %v", err)
+	}
+	if !strings.Contains(sent, `"save_path":"/downloads"`) || !strings.Contains(sent, `"listen_port":51413`) {
+		t.Errorf("preferences sent = %s, want save_path /downloads and the port", sent)
 	}
 }

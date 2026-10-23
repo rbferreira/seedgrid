@@ -425,17 +425,105 @@ func TestNoHooksDoesNotBreak(t *testing.T) {
 	}
 }
 
-// TestApplied_AdoptedEngine (ADR-043): on the operator's own qBittorrent the engine.* values
-// reach the Agent but are never written to the Engine, so the log of what was applied leaves
-// them out; on any other Node it reports everything.
-func TestApplied_AdoptedEngine(t *testing.T) {
-	values := map[string]string{"agent.log_level": "info", "engine.max_active_downloads": "10"}
-	adopted := &Manager{hooks: Hooks{EngineAdopted: true}}
-	if got := adopted.applied(values); len(got) != 1 || got["agent.log_level"] != "info" {
-		t.Errorf("adopted: applied = %v, want only the agent.* key", got)
+// ownEngine is the Engine of a Node that joined with the qBittorrent it already ran (ADR-043):
+// 4 downloads, no upload limit (-1) and no queue. err != nil = the Engine does not answer.
+type ownEngine struct{ err error }
+
+func (o *ownEngine) values(context.Context) (map[string]string, error) {
+	if o.err != nil {
+		return nil, o.err
 	}
-	installed := &Manager{}
-	if got := installed.applied(values); len(got) != 2 {
-		t.Errorf("installed: applied = %v, want both keys", got)
+	return map[string]string{
+		"engine.queueing_enabled":     "false",
+		"engine.max_active_downloads": "4",
+		"engine.max_active_uploads":   "-1",
+	}, nil
+}
+
+// TestOwnEngine_ReportCarriesTheEngineQueue (ADR-043): the seeding report of such a Node carries
+// the Engine's queue, as qBittorrent has it, over the env; the agent.* env still goes. Nothing is
+// applied before the Control Plane answers with the seeded values.
+func TestOwnEngine_ReportCarriesTheEngineQueue(t *testing.T) {
+	rec := &recorder{}
+	h := rec.hooks()
+	h.EngineValues = (&ownEngine{}).values
+	m := New(quiet(), envBaseline(), map[string]string{"agent.log_level": "debug", "engine.max_active_downloads": "3"}, h)
+	ctx := context.Background()
+
+	m.Handle(ctx, resp("v-cluster", clusterValues("10"), true), nil)
+	var req client.HeartbeatRequest
+	m.Prepare(&req)
+	if req.LocalConfig == nil {
+		t.Fatal("no report")
+	}
+	local := *req.LocalConfig
+	for k, want := range map[string]string{
+		"engine.max_active_downloads": "4", "engine.max_active_uploads": "-1",
+		"engine.queueing_enabled": "false", "agent.log_level": "debug",
+	} {
+		if local[k] != want {
+			t.Errorf("report[%s] = %q, want %q (report: %v)", k, local[k], want, local)
+		}
+	}
+	if len(rec.engine) != 0 {
+		t.Fatalf("applied before the seeding: %+v", rec.engine)
+	}
+	m.Handle(ctx, resp("v-seeded", clusterValues("4"), false), nil)
+	if len(rec.engine) != 1 || rec.engine[0].q.MaxActiveDownloads != 4 {
+		t.Errorf("Engine = %+v, want one application with the Engine's own 4", rec.engine)
+	}
+}
+
+// TestOwnEngine_UnreadableHoldsEverything (ADR-043): while the Engine does not answer, nothing
+// is applied and nothing is reported — not after the grace period either, with or without the
+// Control Plane: the env would be exactly the change at entry. When it answers, the report goes.
+func TestOwnEngine_UnreadableHoldsEverything(t *testing.T) {
+	rec := &recorder{}
+	eng := &ownEngine{err: errBoom}
+	h := rec.hooks()
+	h.EngineValues = eng.values
+	m := New(quiet(), envBaseline(), map[string]string{}, h)
+	ctx := context.Background()
+
+	for i := 0; i < bootGrace+2; i++ {
+		m.Handle(ctx, resp("v1", clusterValues("10"), true), nil)
+		m.Handle(ctx, client.HeartbeatResponse{}, errBoom)
+		m.Handle(ctx, client.HeartbeatResponse{Status: "ok"}, nil) // a CP that sends no configuration
+	}
+	if len(rec.engine) != 0 || len(rec.logLevels) != 0 {
+		t.Fatalf("applied without the Engine's values: engine=%+v log=%v", rec.engine, rec.logLevels)
+	}
+	var req client.HeartbeatRequest
+	m.Prepare(&req)
+	if req.LocalConfig != nil {
+		t.Errorf("reported without the Engine's values: %v", *req.LocalConfig)
+	}
+
+	eng.err = nil
+	m.Handle(ctx, resp("v1", clusterValues("10"), true), nil)
+	req = client.HeartbeatRequest{}
+	m.Prepare(&req)
+	if req.LocalConfig == nil || (*req.LocalConfig)["engine.max_active_downloads"] != "4" {
+		t.Errorf("after the Engine answered: report = %v, want the Engine's queue", req.LocalConfig)
+	}
+}
+
+// TestOwnEngine_WithoutCPKeepsTheEngine (ADR-043): without the Control Plane, the baseline that
+// the grace period applies is the Engine's own queue, not the env's.
+func TestOwnEngine_WithoutCPKeepsTheEngine(t *testing.T) {
+	rec := &recorder{}
+	h := rec.hooks()
+	h.EngineValues = (&ownEngine{}).values
+	m := New(quiet(), envBaseline(), map[string]string{}, h)
+	for i := 0; i < bootGrace; i++ {
+		m.Handle(context.Background(), client.HeartbeatResponse{}, errBoom)
+	}
+	if len(rec.engine) != 1 {
+		t.Fatalf("Engine = %+v, want one application after the grace", rec.engine)
+	}
+	q := rec.engine[0].q
+	// -1 is not a value the Agent accepts: that key keeps the baseline (the env's 10000).
+	if q.MaxActiveDownloads != 4 || q.Enabled || q.MaxActiveUploads != 10000 {
+		t.Errorf("applied %+v, want the Engine's downloads=4 and no queue", q)
 	}
 }

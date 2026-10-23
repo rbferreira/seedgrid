@@ -54,9 +54,9 @@ type Config struct {
 	// Default: DefaultEngineContainer.
 	EngineContainer string
 	LogLevel        string
-	// EngineAdopted: the Engine is the qBittorrent the machine already ran (ADR-043,
-	// SEEDGRID_ENGINE_ADOPTED). It stays the operator's: the Agent never writes its preferences
-	// (port, download folder, queue), reports the port it reads from it, and does not restart it.
+	// EngineAdopted: the Node joined with the qBittorrent the machine already ran (ADR-043,
+	// SEEDGRID_ENGINE_ADOPTED). It registers so, and its first settings are read from that Engine
+	// (remotecfg.Hooks.EngineValues); from then on it is managed like any Node.
 	EngineAdopted bool
 	// EnginePathMap: the Engine's bind mounts, `engine path=host path;...`
 	// (SEEDGRID_ENGINE_PATH_MAP, ADR-043). Empty when the Engine sees the host's paths. Parsed by

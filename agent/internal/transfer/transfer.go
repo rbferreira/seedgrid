@@ -46,7 +46,7 @@ type Server struct {
 	addr        string
 	storagePath string
 	// roots are the directories data may be served from: storagePath, plus the host side of an
-	// adopted Engine's bind mounts (ADR-043), whose torrents may live outside the Node's storage.
+	// bind mounts of an Engine in a container (ADR-043), whose torrents may live outside the Node's storage.
 	roots       []string
 	contentPath func(ctx context.Context, hash string) (string, error)
 	logger      *slog.Logger
@@ -85,7 +85,7 @@ func (s *Server) WithCreator(fn func(ctx context.Context, sourcePath string, tra
 }
 
 // WithRoots adds directories, besides the storage, that torrent data may be served from — the
-// host side of an adopted Engine's bind mounts (ADR-043). Returns the Server itself to chain
+// host side of the bind mounts of an Engine in a container (ADR-043). Returns the Server itself to chain
 // into NewServer.
 func (s *Server) WithRoots(roots []string) *Server {
 	for _, r := range roots {

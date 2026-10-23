@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// TestServe_FromAMappedRoot (ADR-043): on an adopted Engine, a torrent may live in another of
+// TestServe_FromAMappedRoot (ADR-043): on an Engine in a container, a torrent may live in another of
 // the Engine's directories, outside the Node's storage. A directory added with WithRoots can be
 // served; one that is not stays refused.
 func TestServe_FromAMappedRoot(t *testing.T) {

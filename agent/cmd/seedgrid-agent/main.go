@@ -116,7 +116,7 @@ func run() error {
 	}
 	engine := qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword).WithPaths(paths)
 	if cfg.EngineAdopted {
-		logger.Info("adopted Engine: its preferences, port and restarts are the operator's (ADR-043)",
+		logger.Info("Node joined with the qBittorrent it already ran: its first settings are read from it (ADR-043)",
 			"storage", cfg.StoragePath, "path_map", cfg.EnginePathMap)
 	}
 
@@ -136,9 +136,6 @@ func run() error {
 	go xfer.Run(ctx)
 
 	executor := commands.NewExecutor(engine).EnableMigration(xfer, cfg.StoragePath)
-	if cfg.EngineAdopted {
-		executor.AdoptedEngine()
-	}
 	// ADR-027: after an update_agent swaps the binary (and the CP has already received the ack), exiting
 	// with 0 is enough — systemd (Restart=always) brings the Agent back up on the new binary.
 	poller := commands.NewPoller(cli, holder.token, executor, cfg.CommandPollInterval, logger).
@@ -151,11 +148,6 @@ func run() error {
 	var hbInterval atomic.Int64
 	hbInterval.Store(int64(cfg.HeartbeatInterval))
 	applyEngine := func(actx context.Context, q config.QueueSettings, first bool) error {
-		if cfg.EngineAdopted {
-			// The operator's own qBittorrent (ADR-043): its port, download folder and queue are
-			// theirs. The engine.* settings are not applied, and the Portal says so on this Node.
-			return nil
-		}
 		lctx, lcancel := context.WithTimeout(actx, 15*time.Second)
 		defer lcancel()
 		ec := qbittorrent.EngineConfig{
@@ -178,13 +170,36 @@ func run() error {
 		}
 		return engine.ConfigureQueue(lctx, ec)
 	}
-	cfgMgr := remotecfg.New(logger, cfg.Behavior(), config.ExplicitEnv(), remotecfg.Hooks{
+	hooks := remotecfg.Hooks{
 		SetLogLevel:          func(level string) { logLevel.Set(config.ParseLevel(level)) },
 		SetHeartbeatInterval: func(d time.Duration) { hbInterval.Store(int64(d)) },
 		SetPollInterval:      poller.SetInterval,
 		ApplyEngine:          applyEngine,
-		EngineAdopted:        cfg.EngineAdopted,
-	})
+	}
+	if cfg.EngineAdopted {
+		// A qBittorrent the machine already ran (ADR-043): its queue is what the Node starts from,
+		// and the first application must change nothing in it.
+		hooks.EngineValues = func(actx context.Context) (map[string]string, error) {
+			rctx, rcancel := context.WithTimeout(actx, 15*time.Second)
+			defer rcancel()
+			ec, err := engine.ReadQueue(rctx)
+			if err != nil {
+				return nil, err
+			}
+			return config.EngineValues(config.QueueSettings{
+				Enabled:            ec.QueueingEnabled,
+				MaxActiveDownloads: ec.MaxActiveDownloads,
+				MaxActiveUploads:   ec.MaxActiveUploads,
+				MaxActiveTorrents:  ec.MaxActiveTorrents,
+				MaxActiveChecking:  ec.MaxActiveCheckingTorrents,
+				DontCountSlow:      ec.DontCountSlowTorrents,
+				SlowDlThreshold:    ec.SlowTorrentDlRateThreshold,
+				SlowUlThreshold:    ec.SlowTorrentUlRateThreshold,
+				SlowInactiveTimer:  ec.SlowTorrentInactiveTimer,
+			}), nil
+		}
+	}
+	cfgMgr := remotecfg.New(logger, cfg.Behavior(), config.ExplicitEnv(), hooks)
 
 	// Torrent state synchronization loop (Engine → Control Plane).
 	go syncTorrents(ctx, logger, cli, engine, holder.token, 15*time.Second)
@@ -249,14 +264,6 @@ func run() error {
 		// the incoming verdict comes from the Engine ("" if it didn't respond — the CP treats
 		// unknown as "don't know", never as firewalled).
 		connectable, _ := engine.ConnectionStatus(hbCtx)
-		// The BitTorrent port: the one the CP assigned, or, on an adopted Engine (ADR-043), the one
-		// the operator set in qBittorrent — read each time, so a change shows in the Portal.
-		btPort := cfg.BTPort
-		if cfg.EngineAdopted {
-			if p, perr := engine.ListenPort(hbCtx); perr == nil {
-				btPort = p
-			}
-		}
 		// Latest incoming connection sample; nil while never sampled (#155).
 		var incoming *int
 		if v := incomingPeers.Load(); v >= 0 {
@@ -273,7 +280,7 @@ func run() error {
 			DiskFreeBytes:     res.DiskFreeBytes,
 			MemTotalBytes:     res.MemTotalBytes,
 			MemAvailBytes:     res.MemAvailBytes,
-			BTPort:            btPort,
+			BTPort:            cfg.BTPort,
 			Load1:             res.Load1,
 			CPUCores:          res.CPUCores,
 			DiskIOUtilPct:     diskUtil,

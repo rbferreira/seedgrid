@@ -217,6 +217,20 @@ func (b Behavior) Values() map[string]string {
 	return m
 }
 
+// EngineValues serializes a queue as catalog values, the engine.* keys only, the way Values does.
+// A Node that joined with its own qBittorrent (ADR-043) reports these, read from the Engine, for
+// the seeding of its overrides. Values are not validated: -1 (qBittorrent's "no limit") goes as
+// it is, for the Control Plane to bring into the catalog range.
+func EngineValues(q QueueSettings) map[string]string {
+	out := map[string]string{}
+	for k, v := range (Behavior{Queue: q}).Values() {
+		if strings.HasPrefix(k, "engine.") {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // Diff returns, per key, "before → after" for the values that differ between a and b — what the
 // Agent logs when applying a change.
 func Diff(a, b Behavior) map[string]string {
