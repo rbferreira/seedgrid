@@ -848,6 +848,18 @@ assert_eq "enroll_identity never sends the token" "0" \
   "$(MACHINE_ID_FILES="$WORK/mid-good" AGENT_DATA_DIR="$WORK/agent-data" enroll_identity | grep -c agent_token)"
 rm -f "$STUBS/hostname"
 
+# Running the bootstrap again (a removed Node coming back) must restart the Agent that is already
+# running: it still has the used join token in memory (ADR-044).
+load start_agent_service
+export WORK
+stub systemctl 'echo "$@" >> "$WORK/svc-start.log"'
+mkdir -p "$WORK/inst"
+: > "$WORK/inst/seedgrid-agent.service"
+INSTALL_DIR="$WORK/inst" AGENT_UNIT="$WORK/inst/unit" start_agent_service
+assert_eq "start_agent_service restarts the Agent" "1" "$(grep -c '^restart seedgrid-agent$' "$WORK/svc-start.log")"
+assert_eq "start_agent_service enables it at boot" "1" "$(grep -c '^enable seedgrid-agent$' "$WORK/svc-start.log")"
+rm -f "$STUBS/systemctl"
+
 MAP="/downloads=/mnt/user/torrents;/data=/srv/a;/data/movies=/srv/b"
 assert_eq "host_path of the mapped folder itself" "/mnt/user/torrents" "$(host_path "$MAP" /downloads/)"
 assert_eq "host_path under a mapped folder" "/mnt/user/torrents/complete" "$(host_path "$MAP" /downloads/complete)"

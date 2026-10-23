@@ -875,11 +875,15 @@ install_agent_binary() {
     echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
 }
 
-# start_agent_service installs the Agent's systemd unit and starts it.
+# start_agent_service installs the Agent's systemd unit and (re)starts it. Restart, not
+# `enable --now`: on a machine the bootstrap runs on again (a removed Node coming back, ADR-044)
+# the Agent is already running, with the old binary and the old env — the used join token among
+# them — and `enable --now` would leave it so.
 start_agent_service() {
   install -m0644 "$INSTALL_DIR/seedgrid-agent.service" "$AGENT_UNIT"
   systemctl daemon-reload
-  systemctl enable --now seedgrid-agent
+  systemctl enable seedgrid-agent
+  systemctl restart seedgrid-agent
 }
 
 # ---------------------------------------------------------------------------
