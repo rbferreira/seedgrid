@@ -866,20 +866,27 @@ install_agent_binary() {
     *) echo "!! unsupported architecture: $(uname -m) (the CP publishes amd64 and arm64)"; exit 1 ;;
   esac
   echo "==> downloading Agent for $NODE_ARCH"
-  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent
-  chmod 0755 /usr/local/bin/seedgrid-agent
-  # Proves the binary runs HERE before installing the service — same smoke-test that the
-  # self-update uses (ADR-027); failing early with a clear message is better than a systemd in
-  # a restart loop.
-  /usr/local/bin/seedgrid-agent --version >/dev/null 2>&1 || {
+  # Next to the binary, then renamed over it: on a machine the bootstrap runs on again the Agent
+  # is running, and writing into its binary fails (text file busy); a rename does not.
+  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent.new
+  chmod 0755 /usr/local/bin/seedgrid-agent.new
+  # Proves the binary runs HERE before installing it — same smoke-test that the self-update
+  # uses (ADR-027); failing early with a clear message is better than a systemd in a restart loop.
+  /usr/local/bin/seedgrid-agent.new --version >/dev/null 2>&1 || {
+    rm -f /usr/local/bin/seedgrid-agent.new
     echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
+  mv -f /usr/local/bin/seedgrid-agent.new /usr/local/bin/seedgrid-agent
 }
 
-# start_agent_service installs the Agent's systemd unit and starts it.
+# start_agent_service installs the Agent's systemd unit and (re)starts it. Restart, not
+# `enable --now`: on a machine the bootstrap runs on again (a removed Node coming back, ADR-044)
+# the Agent is already running, with the old binary and the old env — the used join token among
+# them — and `enable --now` would leave it so.
 start_agent_service() {
   install -m0644 "$INSTALL_DIR/seedgrid-agent.service" "$AGENT_UNIT"
   systemctl daemon-reload
-  systemctl enable --now seedgrid-agent
+  systemctl enable seedgrid-agent
+  systemctl restart seedgrid-agent
 }
 
 # ---------------------------------------------------------------------------
@@ -925,6 +932,31 @@ json_num() {
 json_str() {
   sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1
 }
+# machine_id prints the machine's systemd identity (ADR-044): the first of /etc/machine-id and
+# /var/lib/dbus/machine-id that identifies something. MACHINE_ID_FILES overrides the list (tests).
+machine_id() {
+  for f in ${MACHINE_ID_FILES:-/etc/machine-id /var/lib/dbus/machine-id}; do
+    [ -r "$f" ] || continue
+    v=$(tr -d '[:space:]' < "$f")
+    case "$v" in ''|uninitialized) continue ;; esac
+    echo "$v"
+    return 0
+  done
+}
+
+# enroll_identity prints the JSON fields that identify this machine to the enroll (ADR-044): its
+# hostname, machine-id, and the Node id of the Agent's identity file when a previous install left
+# one. A removed Node coming back gets its old port; any other machine, the next free one.
+enroll_identity() {
+  printf '"hostname":"%s"' "$(hostname)"
+  mid=$(machine_id)
+  [ -z "$mid" ] || printf ',"machine_id":"%s"' "$mid"
+  idf="${AGENT_DATA_DIR:-/var/lib/seedgrid-agent}/identity.json"
+  [ -r "$idf" ] || return 0
+  nid=$(json_str node_id < "$idf")
+  [ -z "$nid" ] || printf ',"node_id":"%s"' "$nid"
+}
+
 json_true() {
   grep -q "\"$1\":[[:space:]]*true"
 }
@@ -1150,7 +1182,7 @@ adopt_existing_engine() {
   # enroll with the Engine's own port: the Control Plane reserves exactly it.
   echo "==> enroll no Control Plane"
   ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" -H 'Content-Type: application/json' \
-    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,\"hostname\":\"$(hostname)\"}") || ENROLL_JSON=""
+    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,$(enroll_identity)}") || ENROLL_JSON=""
   BT_PORT=$(printf '%s' "$ENROLL_JSON" | json_num bt_port)
   [ -n "$BT_PORT" ] || { echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
   SHARED=$(printf '%s' "$ENROLL_JSON" | json_str bt_port_shared_with)
@@ -1186,9 +1218,9 @@ adopt_existing_engine() {
   echo "==> done. The Node registered with the Control Plane keeping qBittorrent as it is:"
   echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH,"
   echo "    and its queue settings, which become this Node's settings in SeedGrid."
-  echo "    It joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or rotate"
-  echo "    them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
-  echo "    from then on SeedGrid manages it like any Node."
+  echo "    A new Node joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or"
+  echo "    rotate them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
+  echo "    from then on SeedGrid manages it like any Node. A removed Node coming back keeps its mode."
   echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
 }
 
@@ -1287,7 +1319,7 @@ fi
 # 2) enroll → the CP assigns the BitTorrent port (lowest free in the sequence)
 echo "==> enroll no Control Plane"
 ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" \
-  -H 'Content-Type: application/json' -d "{\"token\":\"$JOIN_TOKEN\"}") || ENROLL_JSON=""
+  -H 'Content-Type: application/json' -d "{\"token\":\"$JOIN_TOKEN\",$(enroll_identity)}") || ENROLL_JSON=""
 BT_PORT=$(printf '%s' "$ENROLL_JSON" | sed -n 's/.*"bt_port":[[:space:]]*\([0-9]*\).*/\1/p')
 [ -n "$BT_PORT" ] || { echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
 echo "   BitTorrent port assigned by CP: $BT_PORT"
