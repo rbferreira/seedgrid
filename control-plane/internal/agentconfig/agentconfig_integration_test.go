@@ -480,3 +480,69 @@ func TestSeedRejectsGiantReport(t *testing.T) {
 		t.Errorf("legitimate report after the rejected one: %+v err=%v", res, err)
 	}
 }
+
+// A Node that joined with the qBittorrent it already ran (ADR-043) reports its engine.* values
+// from that Engine. They win over an explicit cluster value, and a value outside the catalog
+// range is brought into it: the first application must change nothing in the Engine. The
+// agent.* keys of the same report still follow the ordinary rule.
+func TestSeedFromAdoptedEngine(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	var gate string
+	if err := e.pool.QueryRow(ctx, `SELECT operation_mode FROM clusters WHERE name = 'default'`).Scan(&gate); err != nil {
+		t.Fatalf("read gate: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `UPDATE clusters SET operation_mode = $1 WHERE name = 'default'`, gate)
+	})
+	res, err := e.nodes.Register(ctx, node.RegisterInput{
+		Hostname: fmt.Sprintf("ac-seed-adopted-%d", time.Now().UnixNano()), Engine: "qbittorrent", EngineAdopted: true,
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	id := res.NodeID
+	e.setCluster(t, "engine.max_active_downloads", "8")
+	e.setCluster(t, "agent.log_level", "warn")
+
+	seed, err := e.svc.Seed(ctx, id, map[string]string{
+		"engine.max_active_downloads": "3",     // the Engine's value wins over the explicit cluster 8
+		"engine.max_active_uploads":   "-1",    // qBittorrent's "no limit" → the catalog maximum
+		"engine.slow_inactive_timer":  "0",     // below the minimum → the minimum
+		"engine.queueing_enabled":     "false", // the Engine had no queue
+		"engine.max_active_torrents":  "10000", // same as the cluster → no override
+		"agent.log_level":             "debug", // not from the Engine: the explicit cluster wins
+	})
+	if err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	want := map[string]string{
+		"engine.max_active_downloads": "3",
+		"engine.max_active_uploads":   "100000",
+		"engine.slow_inactive_timer":  "1",
+		"engine.queueing_enabled":     "false",
+	}
+	if len(seed.Seeded) != len(want) {
+		t.Errorf("seeded %v, want %v", seed.Seeded, want)
+	}
+	for k, v := range want {
+		if seed.Seeded[k] != v {
+			t.Errorf("%s seeded = %q, want %q", k, seed.Seeded[k], v)
+		}
+	}
+	for _, k := range []string{"engine.max_active_torrents", "agent.log_level"} {
+		if _, ok := seed.Skipped[k]; !ok {
+			t.Errorf("%s should have been skipped (Skipped = %v)", k, seed.Skipped)
+		}
+	}
+	st, _ := e.svc.Node(ctx, id)
+	if it := item(t, st, "engine.max_active_downloads"); it.Source != agentconfig.SourceNode || it.Value != "3" {
+		t.Errorf("downloads after seeding: %+v, want the Engine's 3 as a Node override", it)
+	}
+	var n int
+	if err := e.pool.QueryRow(ctx,
+		`SELECT count(*) FROM events ev JOIN event_types et ON et.id = ev.event_type_id
+		  WHERE et.code = 'NODE_ENGINE_SEEDED' AND ev.node_id = $1::uuid`, id).Scan(&n); err != nil || n != 1 {
+		t.Errorf("NODE_ENGINE_SEEDED events = %d (err=%v), want 1", n, err)
+	}
+}

@@ -70,6 +70,7 @@ var Registry = []Message{
 		Variant: "gate_moved", Variants: []string{"false", "true"}},
 	{Kind: Event, Code: "NODE_CONFIG_SEEDED", Payload: []string{"hostname", "overrides"}},
 	{Kind: Event, Code: "NODE_DELETED", Payload: []string{"hostname", "force", "torrents_removed"}},
+	{Kind: Event, Code: "NODE_ENGINE_SEEDED", Payload: []string{"hostname", "overrides"}},
 	{Kind: Event, Code: "NODE_REGISTERED", Payload: []string{"hostname", "agent_version", "name_dropped"},
 		Variant: "name_dropped", Variants: []string{"false", "true"}},
 	{Kind: Event, Code: "STORAGE_RECOVERY", Payload: []string{"hostname", "step", "attempt"},

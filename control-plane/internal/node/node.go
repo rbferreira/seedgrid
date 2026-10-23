@@ -343,7 +343,7 @@ func (s *Service) startAdoptedInManual(ctx context.Context, nodeID, hostname str
 		return fmt.Errorf("adopted node mode: %w", err)
 	}
 	if s.events != nil {
-		msg := fmt.Sprintf("Seed Node %q joined with its own qBittorrent and starts in Manual: the admission controller leaves its torrents alone until it is moved to SG", hostname)
+		msg := fmt.Sprintf("Seed Node %q joined with the qBittorrent it already ran and starts in Manual: review its settings, then move it to SG; until then the admission controller leaves its torrents alone", hostname)
 		if gateMoved {
 			msg += " — the Cluster moved from Full auto to Flex for it; the other Nodes stay SG"
 		}

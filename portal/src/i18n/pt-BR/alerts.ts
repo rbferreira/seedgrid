@@ -63,11 +63,12 @@ export const alerts = {
       AGENT_UPDATE: "Atualização do Agent solicitada ({from} → {to})",
       ENGINE_RESTART: "Reinício do Torrent Engine solicitado",
       NODE_ADOPTED_MANUAL: {
-        false: "Seed Node «{hostname}» entrou com o qBittorrent que já tinha e começa em Manual: a admissão não mexe nos torrents dele até você passá-lo para SG",
-        true: "Seed Node «{hostname}» entrou com o qBittorrent que já tinha e começa em Manual: a admissão não mexe nos torrents dele até você passá-lo para SG. O Cluster passou de Full auto para Flex por causa dele; os outros Nodes continuam SG",
+        false: "Seed Node «{hostname}» entrou com o qBittorrent que já tinha e começa em Manual: revise os ajustes dele e passe-o para SG; até lá a admissão não mexe nos torrents dele",
+        true: "Seed Node «{hostname}» entrou com o qBittorrent que já tinha e começa em Manual: revise os ajustes dele e passe-o para SG; até lá a admissão não mexe nos torrents dele. O Cluster passou de Full auto para Flex por causa dele; os outros Nodes continuam SG",
       },
       NODE_CONFIG_SEEDED: "Node «{hostname}»: valores do .env viraram override por Node ({overrides})",
       NODE_DELETED: "Seed Node «{hostname}» removido do Cluster",
+      NODE_ENGINE_SEEDED: "Node «{hostname}»: os ajustes que o qBittorrent já tinha viraram override por Node ({overrides})",
       NODE_REGISTERED: {
         false: "Seed Node «{hostname}» registrado",
         true: "Seed Node «{hostname}» registrado — o apelido pedido já está em uso ou é inválido e não foi aplicado; renomeie pelo Portal",
