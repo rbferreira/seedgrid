@@ -866,13 +866,16 @@ install_agent_binary() {
     *) echo "!! unsupported architecture: $(uname -m) (the CP publishes amd64 and arm64)"; exit 1 ;;
   esac
   echo "==> downloading Agent for $NODE_ARCH"
-  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent
-  chmod 0755 /usr/local/bin/seedgrid-agent
-  # Proves the binary runs HERE before installing the service — same smoke-test that the
-  # self-update uses (ADR-027); failing early with a clear message is better than a systemd in
-  # a restart loop.
-  /usr/local/bin/seedgrid-agent --version >/dev/null 2>&1 || {
+  # Next to the binary, then renamed over it: on a machine the bootstrap runs on again the Agent
+  # is running, and writing into its binary fails (text file busy); a rename does not.
+  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent.new
+  chmod 0755 /usr/local/bin/seedgrid-agent.new
+  # Proves the binary runs HERE before installing it — same smoke-test that the self-update
+  # uses (ADR-027); failing early with a clear message is better than a systemd in a restart loop.
+  /usr/local/bin/seedgrid-agent.new --version >/dev/null 2>&1 || {
+    rm -f /usr/local/bin/seedgrid-agent.new
     echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
+  mv -f /usr/local/bin/seedgrid-agent.new /usr/local/bin/seedgrid-agent
 }
 
 # start_agent_service installs the Agent's systemd unit and (re)starts it. Restart, not
@@ -1215,9 +1218,9 @@ adopt_existing_engine() {
   echo "==> done. The Node registered with the Control Plane keeping qBittorrent as it is:"
   echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH,"
   echo "    and its queue settings, which become this Node's settings in SeedGrid."
-  echo "    It joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or rotate"
-  echo "    them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
-  echo "    from then on SeedGrid manages it like any Node."
+  echo "    A new Node joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or"
+  echo "    rotate them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
+  echo "    from then on SeedGrid manages it like any Node. A removed Node coming back keeps its mode."
   echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
 }
 
