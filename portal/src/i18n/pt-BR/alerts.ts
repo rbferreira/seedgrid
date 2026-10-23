@@ -73,6 +73,7 @@ export const alerts = {
         false: "Seed Node «{hostname}» registrado",
         true: "Seed Node «{hostname}» registrado — o apelido pedido já está em uso ou é inválido e não foi aplicado; renomeie pelo Portal",
       },
+      NODE_RETURNED: "Seed Node «{hostname}» voltou como ele mesmo: histórico, modo e ajustes mantidos, {torrents_restored} torrent(s) restaurado(s)",
       STORAGE_RECOVERY: {
         start: "Recuperação do storage iniciada (tentativa {attempt})",
         reattach: "Recuperação do storage: reanexando o disco (tentativa {attempt})",

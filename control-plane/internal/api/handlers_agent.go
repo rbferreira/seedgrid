@@ -49,6 +49,7 @@ func handleAgentRegister(d Deps) http.HandlerFunc {
 			return
 		}
 		in.BTPort = enroll.BTPort // port assigned by the CP via join token (nil in the shared path)
+		in.ViaJoinToken = !shared
 		if !shared {
 			// The alias is the OPERATOR's decision, made when issuing the join token (#145) — what the
 			// Agent sends in the body doesn't count. In the legacy path (shared token) there is no
@@ -57,6 +58,11 @@ func handleAgentRegister(d Deps) http.HandlerFunc {
 		}
 
 		res, err := d.Nodes.Register(r.Context(), in)
+		if errors.Is(err, node.ErrNodeRemoved) {
+			httpx.WriteError(w, http.StatusGone, "node_removed",
+				"this Node was removed from the Cluster; to bring it back, issue a join token and run the bootstrap again")
+			return
+		}
 		if err != nil {
 			d.Logger.Error("registrar agent", "error", err)
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to register node")
@@ -126,6 +132,9 @@ func handleAgentEnroll(d Deps) http.HandlerFunc {
 			Token    string `json:"token"`
 			BTPort   int    `json:"bt_port"`
 			Hostname string `json:"hostname"`
+			// The machine (ADR-044): a removed Node coming back gets its old port.
+			MachineID string `json:"machine_id"`
+			NodeID    string `json:"node_id"`
 		}
 		if err := httpx.DecodeJSON(r, &body); err != nil || body.Token == "" {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "token is required")
@@ -138,7 +147,8 @@ func handleAgentEnroll(d Deps) http.HandlerFunc {
 			port = body.BTPort
 			sharedWith, err = d.Nodes.ReserveEnginePort(r.Context(), body.Token, body.BTPort, body.Hostname)
 		} else {
-			port, err = d.Nodes.AssignPort(r.Context(), body.Token)
+			port, err = d.Nodes.AssignPortFor(r.Context(), body.Token,
+				node.Machine{Hostname: body.Hostname, MachineID: body.MachineID, NodeID: body.NodeID})
 		}
 		if errors.Is(err, node.ErrInvalidPort) {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "bt_port must be between 1 and 65535")

@@ -164,6 +164,14 @@
   },
   {
     "kind": "event",
+    "code": "NODE_RETURNED",
+    "payload": [
+      "hostname",
+      "torrents_restored"
+    ]
+  },
+  {
+    "kind": "event",
     "code": "STORAGE_RECOVERY",
     "payload": [
       "hostname",
@@ -598,6 +606,11 @@
   {
     "kind": "error",
     "code": "node_not_found",
+    "payload": []
+  },
+  {
+    "kind": "error",
+    "code": "node_removed",
     "payload": []
   },
   {
