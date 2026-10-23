@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -421,6 +422,12 @@ var ErrReportTooLarge = errors.New("local configuration report too large")
 // reported value differs from the cluster one. After the attempt — even with no keys — the Node
 // is marked as seeded and never touched again, even if the operator deletes what was
 // seeded: seeding is migration, not synchronization.
+//
+// A Node that joined with the qBittorrent it already ran (ADR-043) reports its engine.* values
+// from that running Engine, not from a file someone wrote: they are what the Engine does now,
+// and the first application must not change them. For those keys an explicit cluster value
+// does not win, and a value outside the catalog range is brought into it (clampToRange)
+// instead of skipped.
 func (s *Service) Seed(ctx context.Context, nodeID string, local map[string]string) (SeedResult, error) {
 	res := SeedResult{Seeded: map[string]string{}, Skipped: map[string]string{}}
 	if !uuidRe.MatchString(nodeID) {
@@ -439,9 +446,10 @@ func (s *Service) Seed(ctx context.Context, nodeID string, local map[string]stri
 	var seededAt *time.Time
 	var hostname string
 	var displayName *string
+	var adopted bool
 	err = tx.QueryRow(ctx,
-		`SELECT agent_config_seeded_at, hostname, display_name FROM nodes
-		  WHERE id = $1::uuid AND deleted_at IS NULL FOR UPDATE`, nodeID).Scan(&seededAt, &hostname, &displayName)
+		`SELECT agent_config_seeded_at, hostname, display_name, engine_adopted FROM nodes
+		  WHERE id = $1::uuid AND deleted_at IS NULL FOR UPDATE`, nodeID).Scan(&seededAt, &hostname, &displayName, &adopted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return res, ErrNodeNotFound
 	}
@@ -461,6 +469,10 @@ func (s *Service) Seed(ctx context.Context, nodeID string, local map[string]stri
 	for _, key := range keys {
 		value := local[key]
 		spec, ok := settings.Lookup(key)
+		fromEngine := adopted && strings.HasPrefix(key, "engine.")
+		if ok && fromEngine {
+			value = clampToRange(spec, value)
+		}
 		switch {
 		case !ok || !spec.PerNode:
 			res.Skipped[key] = "unknown key"
@@ -471,7 +483,7 @@ func (s *Service) Seed(ctx context.Context, nodeID string, local map[string]stri
 		}
 		cv, explicit := s.store.Cluster(key)
 		switch {
-		case explicit:
+		case explicit && !fromEngine:
 			res.Skipped[key] = "operator set the cluster value"
 			continue
 		case spec.Same(value, cv):
@@ -515,9 +527,41 @@ func (s *Service) Seed(ctx context.Context, nodeID string, local map[string]stri
 		for _, k := range seededKeys {
 			parts = append(parts, k+"="+res.Seeded[k])
 		}
-		_ = s.events.Emit(ctx, "NODE_CONFIG_SEEDED", "INFO", nodeID,
-			fmt.Sprintf("Node %q: .env values became per-Node overrides (%s)", label, strings.Join(parts, ", ")),
-			map[string]any{"hostname": hostname, "overrides": res.Seeded})
+		payload := map[string]any{"hostname": hostname, "overrides": res.Seeded}
+		if adopted {
+			_ = s.events.Emit(ctx, "NODE_ENGINE_SEEDED", "INFO", nodeID,
+				fmt.Sprintf("Node %q: the settings its qBittorrent already had became per-Node overrides (%s)", label, strings.Join(parts, ", ")),
+				payload)
+		} else {
+			_ = s.events.Emit(ctx, "NODE_CONFIG_SEEDED", "INFO", nodeID,
+				fmt.Sprintf("Node %q: .env values became per-Node overrides (%s)", label, strings.Join(parts, ", ")),
+				payload)
+		}
 	}
 	return res, nil
+}
+
+// clampToRange brings an integer read from a running Engine into the catalog range of its key
+// (ADR-043): the Engine accepts values the catalog does not, and the Node must keep doing what
+// the Engine did. A negative value is qBittorrent's "no limit" and becomes the maximum; below
+// the minimum becomes the minimum, above the maximum the maximum. Anything else is returned as
+// it came, for Validate to judge.
+func clampToRange(spec settings.Spec, value string) string {
+	if spec.Kind != settings.KindInt {
+		return value
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return value
+	}
+	f := float64(n)
+	switch {
+	case n < 0 && spec.Max != nil:
+		f = *spec.Max
+	case spec.Min != nil && f < *spec.Min:
+		f = *spec.Min
+	case spec.Max != nil && f > *spec.Max:
+		f = *spec.Max
+	}
+	return strconv.FormatInt(int64(f), 10)
 }
