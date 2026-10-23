@@ -7,6 +7,21 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-23
+
+A machine that already runs qBittorrent can join the Cluster without giving it up, and a removed
+Node that joins again is recognized.
+
+### Upgrading
+- **Control Plane:** with the Compose file, download the `compose.yaml` of this release (or set
+  `SEEDGRID_VERSION=0.3.0`) and `docker compose up -d`. With `bootstrap-controller.sh`, update as
+  before (`git pull && git fetch --tags && sh scripts/bootstrap-controller.sh`). Migrations
+  `00048` and `00049` run on start.
+- **Nodes:** update the Agent from the Portal **after** the Control Plane. The download fix (#61) and
+  the machine identity (#62) are in the Agent.
+- **qBittorrent 4.x is no longer supported.** The Nodes SeedGrid installs already run 5.x; nothing
+  changes for them.
+
 ### Added
 
 - **A Node can join with the qBittorrent it already runs (#32, #64, ADR-043).** `bootstrap-node.sh`
@@ -160,6 +175,7 @@ coordinates several **Seed Nodes**, each running a Torrent Engine (qBittorrent) 
   boundaries, commit message format and the code language (comments, messages and identifiers
   in English).
 
-[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.1.0
