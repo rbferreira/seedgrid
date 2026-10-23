@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -168,5 +169,17 @@ func TestHeartbeatNegotiationFieldsOnlyWhenFilled(t *testing.T) {
 	}
 	if string(got["local_config"]) != `{"engine.max_active_downloads":"3"}` {
 		t.Errorf("local_config = %s", got["local_config"])
+	}
+}
+
+// TestRegister_NodeRemoved (ADR-044): 410 is the Control Plane refusing a removed Node's machine
+// through the shared token; the Agent tells it from any other failure.
+func TestRegister_NodeRemoved(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGone)
+	}))
+	defer srv.Close()
+	if _, err := New(srv.URL).Register(context.Background(), "reg-tok", RegisterRequest{Hostname: "host-a"}); !errors.Is(err, ErrNodeRemoved) {
+		t.Errorf("Register = %v, want ErrNodeRemoved", err)
 	}
 }

@@ -16,6 +16,10 @@ type Info struct {
 	OSVersion     string
 	KernelVersion string
 	Architecture  string
+	// MachineID is the machine's systemd identity (/etc/machine-id), "" when it has none. It
+	// survives reboots and SeedGrid reinstalls, and tells the same machine from another one with
+	// the same hostname (ADR-044).
+	MachineID string
 }
 
 // Collect gathers available local information (Linux).
@@ -28,7 +32,19 @@ func Collect() Info {
 		OSVersion:     version,
 		KernelVersion: readTrim("/proc/sys/kernel/osrelease"),
 		Architecture:  runtime.GOARCH,
+		MachineID:     machineID("/etc/machine-id", "/var/lib/dbus/machine-id"),
 	}
+}
+
+// machineID returns the first non-empty machine-id among paths. "uninitialized" is what systemd
+// writes in an image not booted yet: it identifies nothing.
+func machineID(paths ...string) string {
+	for _, p := range paths {
+		if v := readTrim(p); v != "" && v != "uninitialized" {
+			return v
+		}
+	}
+	return ""
 }
 
 // osRelease reads NAME and VERSION_ID from /etc/os-release.
@@ -54,7 +70,7 @@ func osRelease() (name, version string) {
 }
 
 func readTrim(path string) string {
-	b, err := os.ReadFile(path) //nolint:gosec // G304: only called with internal literal ("/proc/sys/kernel/osrelease")
+	b, err := os.ReadFile(path) //nolint:gosec // G304: only called with internal literals (osrelease, machine-id)
 	if err != nil {
 		return ""
 	}
