@@ -29,6 +29,9 @@ var ErrUnknownAgent = errors.New("unknown or untrusted Agent")
 var (
 	ErrNodeNotFound    = errors.New("node not found")
 	ErrNodeHasTorrents = errors.New("Node still has torrents; migrate/remove before or use force")
+	// ErrNodeRemoved (ADR-044): the machine of a removed Node registering again with the shared
+	// registration token — an Agent retrying on its own. The removal sticks; a join token brings it back.
+	ErrNodeRemoved = errors.New("this Node was removed from the Cluster")
 )
 
 // Node is the representation of a Seed Node exposed by the API.
@@ -106,9 +109,17 @@ type RegisterInput struct {
 	// EngineAdopted: the Agent runs against the qBittorrent the machine already had (ADR-043).
 	// A Node that becomes adopted starts in Manual.
 	EngineAdopted bool `json:"engine_adopted"`
+	// MachineID and PreviousNodeID identify the machine (ADR-044): /etc/machine-id, and the Node id
+	// of the Agent's identity file when it still has one. They tell a removed Node coming back from
+	// a different machine with the same hostname.
+	MachineID      string `json:"machine_id"`
+	PreviousNodeID string `json:"node_id"`
 	// BTPort is the port assigned by the CP via join token (ADR-017); populated by
 	// the handler from the enroll token, never from the Agent's JSON.
 	BTPort *int `json:"-"`
+	// ViaJoinToken: the registration carries a join token, which only the operator issues
+	// (ADR-044). Set by the handler.
+	ViaJoinToken bool `json:"-"`
 }
 
 // RegisterResult is returned to the Agent after registration. The token is displayed only once.
@@ -232,6 +243,12 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	// world changes between issuing and using the token. An unusable name doesn't abort the registration.
 	displayName, nameDropped := s.registrationName(ctx, in.Hostname, in.DisplayName)
 
+	// A removed Node of this machine comes back as itself (ADR-044) before the upsert finds it live.
+	returned, err := s.returnRemoved(ctx, in)
+	if err != nil {
+		return RegisterResult{}, err
+	}
+
 	var nodeID, nodeUUID string
 	// wasAdopted is the row's engine_adopted BEFORE this registration (false for a new Node):
 	// the CTE reads the snapshot taken before the INSERT. A Node that becomes adopted here —
@@ -239,13 +256,13 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	var wasAdopted bool
 	upsert := func(name string) error {
 		return s.pool.QueryRow(ctx,
-			`WITH prev AS (SELECT engine_adopted FROM nodes WHERE cluster_id = $1 AND hostname = $2)
+			`WITH prev AS (SELECT engine_adopted FROM nodes WHERE cluster_id = $1 AND hostname = $2 AND deleted_at IS NULL)
 			 INSERT INTO nodes (cluster_id, hostname, display_name, os_name, os_version,
 			                    kernel_version, architecture, agent_version, engine, engine_version,
-			                    bt_port, engine_adopted, status, registered_at, last_seen_at)
+			                    bt_port, engine_adopted, machine_id, status, registered_at, last_seen_at)
 			 VALUES ($1, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''), NULLIF($6,''), NULLIF($7,''),
-			         NULLIF($8,''), NULLIF($9,''), NULLIF($10,''), $11, $12, 'ONLINE', now(), now())
-			 ON CONFLICT (cluster_id, hostname) DO UPDATE SET
+			         NULLIF($8,''), NULLIF($9,''), NULLIF($10,''), $11, $12, NULLIF($13,''), 'ONLINE', now(), now())
+			 ON CONFLICT (cluster_id, hostname) WHERE deleted_at IS NULL DO UPDATE SET
 			    display_name   = COALESCE(NULLIF(EXCLUDED.display_name,''), nodes.display_name),
 			    os_name        = COALESCE(NULLIF(EXCLUDED.os_name,''), nodes.os_name),
 			    os_version     = COALESCE(NULLIF(EXCLUDED.os_version,''), nodes.os_version),
@@ -256,16 +273,17 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			    engine_version = COALESCE(NULLIF(EXCLUDED.engine_version,''), nodes.engine_version),
 			    bt_port        = COALESCE(EXCLUDED.bt_port, nodes.bt_port),
 			    engine_adopted = EXCLUDED.engine_adopted,
+			    machine_id     = COALESCE(EXCLUDED.machine_id, nodes.machine_id),
 			    status         = 'ONLINE',
 			    last_seen_at   = now(),
 			    updated_at     = now()
 			 RETURNING id::text, uuid::text, COALESCE((SELECT engine_adopted FROM prev), false)`,
 			s.defaultClusterID, in.Hostname, name, in.OSName, in.OSVersion,
 			in.KernelVersion, in.Architecture, in.AgentVersion, in.Engine, in.EngineVersion, in.BTPort,
-			in.EngineAdopted,
+			in.EngineAdopted, in.MachineID,
 		).Scan(&nodeID, &nodeUUID, &wasAdopted)
 	}
-	err := upsert(displayName)
+	err = upsert(displayName)
 	if err != nil && displayName != "" && isDisplayNameViolation(err) {
 		// Race condition: another Node took the nickname between the check and the INSERT. The Node joins
 		// without a nickname (the operator renames it later) instead of failing the registration.
@@ -298,6 +316,12 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 			msg += " — requested alias is already in use or invalid and was not applied; rename via Portal"
 		}
 		_ = s.events.Emit(ctx, "NODE_REGISTERED", "INFO", nodeID, msg, payload)
+		if returned != nil {
+			_ = s.events.Emit(ctx, "NODE_RETURNED", "INFO", nodeID,
+				fmt.Sprintf("Seed Node %q came back as itself: its history, mode and settings are kept, %d torrent(s) restored",
+					in.Hostname, returned.torrents),
+				map[string]any{"hostname": in.Hostname, "torrents_restored": returned.torrents})
+		}
 	}
 
 	if in.EngineAdopted && !wasAdopted {
@@ -307,6 +331,70 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (RegisterResul
 	}
 
 	return RegisterResult{NodeID: nodeID, NodeUUID: nodeUUID, AgentToken: token}, nil
+}
+
+// returnedNode is a removed Node brought back by returnRemoved.
+type returnedNode struct {
+	id       string
+	torrents int64
+}
+
+// returnRemoved brings back a removed Node when the machine registering is the same (ADR-044): a
+// removed row with this hostname whose machine_id is the one sent, or whose id is the Node id of
+// the Agent's identity file. Nothing happens when a live Node has the hostname (the upsert updates
+// it, as always), when no removed row matches (a different machine joins as a new Node), or when
+// it matches through the shared token (ErrNodeRemoved: the removal sticks against an Agent
+// retrying on its own). The Node comes back with its id, history, mode and overrides, and the
+// torrents removed with it — Delete stamps them in the Node's transaction; the 10-second window
+// also catches Nodes removed before it did — unless the hash is live again on it. A display name another Node took meanwhile is dropped.
+func (s *Service) returnRemoved(ctx context.Context, in RegisterInput) (*returnedNode, error) {
+	if in.MachineID == "" && in.PreviousNodeID == "" {
+		return nil, nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("return removed node: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var id string
+	var deletedAt time.Time
+	err = tx.QueryRow(ctx,
+		`SELECT id::text, deleted_at FROM nodes
+		  WHERE cluster_id = $1 AND hostname = $2 AND deleted_at IS NOT NULL
+		    AND NOT EXISTS (SELECT 1 FROM nodes l WHERE l.cluster_id = $1 AND l.hostname = $2 AND l.deleted_at IS NULL)
+		    AND ((machine_id IS NOT NULL AND machine_id = NULLIF($3,'')) OR id::text = NULLIF($4,''))
+		  ORDER BY deleted_at DESC LIMIT 1
+		  FOR UPDATE`,
+		s.defaultClusterID, in.Hostname, in.MachineID, in.PreviousNodeID).Scan(&id, &deletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("return removed node: %w", err)
+	}
+	if !in.ViaJoinToken {
+		return nil, ErrNodeRemoved
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE nodes n SET deleted_at = NULL, updated_at = now(),
+		        display_name = CASE WHEN EXISTS (
+		            SELECT 1 FROM nodes o WHERE o.cluster_id = n.cluster_id AND o.deleted_at IS NULL
+		               AND lower(o.display_name) = lower(n.display_name)) THEN NULL ELSE n.display_name END
+		  WHERE n.id = $1`, id); err != nil {
+		return nil, fmt.Errorf("return removed node: %w", err)
+	}
+	tag, err := tx.Exec(ctx,
+		`UPDATE torrents t SET deleted_at = NULL, updated_at = now()
+		  WHERE t.node_id = $1 AND t.deleted_at BETWEEN $2::timestamptz - interval '10 seconds' AND $2
+		    AND NOT EXISTS (SELECT 1 FROM torrents l WHERE l.node_id = t.node_id AND l.hash = t.hash AND l.deleted_at IS NULL)`,
+		id, deletedAt)
+	if err != nil {
+		return nil, fmt.Errorf("return removed node: restore torrents: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("return removed node: %w", err)
+	}
+	return &returnedNode{id: id, torrents: tag.RowsAffected()}, nil
 }
 
 // startAdoptedInManual puts a Node that joined with the operator's own Engine in Manual
@@ -753,6 +841,21 @@ func (s *Service) MintEnrollToken(ctx context.Context, ttl time.Duration, displa
 // btPortBase, considering active Nodes and other live reservations. Ports from
 // removed Nodes return to the pool (reuse). Returns the reserved port.
 func (s *Service) AssignPort(ctx context.Context, token string) (int, error) {
+	return s.AssignPortFor(ctx, token, Machine{})
+}
+
+// Machine identifies the machine behind an enroll (ADR-044): its hostname, /etc/machine-id, and
+// the Node id of the Agent's identity file, when it has one. Empty fields match nothing.
+type Machine struct {
+	Hostname  string
+	MachineID string
+	NodeID    string
+}
+
+// AssignPortFor is AssignPort for a known machine: when it is a removed Node coming back (same
+// hostname and the same machine_id or Node id, ADR-044), it gets its old port back if no live Node
+// and no pending join token holds it — the operator's port forward still points at it.
+func (s *Service) AssignPortFor(ctx context.Context, token string, m Machine) (int, error) {
 	var id string
 	var reserved *int
 	err := s.pool.QueryRow(ctx,
@@ -769,6 +872,26 @@ func (s *Service) AssignPort(ctx context.Context, token string) (int, error) {
 		return *reserved, nil // already reserved — idempotent
 	}
 	var port int
+	if m.Hostname != "" && (m.MachineID != "" || m.NodeID != "") {
+		err := s.pool.QueryRow(ctx,
+			`SELECT n.bt_port FROM nodes n
+			  WHERE n.cluster_id = $1 AND n.hostname = $2 AND n.deleted_at IS NOT NULL AND n.bt_port IS NOT NULL
+			    AND ((n.machine_id IS NOT NULL AND n.machine_id = NULLIF($3,'')) OR n.id::text = NULLIF($4,''))
+			    AND NOT EXISTS (SELECT 1 FROM nodes l WHERE l.deleted_at IS NULL AND l.bt_port = n.bt_port)
+			    AND NOT EXISTS (SELECT 1 FROM enroll_tokens e
+			                     WHERE e.bt_port = n.bt_port AND e.used_at IS NULL AND e.expires_at > now())
+			  ORDER BY n.deleted_at DESC LIMIT 1`,
+			s.defaultClusterID, m.Hostname, m.MachineID, m.NodeID).Scan(&port)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return 0, fmt.Errorf("previous port: %w", err)
+		}
+	}
+	if port != 0 {
+		if _, err := s.pool.Exec(ctx, `UPDATE enroll_tokens SET bt_port = $2 WHERE id = $1`, id, port); err != nil {
+			return 0, fmt.Errorf("reserve port: %w", err)
+		}
+		return port, nil
+	}
 	if err := s.pool.QueryRow(ctx,
 		`SELECT min(p) FROM generate_series($1::int, $1::int + $2::int - 1) AS p
 		  WHERE p NOT IN (
@@ -877,19 +1000,29 @@ func (s *Service) Delete(ctx context.Context, id string, force bool) error {
 	if torrents > 0 && !force {
 		return ErrNodeHasTorrents
 	}
+	// One transaction, so the torrents and the Node share deleted_at (now() is the transaction's):
+	// it is how a Node that comes back finds the torrents removed with it (ADR-044).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("remove node: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	if torrents > 0 {
-		if _, err := s.pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE torrents SET deleted_at = now(), updated_at = now() WHERE node_id = $1 AND deleted_at IS NULL`, id); err != nil {
 			return fmt.Errorf("remove torrents from node: %w", err)
 		}
 	}
-	if _, err := s.pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE node_credentials SET revoked_at = now() WHERE node_id = $1 AND revoked_at IS NULL`, id); err != nil {
 		return fmt.Errorf("revoke credential: %w", err)
 	}
-	if _, err := s.pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE nodes SET deleted_at = now(), updated_at = now() WHERE id = $1`, id); err != nil {
 		return fmt.Errorf("remover node: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("remove node: %w", err)
 	}
 	if s.events != nil {
 		// WARNING (not INFO): removing a Node from the Cluster is too serious to be blue —

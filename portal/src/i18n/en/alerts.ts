@@ -75,6 +75,7 @@ export const alerts: Catalog["alerts"] = {
         false: "Seed Node “{hostname}” registered",
         true: "Seed Node “{hostname}” registered — the requested nickname is taken or invalid and was not applied; rename it in the Portal",
       },
+      NODE_RETURNED: "Seed Node “{hostname}” came back as itself: its history, mode and settings are kept, {torrents_restored} torrent(s) restored",
       STORAGE_RECOVERY: {
         start: "Storage recovery started (attempt {attempt})",
         reattach: "Storage recovery: reattaching the disk (attempt {attempt})",

@@ -48,6 +48,7 @@ export const api = {
     node_has_torrents: "O Node ainda tem torrents; migre ou remova antes, ou force a remoção",
     node_not_eligible: "O Node não existe ou está offline",
     node_not_found: "Node não encontrado",
+    node_removed: "Este Node foi removido do Cluster; para trazê-lo de volta, gere um token de entrada e rode o bootstrap de novo",
     not_per_node: "Esta configuração não admite valor por Node",
     notify_channel_not_configured: "Esse canal não está configurado — preencha as credenciais dele acima",
     notify_no_channel: "Nenhum canal configurado — preencha Telegram, Discord ou webhook em Configurações",

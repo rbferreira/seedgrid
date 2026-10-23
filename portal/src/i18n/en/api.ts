@@ -50,6 +50,7 @@ export const api: Catalog["api"] = {
     node_has_torrents: "The Node still has torrents; migrate or remove them first, or force the removal",
     node_not_eligible: "The Node doesn't exist or is offline",
     node_not_found: "Node not found",
+    node_removed: "This Node was removed from the Cluster; to bring it back, issue a join token and run the bootstrap again",
     not_per_node: "This setting doesn't accept a per-Node value",
     notify_channel_not_configured: "This channel isn't configured — fill in its credentials above",
     notify_no_channel: "No channel configured — fill in Telegram, Discord or webhook in Settings",
