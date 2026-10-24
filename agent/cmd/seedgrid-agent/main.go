@@ -22,6 +22,7 @@ import (
 	"github.com/rbferreira/seedgrid/agent/internal/client"
 	"github.com/rbferreira/seedgrid/agent/internal/commands"
 	"github.com/rbferreira/seedgrid/agent/internal/config"
+	"github.com/rbferreira/seedgrid/agent/internal/engine"
 	"github.com/rbferreira/seedgrid/agent/internal/engine/qbittorrent"
 	"github.com/rbferreira/seedgrid/agent/internal/identity"
 	"github.com/rbferreira/seedgrid/agent/internal/inventory"
@@ -121,7 +122,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	engine := qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword).WithPaths(paths)
+	eng, err := newEngine(cfg, paths)
+	if err != nil {
+		return err
+	}
 	if cfg.EngineAdopted {
 		logger.Info("Node joined with the qBittorrent it already ran: its first settings are read from it (ADR-043)",
 			"storage", cfg.StoragePath, "path_map", cfg.EnginePathMap)
@@ -137,12 +141,12 @@ func run() error {
 	// Transfer server (ADR-018): serves the content of a torrent under a one-time
 	// token (source) and pulls from the source (destination). It also receives publication
 	// uploads and creates the .torrent in the Engine (ADR-019, via WithCreator).
-	xfer := transfer.NewServer(cfg.MigrationPort, cfg.StoragePath, engine.ContentPathOf, logger).
-		WithCreator(engine.CreateTorrent).
+	xfer := transfer.NewServer(cfg.MigrationPort, cfg.StoragePath, eng.ContentPathOf, logger).
+		WithCreator(eng.CreateTorrent).
 		WithRoots(paths.HostRoots())
 	go xfer.Run(ctx)
 
-	executor := commands.NewExecutor(engine).EnableMigration(xfer, cfg.StoragePath)
+	executor := commands.NewExecutor(eng).EnableMigration(xfer, cfg.StoragePath)
 	// ADR-027: after an update_agent swaps the binary (and the CP has already received the ack), exiting
 	// with 0 is enough — systemd (Restart=always) brings the Agent back up on the new binary.
 	poller := commands.NewPoller(cli, holder.token, executor, cfg.CommandPollInterval, logger).
@@ -157,7 +161,7 @@ func run() error {
 	applyEngine := func(actx context.Context, q config.QueueSettings, first bool) error {
 		lctx, lcancel := context.WithTimeout(actx, 15*time.Second)
 		defer lcancel()
-		ec := qbittorrent.EngineConfig{
+		ec := engine.Config{
 			BTPort:                     cfg.BTPort,
 			SavePath:                   cfg.StoragePath,
 			QueueingEnabled:            q.Enabled,
@@ -173,9 +177,9 @@ func run() error {
 		if first {
 			// First application of the process: also sets what belongs to the MACHINE — the listening
 			// BitTorrent port (matches the operator's port forward) and the save_path.
-			return engine.ConfigureEngine(lctx, ec)
+			return eng.Configure(lctx, ec)
 		}
-		return engine.ConfigureQueue(lctx, ec)
+		return eng.ConfigureQueue(lctx, ec)
 	}
 	hooks := remotecfg.Hooks{
 		SetLogLevel:          func(level string) { logLevel.Set(config.ParseLevel(level)) },
@@ -189,7 +193,7 @@ func run() error {
 		hooks.EngineValues = func(actx context.Context) (map[string]string, error) {
 			rctx, rcancel := context.WithTimeout(actx, 15*time.Second)
 			defer rcancel()
-			ec, err := engine.ReadQueue(rctx)
+			ec, err := eng.ReadQueue(rctx)
 			if err != nil {
 				return nil, err
 			}
@@ -209,12 +213,12 @@ func run() error {
 	cfgMgr := remotecfg.New(logger, cfg.Behavior(), config.ExplicitEnv(), hooks)
 
 	// Torrent state synchronization loop (Engine → Control Plane).
-	go syncTorrents(ctx, logger, cli, engine, holder.token, 15*time.Second)
+	go syncTorrents(ctx, logger, cli, eng, holder.token, 15*time.Second)
 
 	// .torrent backfill loop: exports from the Engine and sends to the CP the .torrents
 	// it does not have yet (torrents coming from magnets), making them migratable
 	// and the Cluster resilient to re-provisioning (ADR-018).
-	go backfillTorrentFiles(ctx, logger, cli, engine, holder.token, time.Minute)
+	go backfillTorrentFiles(ctx, logger, cli, eng, holder.token, time.Minute)
 
 	// INCOMING connection sample (#155), at its OWN cadence and deliberately
 	// much slower than the heartbeat. What becomes an alert is the AGE of the last positive,
@@ -230,7 +234,7 @@ func run() error {
 		sample := func() {
 			sCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
-			n, err := engine.IncomingPeers(sCtx)
+			n, err := eng.IncomingPeers(sCtx)
 			if err != nil {
 				// Best-effort: Engine down should not zero the signal, otherwise the Engine
 				// going down would become a false alert of unreachable Node.
@@ -268,11 +272,11 @@ func run() error {
 		hn, _ := os.Hostname() // re-read on every heartbeat: renaming the Node reflects in the CP without re-registering
 		// Engine probe: version doubles as a reachability signal (troubleshooting
 		// without SSH). Container start is best-effort (docker inspect) — "" if unavailable.
-		engineVer, verr := engine.Version(hbCtx)
+		engineVer, verr := eng.Version(hbCtx)
 		// Connectability (ADR-034): best-effort on both. IPv6 is read from the interfaces;
 		// the incoming verdict comes from the Engine ("" if it didn't respond — the CP treats
 		// unknown as "don't know", never as firewalled).
-		connectable, _ := engine.ConnectionStatus(hbCtx)
+		connectable, _ := eng.ConnectionStatus(hbCtx)
 		// Latest incoming connection sample; nil while never sampled (#155).
 		var incoming *int
 		if v := incomingPeers.Load(); v >= 0 {
@@ -368,6 +372,17 @@ func run() error {
 	}
 }
 
+// newEngine builds the adapter of the Engine this Node runs (SEEDGRID_AGENT_ENGINE, ADR-045);
+// config.Load already refused an Engine the Agent has no adapter for.
+func newEngine(cfg config.Config, paths pathmap.Map) (engine.Engine, error) {
+	switch cfg.Engine {
+	case config.EngineQBittorrent:
+		return qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword).WithPaths(paths), nil
+	default:
+		return nil, fmt.Errorf("no adapter for Engine %q", cfg.Engine)
+	}
+}
+
 // containerStartedAt returns the RFC3339 of the Engine container start (best-effort
 // via `docker inspect`). Returns "" if docker is not available, the name is
 // empty or the container does not exist — the container uptime is a troubleshooting extra,
@@ -389,7 +404,7 @@ func containerStartedAt(ctx context.Context, name string) string {
 const slotProbeEvery = 10 * time.Minute
 
 // syncTorrents periodically reports the Engine's torrent state to the Control Plane.
-func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, engine *qbittorrent.Adapter, token func() string, interval time.Duration) {
+func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, eng engine.Engine, token func() string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	var lastSlotProbe time.Time
@@ -398,12 +413,12 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 	// loop only READS. Stays here, not next to the heartbeat, because it's torrent data — and
 	// separated from the sync ticker because the sweep costs one call per torrent and
 	// the data rarely changes: a torrent is deleted on the tracker once, not every 15s.
-	var verdicts sync.Map // map[string]qbittorrent.TrackerVerdict
+	var verdicts sync.Map // map[string]engine.TrackerVerdict
 	go func() {
 		sample := func() {
 			sCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			defer cancel()
-			m, err := engine.TrackerVerdicts(sCtx)
+			m, err := eng.TrackerVerdicts(sCtx)
 			if err != nil && len(m) == 0 {
 				// An offline Engine cannot clear the verdict: without this, a qBittorrent
 				// crash would turn into "all torrents dead on the tracker".
@@ -432,7 +447,7 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 			return
 		case <-ticker.C:
 			opCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			torrents, err := engine.Info(opCtx)
+			torrents, err := eng.Torrents(opCtx)
 			cancel()
 			if err != nil {
 				logger.Debug("list engine torrents", "error", err)
@@ -441,7 +456,7 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 			reports := make([]client.TorrentReport, 0, len(torrents))
 			incomplete := make([]string, 0)
 			for _, t := range torrents {
-				status := qbittorrent.MapState(t.State)
+				status := t.Status
 				reports = append(reports, client.TorrentReport{
 					Hash:               t.Hash,
 					Name:               t.Name,
@@ -462,7 +477,7 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 				// Attaches the last known tracker verdict; absent until the first
 				// sweep has finished (the CP treats it as unknown).
 				if v, ok := verdicts.Load(strings.ToLower(t.Hash)); ok {
-					tv := v.(qbittorrent.TrackerVerdict)
+					tv := v.(engine.TrackerVerdict)
 					reports[len(reports)-1].TrackerStatus = tv.Status
 					reports[len(reports)-1].TrackerMessage = tv.Message
 				}
@@ -481,7 +496,7 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 					incomplete = incomplete[:10]
 				}
 				probeCtx, cancelP := context.WithTimeout(ctx, 15*time.Second)
-				if n, ok := engine.SlotLimit(probeCtx, incomplete); ok {
+				if n, ok := eng.SlotLimit(probeCtx, incomplete); ok {
 					dlSlotLimit = &n
 					logger.Debug("DL slot limit observed in tracker msg", "limit", n)
 				}
@@ -498,7 +513,7 @@ func syncTorrents(ctx context.Context, logger *slog.Logger, cli *client.Client, 
 
 // backfillTorrentFiles asks the CP which torrents on this Node do not yet have the
 // .torrent persisted, exports each one from the Engine and sends it back (ADR-018).
-func backfillTorrentFiles(ctx context.Context, logger *slog.Logger, cli *client.Client, engine *qbittorrent.Adapter, token func() string, interval time.Duration) {
+func backfillTorrentFiles(ctx context.Context, logger *slog.Logger, cli *client.Client, eng engine.Engine, token func() string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -516,7 +531,7 @@ func backfillTorrentFiles(ctx context.Context, logger *slog.Logger, cli *client.
 			var sent int
 			for _, h := range hashes {
 				opCtx, opCancel := context.WithTimeout(ctx, 20*time.Second)
-				data, err := engine.Export(opCtx, h)
+				data, err := eng.Export(opCtx, h)
 				if err != nil {
 					logger.Debug("export .torrent from engine", "hash", h, "error", err)
 					opCancel()

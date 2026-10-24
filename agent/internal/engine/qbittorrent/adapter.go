@@ -1,5 +1,6 @@
 // Package qbittorrent adapts the qBittorrent WebUI API to SeedGrid's operations
-// (Engine.md §6-8). All Engine-specific dependencies are isolated here.
+// (Engine.md §6-8, ADR-045: the adapter behind engine.Engine). All qBittorrent-specific
+// dependencies are isolated here.
 package qbittorrent
 
 import (
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rbferreira/seedgrid/agent/internal/engine"
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
 
@@ -36,6 +38,9 @@ type Adapter struct {
 	paths pathmap.Map
 }
 
+// The Adapter is an engine.Engine.
+var _ engine.Engine = (*Adapter)(nil)
+
 // New creates the adapter. baseURL e.g.: http://127.0.0.1:8080
 func New(baseURL, username, password string) *Adapter {
 	jar, _ := cookiejar.New(nil)
@@ -53,33 +58,6 @@ func New(baseURL, username, password string) *Adapter {
 func (a *Adapter) WithPaths(m pathmap.Map) *Adapter {
 	a.paths = m
 	return a
-}
-
-// Torrent is a summary view of a torrent in the Engine.
-//
-// Peers come in TWO flavors and the distinction matters (refinement of ADR-021): NumSeeds/NumLeechs
-// are the SWARM totals (tracker scrape) — the number the operator understands as "torrent
-// seeds" and that the Portal displays; NumSeedsConnected/NumLeechsConnected are the peers
-// actually CONNECTED. A tracker may announce a ghost seeder (in the scrape, but that
-// never responds): then the swarm says 1 and the connected says 0 — only the latter reveals
-// that the torrent has no one to download from. See rotateDead in the admission controller.
-type Torrent struct {
-	Hash               string
-	Name               string
-	State              string
-	Progress           float64
-	NumSeeds           int // swarm (scrape do tracker)
-	NumLeechs          int // swarm (scrape do tracker)
-	NumSeedsConnected  int // connected to the Engine now
-	NumLeechsConnected int // connected to the Engine now
-	DlSpeed            int64
-	UpSpeed            int64
-	Size               int64
-	Ratio              float64
-	ETA                int64
-	Downloaded         int64
-	Uploaded           int64
-	ContentPath        string // path to data on disk, as the host sees it (file for single, folder for multi)
 }
 
 // Login authenticates with the WebUI (required before any other operations).
@@ -132,34 +110,7 @@ func (a *Adapter) AddFileTo(ctx context.Context, data []byte, savePath string) e
 	return a.uploadWithRetry(ctx, "/api/v2/torrents/add", "torrents", "upload.torrent", data, extra)
 }
 
-// EngineConfig gathers the operational preferences applied to the Torrent Engine
-// at Agent startup (ConfigureEngine).
-type EngineConfig struct {
-	// BTPort is the BitTorrent listen port (matches the operator's port forward).
-	BTPort int
-	// SavePath is the directory where data is written (the Node's storage, e.g.: /data), as the
-	// host sees it; ConfigureEngine translates it for an Engine in a container (ADR-043).
-	SavePath string
-	// QueueingEnabled enables qBittorrent's queueing system. When enabled (default), it limits
-	// how many torrents are active at the same time — essential to avoid saturating I/O
-	// when many torrents are added at once.
-	QueueingEnabled bool
-	// MaxActive* only take effect with QueueingEnabled=true.
-	MaxActiveDownloads        int
-	MaxActiveUploads          int
-	MaxActiveTorrents         int
-	MaxActiveCheckingTorrents int
-	// DontCountSlowTorrents: anti-stall rotation. When true, a "slow" torrent
-	// (below SlowTorrentDlRateThreshold KB/s for more than SlowTorrentInactiveTimer
-	// seconds) stops counting toward MaxActive*, freeing the slot for the next in queue.
-	// Fixes the case of a peerless download occupying an active slot indefinitely.
-	DontCountSlowTorrents      bool
-	SlowTorrentDlRateThreshold int // KB/s below which the download is "slow"
-	SlowTorrentUlRateThreshold int // KB/s below which the upload is "slow"
-	SlowTorrentInactiveTimer   int // seconds "slow" before freeing the slot
-}
-
-// ConfigureEngine applies the Engine's operational preferences:
+// Configure applies the Engine's operational preferences:
 //   - listen_port fixed (matches the operator's port forward) and UPnP off (manual opening);
 //   - save_path: where data is written. Pinned to the Node's storage (e.g.: /data,
 //     the mounted disk) — otherwise qBittorrent uses the default /downloads, which on a Node
@@ -170,7 +121,7 @@ type EngineConfig struct {
 //     time → I/O at 100%, load through the roof, checkingResumeData stuck and (on USB HD) even
 //     disk dropout from power starvation. The old risk — a stuck torrent holding
 //     a slot — is handled by auto-recovery, not by disabling the queue.
-func (a *Adapter) ConfigureEngine(ctx context.Context, ec EngineConfig) error {
+func (a *Adapter) Configure(ctx context.Context, ec engine.Config) error {
 	prefs := map[string]any{
 		"listen_port": ec.BTPort,
 		"upnp":        false,
@@ -190,13 +141,13 @@ func (a *Adapter) ConfigureEngine(ctx context.Context, ec EngineConfig) error {
 // hot-apply a configuration change coming from the Control Plane (ADR-039): BT port and
 // data directory belong to the MACHINE (they match the port forward and the mounted disk) and don't
 // change with cluster configuration — resending them on every cap change would be risk without gain.
-func (a *Adapter) ConfigureQueue(ctx context.Context, ec EngineConfig) error {
+func (a *Adapter) ConfigureQueue(ctx context.Context, ec engine.Config) error {
 	return a.setPreferences(ctx, queuePrefs(ec))
 }
 
 // queuePrefs are the Engine's queueing preferences. With queueing disabled only
 // queueing_enabled=false is sent: the caps have no effect without it and resending them would only confuse.
-func queuePrefs(ec EngineConfig) map[string]any {
+func queuePrefs(ec engine.Config) map[string]any {
 	prefs := map[string]any{"queueing_enabled": ec.QueueingEnabled}
 	if ec.QueueingEnabled {
 		prefs["max_active_downloads"] = ec.MaxActiveDownloads
@@ -427,21 +378,21 @@ func (a *Adapter) Shutdown(ctx context.Context) error {
 // joined with the qBittorrent it already ran (ADR-043) reports them on its first contact, so the
 // Control Plane seeds them as the Node's overrides and the first application changes nothing.
 // Values come as qBittorrent has them: -1 is its "no limit", which the Control Plane maps.
-func (a *Adapter) ReadQueue(ctx context.Context) (EngineConfig, error) {
+func (a *Adapter) ReadQueue(ctx context.Context) (engine.Config, error) {
 	body, status, err := a.get(ctx, "/api/v2/app/preferences")
 	if err != nil {
-		return EngineConfig{}, err
+		return engine.Config{}, err
 	}
 	if status == http.StatusForbidden {
 		if lerr := a.Login(ctx); lerr != nil {
-			return EngineConfig{}, lerr
+			return engine.Config{}, lerr
 		}
 		if body, status, err = a.get(ctx, "/api/v2/app/preferences"); err != nil {
-			return EngineConfig{}, err
+			return engine.Config{}, err
 		}
 	}
 	if status != http.StatusOK {
-		return EngineConfig{}, fmt.Errorf("app/preferences: status %d", status)
+		return engine.Config{}, fmt.Errorf("app/preferences: status %d", status)
 	}
 	var p struct {
 		QueueingEnabled            bool `json:"queueing_enabled"`
@@ -455,9 +406,9 @@ func (a *Adapter) ReadQueue(ctx context.Context) (EngineConfig, error) {
 		SlowTorrentInactiveTimer   int  `json:"slow_torrent_inactive_timer"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
-		return EngineConfig{}, fmt.Errorf("app/preferences: %w", err)
+		return engine.Config{}, fmt.Errorf("app/preferences: %w", err)
 	}
-	return EngineConfig{
+	return engine.Config{
 		QueueingEnabled:            p.QueueingEnabled,
 		MaxActiveDownloads:         p.MaxActiveDownloads,
 		MaxActiveUploads:           p.MaxActiveUploads,
@@ -529,12 +480,6 @@ func (a *Adapter) ConnectionStatus(ctx context.Context) (string, error) {
 	return out.ConnectionStatus, nil
 }
 
-// TrackerVerdict is what the tracker responded on a torrent's announce.
-type TrackerVerdict struct {
-	Status  int    // libtorrent status: 2=working, 4=not working, 5=refused…
-	Message string // raw tracker message (e.g.: "Torrent has been deleted.")
-}
-
 // TrackerVerdicts returns, by hash, the REAL tracker verdict for each torrent.
 //
 // It is the signal missing from the product: a torrent deleted on the tracker remains SEEDING,
@@ -547,14 +492,14 @@ type TrackerVerdict struct {
 // carry a private tracker verdict. It keeps the WORST status found (the highest), which is
 // what matters — a torrent with one tracker refusing and another ok has a problem.
 //
-// Best-effort per torrent: a hash that disappeared between Info and the query is skipped, it does not
+// Best-effort per torrent: a hash that disappeared between Torrents and the query is skipped, it does not
 // break the scan of the others.
-func (a *Adapter) TrackerVerdicts(ctx context.Context) (map[string]TrackerVerdict, error) {
-	torrents, err := a.Info(ctx)
+func (a *Adapter) TrackerVerdicts(ctx context.Context) (map[string]engine.TrackerVerdict, error) {
+	torrents, err := a.Torrents(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]TrackerVerdict, len(torrents))
+	out := make(map[string]engine.TrackerVerdict, len(torrents))
 	for _, t := range torrents {
 		if err := ctx.Err(); err != nil {
 			return out, err
@@ -583,7 +528,7 @@ func (a *Adapter) TrackerVerdicts(ctx context.Context) (map[string]TrackerVerdic
 		if err := json.Unmarshal(body, &trs); err != nil {
 			continue
 		}
-		v := TrackerVerdict{}
+		v := engine.TrackerVerdict{}
 		for _, tr := range trs {
 			if strings.HasPrefix(tr.URL, "**") { // ** [DHT] **, ** [PeX] **, ** [LSD] **
 				continue
@@ -623,7 +568,7 @@ func (a *Adapter) TrackerVerdicts(ctx context.Context) (map[string]TrackerVerdic
 // localhost — 417 torrents in 0.3 s. It grows with the number of PEERS in the response, not
 // with the number of torrents, so a busy swarm costs more than this number suggests.
 func (a *Adapter) IncomingPeers(ctx context.Context) (int, error) {
-	torrents, err := a.Info(ctx)
+	torrents, err := a.Torrents(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -635,7 +580,7 @@ func (a *Adapter) IncomingPeers(ctx context.Context) (int, error) {
 		body, status, err := a.get(ctx, "/api/v2/sync/torrentPeers?hash="+url.QueryEscape(t.Hash))
 		if err != nil {
 			// Best-effort per torrent: a hash that disappeared in the middle of the scan (removed
-			// between Info and this call) cannot zero out the count of the others.
+			// between Torrents and this call) cannot zero out the count of the others.
 			continue
 		}
 		if status == http.StatusForbidden {
@@ -667,8 +612,8 @@ func (a *Adapter) IncomingPeers(ctx context.Context) (int, error) {
 	return total, nil
 }
 
-// Info lists the torrents known to the Engine.
-func (a *Adapter) Info(ctx context.Context) ([]Torrent, error) {
+// Torrents lists the torrents known to the Engine, with the SeedGrid state (MapState).
+func (a *Adapter) Torrents(ctx context.Context) ([]engine.Torrent, error) {
 	body, status, err := a.get(ctx, "/api/v2/torrents/info")
 	if err != nil {
 		return nil, err
@@ -714,10 +659,10 @@ func (a *Adapter) Info(ctx context.Context) ([]Torrent, error) {
 		}
 		return connected
 	}
-	out := make([]Torrent, 0, len(raw))
+	out := make([]engine.Torrent, 0, len(raw))
 	for _, t := range raw {
-		out = append(out, Torrent{
-			Hash: t.Hash, Name: t.Name, State: t.State, Progress: t.Progress,
+		out = append(out, engine.Torrent{
+			Hash: t.Hash, Name: t.Name, Status: MapState(t.State), Progress: t.Progress,
 			NumSeeds: pick(t.NumComplete, t.NumSeeds), NumLeechs: pick(t.NumIncomplete, t.NumLeechs),
 			NumSeedsConnected: t.NumSeeds, NumLeechsConnected: t.NumLeechs,
 			DlSpeed: t.DlSpeed, UpSpeed: t.UpSpeed, Size: t.Size, Ratio: t.Ratio, ETA: t.ETA,
@@ -731,13 +676,13 @@ func (a *Adapter) Info(ctx context.Context) ([]Torrent, error) {
 // Used in migration for the destination to confirm SEEDING after the recheck (ADR-018).
 // Returns ("", 0) if the hash is not in the Engine.
 func (a *Adapter) State(ctx context.Context, hash string) (float64, string, error) {
-	torrents, err := a.Info(ctx)
+	torrents, err := a.Torrents(ctx)
 	if err != nil {
 		return 0, "", err
 	}
 	for _, t := range torrents {
 		if strings.EqualFold(t.Hash, hash) {
-			return t.Progress, MapState(t.State), nil
+			return t.Progress, t.Status, nil
 		}
 	}
 	return 0, "", nil
@@ -746,7 +691,7 @@ func (a *Adapter) State(ctx context.Context, hash string) (float64, string, erro
 // ContentPathOf returns the data path of a torrent by hash (for the
 // source to serve the content during migration). "" if the hash is not in the Engine.
 func (a *Adapter) ContentPathOf(ctx context.Context, hash string) (string, error) {
-	torrents, err := a.Info(ctx)
+	torrents, err := a.Torrents(ctx)
 	if err != nil {
 		return "", err
 	}

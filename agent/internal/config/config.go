@@ -20,6 +20,9 @@ import (
 // `engine_started_at` NULL on a new Node (#146).
 const DefaultEngineContainer = "seedgrid-engine"
 
+// EngineQBittorrent is the SEEDGRID_AGENT_ENGINE of qBittorrent, the default (ADR-045).
+const EngineQBittorrent = "qbittorrent"
+
 // Config gathers the Agent's execution parameters.
 type Config struct {
 	ControlPlaneURL     string
@@ -39,7 +42,7 @@ type Config struct {
 	StorageRequireMount bool
 	BTPort              int
 	MigrationPort       int
-	// Engine queue (protection against I/O saturation). See qbittorrent.EngineConfig.
+	// Engine queue (protection against I/O saturation). See engine.Config.
 	QueueingEnabled            bool
 	MaxActiveDownloads         int
 	MaxActiveUploads           int
@@ -70,7 +73,7 @@ func Load() (Config, error) {
 		ControlPlaneURL:     os.Getenv("SEEDGRID_CONTROL_PLANE_URL"),
 		RegistrationToken:   os.Getenv("SEEDGRID_AGENT_REGISTRATION_TOKEN"),
 		DataDir:             getenv("SEEDGRID_AGENT_DATA_DIR", "/var/lib/seedgrid-agent"),
-		Engine:              getenv("SEEDGRID_AGENT_ENGINE", "qbittorrent"),
+		Engine:              getenv("SEEDGRID_AGENT_ENGINE", EngineQBittorrent),
 		EngineURL:           getenv("SEEDGRID_ENGINE_QBT_URL", "http://127.0.0.1:8080"),
 		EngineUsername:      getenv("SEEDGRID_ENGINE_QBT_USERNAME", "admin"),
 		EnginePassword:      os.Getenv("SEEDGRID_ENGINE_QBT_PASSWORD"),
@@ -134,6 +137,9 @@ func Load() (Config, error) {
 
 	if c.ControlPlaneURL == "" {
 		return c, fmt.Errorf("SEEDGRID_CONTROL_PLANE_URL is required")
+	}
+	if c.Engine != EngineQBittorrent {
+		return c, fmt.Errorf("invalid SEEDGRID_AGENT_ENGINE: %q (supported: %s)", c.Engine, EngineQBittorrent)
 	}
 	if _, err := pathmap.Parse(c.EnginePathMap); err != nil {
 		return c, fmt.Errorf("invalid SEEDGRID_ENGINE_PATH_MAP: %w", err)

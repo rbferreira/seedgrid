@@ -2084,7 +2084,7 @@ A §9 de `Engine.md` diz que trocar o Engine não pode alterar o Control Plane, 
 
 **Decisão** (alternativa 4)
 
-1. **Uma interface de Engine no Agent.** O código do Agent depende de `engine.Engine`, não de um adaptador concreto: torrents com o estado SeedGrid já mapeado (Database.md §36), adicionar/parar/iniciar/reverificar/excluir, exportar, caminho do conteúdo, trackers, versão, disponibilidade, conectividade, preferências (porta, pasta, fila) e desligamento. O adaptador qBittorrent passa para trás dela sem mudanças. `SEEDGRID_ENGINE` (`qbittorrent`, o padrão, ou `rtorrent`) escolhe o adaptador.
+1. **Uma interface de Engine no Agent.** O código do Agent depende de `engine.Engine`, não de um adaptador concreto: torrents com o estado SeedGrid já mapeado (Database.md §36), adicionar/parar/iniciar/reverificar/excluir, exportar, caminho do conteúdo, trackers, versão, disponibilidade, conectividade, preferências (porta, pasta, fila) e desligamento. O adaptador qBittorrent passa para trás dela sem mudanças. `SEEDGRID_AGENT_ENGINE` (`qbittorrent`, o padrão, ou `rtorrent`) escolhe o adaptador.
 
 2. **Protocolo: XML-RPC, local.** `SEEDGRID_ENGINE_RTORRENT_URL` é `scgi:///path/to/rpc.socket`, `scgi://127.0.0.1:5000` ou `http(s)://…/RPC2` (com basic auth) para setups que só expõem via servidor web. O codec XML-RPC é pequeno e está no Agent: sem dependência externa. Suportado: rTorrent **0.9.8 ou superior** (`d.multicall2`, `system.client_version`).
 

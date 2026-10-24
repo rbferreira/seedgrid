@@ -112,6 +112,17 @@ func TestLoad_NonPositiveIntervalsAreRejected(t *testing.T) {
 	}
 }
 
+// TestLoad_UnknownEngine (ADR-045): an Engine the Agent has no adapter for stops it at start,
+// with the variable named, instead of running against an API it does not speak.
+func TestLoad_UnknownEngine(t *testing.T) {
+	t.Setenv("SEEDGRID_CONTROL_PLANE_URL", "http://cp:8080")
+	t.Setenv("SEEDGRID_AGENT_ENGINE", "transmission")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "SEEDGRID_AGENT_ENGINE") {
+		t.Fatalf("Load() error = %v, want one naming SEEDGRID_AGENT_ENGINE", err)
+	}
+}
+
 func TestLoad_EngineContainerDefault(t *testing.T) {
 	t.Setenv("SEEDGRID_CONTROL_PLANE_URL", "http://cp:8080")
 	t.Setenv("SEEDGRID_ENGINE_CONTAINER", "")

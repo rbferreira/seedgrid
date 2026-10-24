@@ -2084,7 +2084,7 @@ The Agent has one Engine adapter, qBittorrent's. Many operators seed with rTorre
 
 **Decision** (alternative 4)
 
-1. **An Engine interface in the Agent.** The Agent's code depends on `engine.Engine`, not on a concrete adapter: torrents with the SeedGrid state already mapped (Database.md §36), add/stop/start/recheck/delete, export, content path, trackers, version, availability, connectability, preferences (port, folder, queue), shutdown. The qBittorrent adapter moves behind it unchanged. `SEEDGRID_ENGINE` (`qbittorrent`, the default, or `rtorrent`) chooses the adapter.
+1. **An Engine interface in the Agent.** The Agent's code depends on `engine.Engine`, not on a concrete adapter: torrents with the SeedGrid state already mapped (Database.md §36), add/stop/start/recheck/delete, export, content path, trackers, version, availability, connectability, preferences (port, folder, queue), shutdown. The qBittorrent adapter moves behind it unchanged. `SEEDGRID_AGENT_ENGINE` (`qbittorrent`, the default, or `rtorrent`) chooses the adapter.
 
 2. **Protocol: XML-RPC, local.** `SEEDGRID_ENGINE_RTORRENT_URL` is `scgi:///path/to/rpc.socket`, `scgi://127.0.0.1:5000`, or `http(s)://…/RPC2` (with basic auth) for setups that only expose it through a web server. The XML-RPC codec is small and in the Agent: no dependency. Supported: rTorrent **0.9.8 or later** (`d.multicall2`, `system.client_version`).
 
