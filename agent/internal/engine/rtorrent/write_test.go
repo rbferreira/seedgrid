@@ -132,6 +132,7 @@ func TestExport_FromSession(t *testing.T) {
 func TestConfigure(t *testing.T) {
 	f := newFake()
 	var got [][]any
+	// The pre-0.16 names: the new ones are not defined in the fake, as in rTorrent 0.9.8.
 	record(f, &got, "network.port_random.set", "network.port_range.set", "directory.default.set")
 	pm, _ := pathmap.Parse("/downloads=/srv/torrents")
 	a, _ := New(f.serveSCGI(t))
