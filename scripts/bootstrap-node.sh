@@ -1259,7 +1259,11 @@ pid=\$(cat "$AGENT_DATA_DIR/agent.pid" 2>/dev/null)
 $rollback
 log="$AGENT_DATA_DIR/agent.log"
 [ "\$(wc -c 2>/dev/null < "\$log" || echo 0)" -lt 10485760 ] || mv -f "\$log" "\$log.1"
-set -a; . "$AGENT_ENV"; set +a
+# The env is systemd's KEY=value, read as data: sourcing it would run what follows a ; or a
+# space in a value (the path map, the restart command) as commands.
+while IFS= read -r line; do
+  case "\$line" in ''|'#'*) ;; *=*) export "\$line" ;; esac
+done < "$AGENT_ENV"
 nohup "$AGENT_BIN" >> "\$log" 2>&1 &
 echo \$! > "$AGENT_DATA_DIR/agent.pid"
 RUN
@@ -1269,6 +1273,14 @@ RUN
   [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
   sleep 1
   "$run"
+  # The Agent stops at once on a bad setting: say so here, not in a log nobody reads yet.
+  sleep 3
+  pid=$(cat "$AGENT_DATA_DIR/agent.pid" 2>/dev/null) || pid=""
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+    echo "!! the Agent did not stay up. Its last lines ($AGENT_DATA_DIR/agent.log):"
+    tail -5 "$AGENT_DATA_DIR/agent.log" 2>/dev/null | sed 's/^/   /'
+    return 1
+  fi
 }
 
 # agent_env_extra prints the env lines every Agent of a machine's own Engine may need: a user
@@ -1446,7 +1458,8 @@ join_rtorrent() {
     exit 1
   fi
 
-  ENGINE_CONTAINER=$(engine_container 'ru?torrent' "${RTORRENT_CONTAINER:-}" RTORRENT_CONTAINER) || exit 1
+  ENGINE_CONTAINER=$(engine_container 'ru?torrent' "${RTORRENT_CONTAINER:-}" RTORRENT_CONTAINER) || {
+    rm -f "$AGENT_BIN.new"; echo "   Nothing was changed."; exit 1; }
   PATH_MAP="${ENGINE_PATH_MAP:-}"
   if [ -z "$PATH_MAP" ] && [ -n "$ENGINE_CONTAINER" ]; then
     PATH_MAP=$(container_path_map "$ENGINE_CONTAINER")

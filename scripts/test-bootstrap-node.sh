@@ -1135,10 +1135,12 @@ assert_eq "user unit enabled and restarted" "2" "$(grep -c -- '--user \(enable\|
 
 # start_agent, user install with cron: @reboot and every minute, once each, and the Agent started.
 mkdir -p "$INSTALL_DIR" "$(dirname "$AGENT_BIN")"
-printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "$SEEDGRID_AGENT_DATA_DIR" > "%s/agent-ran"\nexec /bin/sleep 30\n' "$WORK" > "$AGENT_BIN"
+printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "$SEEDGRID_AGENT_DATA_DIR|$SEEDGRID_ENGINE_PATH_MAP|$SEEDGRID_ENGINE_RESTART_CMD" > "%s/agent-ran"\nexec /bin/sleep 30\n' "$WORK" > "$AGENT_BIN"
 rm -f "$STUBS/sleep" # start_agent waits for the old Agent to go
 chmod +x "$AGENT_BIN"
-printf 'SEEDGRID_AGENT_DATA_DIR=%s\n' "$AGENT_DATA_DIR" > "$AGENT_ENV"
+# Found on the bench: values with ; and spaces, which sourcing the env as shell would run.
+printf 'SEEDGRID_AGENT_DATA_DIR=%s\nSEEDGRID_ENGINE_PATH_MAP=/downloads=/srv/a;/data=/srv/b\nSEEDGRID_ENGINE_RESTART_CMD=touch %s/ran-at-start\n' \
+  "$AGENT_DATA_DIR" "$WORK" > "$AGENT_ENV"
 printf '0 3 * * * backup.sh\n' > "$WORK/crontab"
 AGENT_SUPERVISOR=cron
 start_agent
@@ -1147,13 +1149,20 @@ assert_eq "cron keeps the user's own lines" "1" "$(grep -c 'backup.sh' "$WORK/cr
 assert_eq "cron starts the Agent at boot, once" "1" "$(grep -c "^@reboot $INSTALL_DIR/run-agent.sh\$" "$WORK/crontab")"
 assert_eq "cron checks it every minute, once" "1" "$(grep -c "^\* \* \* \* \* $INSTALL_DIR/run-agent.sh\$" "$WORK/crontab")"
 sleep 1
-assert_eq "the run script started the Agent with its env" "$AGENT_DATA_DIR" "$(cat "$WORK/agent-ran" 2>/dev/null)"
+assert_eq "the run script started the Agent with its env, values intact" \
+  "$AGENT_DATA_DIR|/downloads=/srv/a;/data=/srv/b|touch $WORK/ran-at-start" "$(cat "$WORK/agent-ran" 2>/dev/null)"
+assert_eq "the run script runs nothing from the env" "0" "$([ -e "$WORK/ran-at-start" ] && echo 1 || echo 0)"
 pid=$(cat "$AGENT_DATA_DIR/agent.pid")
 kill -0 "$pid" 2>/dev/null
 assert_eq "the Agent runs, with its pid kept" "0" "$?"
 "$INSTALL_DIR/run-agent.sh"
 assert_eq "the run script leaves a running Agent alone" "$pid" "$(cat "$AGENT_DATA_DIR/agent.pid")"
 kill "$pid" 2>/dev/null
+# An Agent that stops at once (a bad setting) fails the install, with its last log lines.
+printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "invalid SEEDGRID_AGENT_ENGINE"\nexit 1\n' > "$AGENT_BIN"
+out=$(start_agent 2>&1); rc=$?
+assert_eq "start_agent with an Agent that does not stay up fails" "1" "$rc"
+assert_eq "and shows why" "1" "$(printf '%s\n' "$out" | grep -c 'invalid SEEDGRID_AGENT_ENGINE')"
 USER_INSTALL=0
 rm -f "$STUBS/id" "$STUBS/loginctl" "$STUBS/systemctl" "$STUBS/crontab"
 
