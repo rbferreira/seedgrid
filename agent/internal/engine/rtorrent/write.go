@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rbferreira/seedgrid/agent/internal/engine"
+	"github.com/rbferreira/seedgrid/agent/internal/torrentfile"
 )
 
 // queueState holds the engine.* settings the Agent's queue applies for rTorrent (ADR-045 §4).
@@ -42,11 +44,43 @@ func (a *Adapter) AddURL(ctx context.Context, magnetOrURL string) error {
 // queued when the Agent's queue is on, so that adding many at once does not start them all.
 func (a *Adapter) AddFile(ctx context.Context, data []byte) error {
 	if a.queueing() {
-		_, err := a.rpc.call(ctx, "load.raw", "", data, markQueued)
+		return a.loadRaw(ctx, "load.raw", data, markQueued)
+	}
+	return a.loadRaw(ctx, "load.raw_start", data)
+}
+
+// loadRaw loads a .torrent and confirms rTorrent took it: rTorrent answers 0 and drops, in silence,
+// one it does not accept (0.9.8 drops a .torrent without a tracker).
+func (a *Adapter) loadRaw(ctx context.Context, method string, data []byte, cmds ...string) error {
+	hash, err := torrentfile.InfoHash(data)
+	if err != nil {
 		return err
 	}
-	_, err := a.rpc.call(ctx, "load.raw_start", "", data)
-	return err
+	params := []any{"", data}
+	for _, c := range cmds {
+		params = append(params, c)
+	}
+	if _, err := a.rpc.call(ctx, method, params...); err != nil {
+		return err
+	}
+	for i := 0; ; i++ {
+		_, err := a.rpc.call(ctx, "d.hash", strings.ToUpper(hash))
+		if err == nil {
+			return nil
+		}
+		var f *Fault
+		if !errors.As(err, &f) {
+			return err
+		}
+		if i == 10 {
+			return fmt.Errorf("rtorrent: the .torrent %s was not taken (rTorrent drops one it refuses, such as a .torrent without a tracker on 0.9.8)", hash)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 // markQueued is the load command that marks a torrent as the queue's.
@@ -63,8 +97,7 @@ func (a *Adapter) queueing() bool {
 // parent of a multi-file torrent's own folder, which is how Pull extracted it. It starts, queue or
 // not, so that rTorrent checks the data the migration waits on; the queue counts it from then on.
 func (a *Adapter) AddFileTo(ctx context.Context, data []byte, savePath string) error {
-	_, err := a.rpc.call(ctx, "load.raw_start", "", data, "d.directory.set="+a.paths.ToEngine(savePath))
-	return err
+	return a.loadRaw(ctx, "load.raw_start", data, "d.directory.set="+a.paths.ToEngine(savePath))
 }
 
 // Stop stops a torrent and closes its files, as ruTorrent's stop does. It clears the queue mark:
@@ -118,7 +151,7 @@ func (a *Adapter) Delete(ctx context.Context, hash string, deleteFiles bool) err
 	if data == "" {
 		return nil
 	}
-	return os.RemoveAll(data)
+	return os.RemoveAll(data) //nolint:gosec // G703: the torrent's data path as rTorrent reports it, checked above
 }
 
 // Export returns the .torrent of a torrent rTorrent holds (backfill, ADR-018). rTorrent keeps it
@@ -141,13 +174,23 @@ func (a *Adapter) Export(ctx context.Context, hash string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return stripKeys(data, "rtorrent", "libtorrent_resume")
+	return torrentfile.StripKeys(data, "rtorrent", "libtorrent_resume")
 }
 
-// CreateTorrent: rTorrent cannot create a .torrent; the Agent's creator comes with ADR-045's
-// slice 6.
-func (a *Adapter) CreateTorrent(context.Context, string, []string, bool, string) ([]byte, error) {
-	return nil, errors.New("rtorrent: publishing is not available yet on an rTorrent Node")
+// CreateTorrent creates the .torrent of sourcePath (a host path) with the Agent's creator, since
+// rTorrent has none (ADR-045 §5), and loads it started and pointing at the data: rTorrent checks
+// it and seeds, which is what publishing (ADR-019) gets from qBittorrent's creator. d.directory is
+// the folder holding the file, or the parent of the torrent's own folder, as in AddFileTo.
+func (a *Adapter) CreateTorrent(ctx context.Context, sourcePath string, trackers []string, private bool, source string) ([]byte, error) {
+	data, err := torrentfile.Create(ctx, sourcePath, torrentfile.Options{Trackers: trackers, Private: private, Source: source})
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Dir(filepath.Clean(sourcePath))
+	if err := a.loadRaw(ctx, "load.raw_start", data, "d.directory.set="+a.paths.ToEngine(dir)); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // Configure applies what belongs to the machine — the listening port and the default folder — and
