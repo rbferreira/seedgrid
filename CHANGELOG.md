@@ -7,6 +7,20 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- **A Node can run rTorrent (#31, ADR-045).** `bootstrap-node.sh` with `ENGINE=rtorrent` and
+  `RTORRENT_URL` (its XML-RPC, over SCGI or `/RPC2`) joins a machine that runs rTorrent 0.9.8 or
+  later the way `ENGINE=existing` joins a qBittorrent: nothing in rTorrent changes, the Node starts
+  in Manual, and ruTorrent keeps working next to it. Once in the Cluster it is a Node like any
+  other. The Agent supplies what rTorrent lacks: the download queue (the same `engine.*`
+  settings, applied by the Agent; it starts off, as rTorrent ran), the `.torrent` creator for
+  publishing, and the `.torrent` export from rTorrent's session folder.
+- **Install without root, on a shared seedbox (ADR-045).** `ENGINE=existing` or `ENGINE=rtorrent`
+  run without sudo install the Agent for that user, in the home folder, kept running by a systemd
+  user service that lingers or else by cron; updating it from the Portal still works.
+  `ENGINE_RESTART_CMD` gives the command that restarts the Engine when the provider owns it.
+
 ## [0.3.0] — 2026-10-23
 
 A machine that already runs qBittorrent can join the Cluster without giving it up, and a removed

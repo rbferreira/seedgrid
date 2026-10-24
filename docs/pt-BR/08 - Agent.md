@@ -431,6 +431,7 @@ O Agent deverá possuir uma camada de adaptação para o Engine.
 Cada Engine suportado deverá possuir seu próprio adaptador.
 Exemplos futuros:
 - qBittorrent Adapter
+- rTorrent Adapter (ADR-045)
 - Transmission Adapter
 - Deluge Adapter
 Todos deverão expor a mesma interface interna para o restante do Agent.
@@ -533,6 +534,14 @@ Daí em diante, as configurações `engine.*` do Node são aplicadas, `restart_e
 **Propriedade.** O Agent roda como root, e um Engine em container geralmente não. O que o Agent extrai — um pull de migração, um upload de publicação — recebe o proprietário da pasta de destino, para que o Engine possa continuar escrevendo em um torrent parcialmente migrado. Nos Nodes que o SeedGrid instala, tudo pertence ao root e nada muda. Uma falha no `chown` (uma exportação NFS com `root_squash`, por exemplo) não interrompe a cópia.
 
 **Identidade da máquina (ADR-044).** O registro leva o `machine_id` (`/etc/machine-id` ou `/var/lib/dbus/machine-id`) e, quando o Agent se registra novamente, o `node_id` de seu arquivo de identidade. Com eles, o Control Plane distingue um Node removido que volta de outra máquina com o mesmo hostname. Um `410 node_removed` significa que o Node desta máquina foi removido e o Agent se registrou com o token compartilhado: o Agent registra como trazê-lo de volta (um join token e o bootstrap) e tenta novamente a cada 5 minutos, em vez de a cada heartbeat.
+## 44.2 rTorrent e um Node sem root (ADR-045)
+`SEEDGRID_AGENT_ENGINE` escolhe o adaptador do Engine: `qbittorrent` (padrão) ou `rtorrent`. Este exige `SEEDGRID_ENGINE_RTORRENT_URL` (`scgi:///path/to/rpc.socket`, `scgi://host:port` ou `http(s)://[user:pass@]host/RPC2`). Se o Agent não tiver adaptador para o Engine, ele para na inicialização e cita a variável. Um Node com rTorrent sempre entra pelo método da §44.1 (`SEEDGRID_ENGINE_ADOPTED=true`): suas primeiras configurações são lidas dele. Como o rTorrent não tem fila, ela fica **desligada**, com os limites do Agent prontos para quando o operador a ativar. Para Engines sem fila, o Agent mantém uma (Engine.md §6.2); ela só age após as configurações do Control Plane chegarem, então nada muda num rTorrent que acabou de entrar.
+
+`seedgrid-agent --probe-rtorrent <url>` mostra o que o bootstrap precisa antes do enroll — `version`, `port`, `port_range`, `port_random`, `directory`, `session` — em linhas `chave=valor`. O comando sai com código 1 e o motivo se o rTorrent não responder ou for anterior à versão 0.9.8. Shell não fala SCGI; o Agent fala.
+
+**Reinício por comando do operador.** Com `SEEDGRID_ENGINE_RESTART_CMD` definido, `restart_engine` executa esse comando (`sh -c`) em vez de pedir ao Engine para fechar. É útil em seedboxes cujo provedor é dono do Engine e fornece o comando de reinício. A falha, junto com a saída impressa, é a falha do próprio comando. Funciona para qualquer Engine.
+
+**Sem root.** O bootstrap pode instalar o Agent para um usuário comum (Deployment §50.9): binário em `~/.local/bin`, env em `~/.config/seedgrid-agent.env`, identidade em `~/.local/share/seedgrid-agent` (`SEEDGRID_AGENT_DATA_DIR`). Um serviço systemd de usuário o reinicia como faria o serviço do sistema. Já sob cron, o env traz `SEEDGRID_AGENT_SUPERVISED=false`: após `update_agent` trocar o binário, o Agent reexecuta o novo no próprio processo (mesmo PID) em vez de sair, pois o cron só o iniciaria novamente dentro de um minuto. Se isso falhar, ele sai e o cron o traz de volta. O rollback para `seedgrid-agent.prev` (ADR-027) é feito pela unidade de usuário e pelo script do cron, assim como pela unidade do sistema.
 # **45. Testabilidade**
 A arquitetura deverá permitir testes independentes para cada módulo.
 A falha de um módulo não deverá impedir a validação dos demais.

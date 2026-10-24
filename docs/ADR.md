@@ -2066,7 +2066,7 @@ A machine with the hostname of a removed Node may be that Node coming back (it w
 
 **Title:** rTorrent as a Torrent Engine — one more adapter, the same Node
 
-**Status:** Approved — implementation in slices (#31)
+**Status:** Approved — implemented (#31)
 
 **Context**
 The Agent has one Engine adapter, qBittorrent's. Many operators seed with rTorrent, usually behind the ruTorrent web UI, and most seedbox providers ship it, often on shared machines where the user has no root. The forum user who asked for #31 coordinates local qBittorrent instances and remote ruTorrent seedboxes.
