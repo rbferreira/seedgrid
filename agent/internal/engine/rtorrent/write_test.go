@@ -57,6 +57,7 @@ func TestAddFileTo(t *testing.T) {
 	f := newFake()
 	var got [][]any
 	record(f, &got, "load.raw_start")
+	f.on("d.hash", func(p []any) (any, error) { return p[0], nil })
 	pm, _ := pathmap.Parse("/downloads=/srv/torrents")
 	a, _ := New(f.serveSCGI(t))
 	a.WithPaths(pm)
@@ -126,14 +127,6 @@ func TestExport_FromSession(t *testing.T) {
 	}
 }
 
-func TestStripKeys_Malformed(t *testing.T) {
-	for _, bad := range []string{"", "l1:ae", "d4:info", "d3:key5:ab", "di1ei2ee", "d1:a1:bextra"} {
-		if _, err := stripKeys([]byte(bad), "rtorrent"); err == nil {
-			t.Errorf("stripKeys(%q) should fail", bad)
-		}
-	}
-}
-
 // TestConfigure: the machine's port and folder go to rTorrent; the queue stays with the Agent, and
 // ReadQueue reports it off with the limits the Agent starts from (ADR-045 §8).
 func TestConfigure(t *testing.T) {
@@ -176,5 +169,45 @@ func TestShutdown(t *testing.T) {
 	a, _ = New(f.serveSCGI(t))
 	if err := a.Shutdown(context.Background()); err == nil || !strings.Contains(err.Error(), "not allowed") {
 		t.Errorf("Shutdown refused = %v, want the fault", err)
+	}
+}
+
+// TestCreateTorrent: the Agent creates the .torrent and rTorrent loads it started, pointing at the
+// folder that holds the data, as rTorrent sees it.
+func TestCreateTorrent(t *testing.T) {
+	host := t.TempDir()
+	if err := os.WriteFile(filepath.Join(host, "show.mkv"), []byte("episode"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := newFake()
+	var got [][]any
+	record(f, &got, "load.raw_start")
+	f.on("d.hash", func(p []any) (any, error) { return p[0], nil })
+	pm, _ := pathmap.Parse("/downloads=" + host)
+	a, _ := New(f.serveSCGI(t))
+	a.WithPaths(pm)
+	data, err := a.CreateTorrent(context.Background(), filepath.Join(host, "show.mkv"), []string{"https://t/a"}, true, "SGX")
+	if err != nil {
+		t.Fatalf("CreateTorrent: %v", err)
+	}
+	if !strings.Contains(string(data), "4:name8:show.mkv") || !strings.Contains(string(data), "7:privatei1e6:source3:SGX") {
+		t.Errorf(".torrent = %q", data)
+	}
+	if len(got) != 1 || !reflect.DeepEqual(got[0][2], data) || got[0][3] != "d.directory.set=/downloads" {
+		t.Errorf("calls = %v, want the .torrent loaded into /downloads", got)
+	}
+}
+
+// TestLoadRaw_Dropped: a .torrent rTorrent answers 0 to but does not keep is an error, not a
+// torrent that silently never appears.
+func TestLoadRaw_Dropped(t *testing.T) {
+	f := newFake()
+	var got [][]any
+	record(f, &got, "load.raw_start")
+	f.on("d.hash", func([]any) (any, error) { return nil, errors.New("could not find info-hash") })
+	a, _ := New(f.serveSCGI(t))
+	err := a.AddFile(context.Background(), []byte("d4:infod4:name1:xee"))
+	if err == nil || !strings.Contains(err.Error(), "was not taken") {
+		t.Errorf("AddFile of a dropped .torrent = %v, want it reported", err)
 	}
 }

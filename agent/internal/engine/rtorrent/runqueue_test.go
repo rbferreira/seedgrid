@@ -67,16 +67,17 @@ func TestAddFile_Queued(t *testing.T) {
 	f := newFake()
 	var got [][]any
 	record(f, &got, "load.raw", "load.raw_start", "load.normal", "load.start")
+	f.on("d.hash", func(p []any) (any, error) { return p[0], nil })
 	a, _ := New(f.serveSCGI(t))
 	a.WithQueue(engine.Config{QueueingEnabled: true})
-	_ = a.AddFile(context.Background(), []byte("d1:ai1ee"))
+	_ = a.AddFile(context.Background(), []byte("d4:infod4:name1:xee"))
 	_ = a.ConfigureQueue(context.Background(), engine.Config{QueueingEnabled: true})
-	_ = a.AddFile(context.Background(), []byte("d1:ai1ee"))
+	_ = a.AddFile(context.Background(), []byte("d4:infod4:name1:xee"))
 	_ = a.AddURL(context.Background(), "https://example.org/x.torrent")
 	_ = a.AddURL(context.Background(), "magnet:?xt=urn:btih:abcd")
 	want := [][]any{
-		{"load.raw_start", "", []byte("d1:ai1ee")},
-		{"load.raw", "", []byte("d1:ai1ee"), "d.custom.set=seedgrid,queued"},
+		{"load.raw_start", "", []byte("d4:infod4:name1:xee")},
+		{"load.raw", "", []byte("d4:infod4:name1:xee"), "d.custom.set=seedgrid,queued"},
 		{"load.normal", "", "https://example.org/x.torrent", "d.custom.set=seedgrid,queued"},
 		{"load.start", "", "magnet:?xt=urn:btih:abcd"},
 	}
