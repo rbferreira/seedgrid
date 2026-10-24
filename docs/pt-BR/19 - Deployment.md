@@ -473,7 +473,10 @@ Configuração sempre externa, via `.env` gerados dos `.env.example`.
 | `SEEDGRID_CONTROL_PLANE_URL` | — | **sim** | URL do Control Plane — a porta `80` do host, servida pelo nginx do Portal (ex.: `http://controller.example`). |
 | `SEEDGRID_AGENT_REGISTRATION_TOKEN` | — | 1º registro | Token de registro (após o 1º registro, a identidade vive no `StateDirectory`). |
 | `SEEDGRID_AGENT_DATA_DIR` | `/var/lib/seedgrid-agent` | não | Estado local do Agent. |
-| `SEEDGRID_AGENT_ENGINE` | `qbittorrent` | não | Torrent Engine. |
+| `SEEDGRID_AGENT_ENGINE` | `qbittorrent` | não | Adaptador do Torrent Engine: `qbittorrent` ou `rtorrent` (ADR-045). Qualquer outro valor impede o início do Agent. |
+| `SEEDGRID_ENGINE_RTORRENT_URL` | — | com `rtorrent` | XML-RPC do rTorrent: `scgi:///path/to/rpc.socket`, `scgi://host:port` ou `http(s)://[user:pass@]host/RPC2`. |
+| `SEEDGRID_ENGINE_RESTART_CMD` | — | não | Comando (`sh -c`) executado pelo restart do Portal em vez de solicitar o encerramento do Engine — comando de reinício do provedor de seedbox (ADR-045 §9). Definido pelo bootstrap a partir de `ENGINE_RESTART_CMD`. |
+| `SEEDGRID_AGENT_SUPERVISED` | `true` | não | `false` quando o cron, e não o systemd, mantém o Agent ativo (instalação de usuário, §50.9): a autoatualização reexecuta o novo binário em vez de encerrar o processo. Definido pelo bootstrap. |
 | `SEEDGRID_ENGINE_QBT_URL` | `http://127.0.0.1:8080` | não | WebUI API do qBittorrent. |
 | `SEEDGRID_ENGINE_QBT_USERNAME` | `admin` | não | Usuário da WebUI. |
 | `SEEDGRID_ENGINE_QBT_PASSWORD` | — | recomendada | Senha da WebUI. |
@@ -747,3 +750,30 @@ Remover um Node mantém sua linha no histórico. Quando uma máquina com o mesmo
 - **Uma máquina diferente** com esse hostname: um **novo Node**, sem herdar nada. A linha removida permanece no histórico.
 
 Um sistema operacional reinstalado tem um novo `machine-id` e nenhum arquivo de identidade, entrando como um novo Node.
+
+## 50.8 Uma máquina que roda rTorrent (ADR-045, #31)
+Uma máquina com rTorrent **0.9.8 ou superior** entra da mesma forma que o qBittorrent (§50.6), via XML-RPC do rTorrent. O SeedGrid não instala o rTorrent. Se você usa ruTorrent, ele continua funcionando ao lado do SeedGrid:
+
+```sh
+curl -fsSL http://<cp>/node/bootstrap-node.sh | sudo CP_URL=http://<cp> JOIN_TOKEN=<token> \
+  ENGINE=rtorrent RTORRENT_URL=scgi:///path/to/rpc.socket sh
+```
+
+`RTORRENT_URL` é onde o XML-RPC do rTorrent responde: `scgi:///<socket>` (`network.scgi.open_local` no `.rtorrent.rc`), `scgi://127.0.0.1:<port>` (`network.scgi.open_port`) ou `http(s)://[user:pass@]host/RPC2` quando apenas um servidor web o expõe (como no ruTorrent). `RTORRENT_CONTAINER` escolhe o container quando o Docker roda mais de um; `ENGINE_PATH_MAP` substitui o mapeamento lido do Docker; `ENGINE_RESTART_CMD` define o comando para reiniciar o rTorrent quando nada mais o fizer.
+
+**Antes do enroll**, o script baixa o Agent e consulta o rTorrent com ele (`--probe-rtorrent`): versão, porta de escuta, pasta padrão e pasta de sessão. Ele recusa um rTorrent sem pasta de sessão (ele esqueceria os torrents ao reiniciar pelo Portal). Se o rTorrent rodar em um container (imagem chamada `rtorrent` ou `rutorrent`), o script lê seus mounts como mapeamento de caminho. Ignora `/config`, mas inclui a pasta de sessão se ela estiver lá: o Agent lê o `.torrent` de cada torrent a partir dela. A pasta de download deve existir no host e a pasta de sessão deve ser legível. Em seguida, identifica o que traz o rTorrent de volta após o reinício pelo Portal, assim como no qBittorrent: um container com reinício automático, um serviço (detectado pelo processo na porta BitTorrent) ou `ENGINE_RESTART_CMD`. Um rTorrent rodando em tmux ou screen é recusado, sugerindo essa opção. Um intervalo de portas ou porta aleatória gera um aviso: o SeedGrid mantém o rTorrent em uma única porta a partir do próximo início. Qualquer falha interrompe o processo com "Nothing was changed".
+
+**O que ele faz** segue o §50.6: o enroll reserva a própria porta do rTorrent, aplica política de reinício ou drop-in se necessário, instala o Agent (`SEEDGRID_AGENT_ENGINE=rtorrent`, `SEEDGRID_ENGINE_RTORRENT_URL`, mapeamento e armazenamento) e configura métricas do host via porta 9100 ou node-exporter no Docker.
+
+**No Portal:** o Node entra como Manual. O rTorrent não tem fila de downloads, então a fila do SeedGrid começa **desativada** (Evento `NODE_ENGINE_SEEDED` com `engine.queueing_enabled=false`). Ative-a nas configurações do Node se quiser que o SeedGrid limite downloads simultâneos. Depois, mova o Node para SG. Daí em diante, é um Node como qualquer outro, incluindo publicação (Engine.md §6.2).
+
+## 50.9 Sem root: uma seedbox compartilhada (ADR-045)
+Em uma máquina onde você não é root, execute o comando `ENGINE=existing` ou `ENGINE=rtorrent` **sem sudo**. O Agent é instalado para seu usuário e nada fora do seu home é alterado:
+- o Agent em `~/.local/bin/seedgrid-agent`, suas configurações em `~/.config/seedgrid-agent.env`, sua identidade em `~/.local/share/seedgrid-agent` e a cópia do script em `~/.local/share/seedgrid-node`;
+- **o que o mantém rodando**, decidido antes do enroll: um serviço de usuário do systemd quando seu systemd está ativo e com linger (inicia no boot sem login; o script tenta `loginctl enable-linger`). Caso contrário, usa **cron** — `@reboot` e a cada minuto, um script inicia o Agent se não estiver rodando e gerencia seu log (`agent.log`, rotacionado a 10 MB). Sem nenhum dos dois, a execução é recusada;
+- o reinício do Engine: um container, seu próprio serviço de usuário do systemd ou — comum em seedboxes — o comando de reinício do provedor em `ENGINE_RESTART_CMD`;
+- métricas do host vindas do que responder na porta 9100, ou um node-exporter no Docker se seu usuário puder rodar Docker.
+
+A atualização do Agent pelo Portal funciona igual: sob cron, o Agent reexecuta o novo binário no próprio processo. `ENGINE=install` ainda exige root: instala Docker e altera discos e rede.
+
+O script para se o Agent não permanecer ativo após o início, exibindo as últimas linhas do seu log.

@@ -30,6 +30,8 @@ failing, which torrent stalled, which one should move. SeedGrid does that bookke
   webhook.
 - **Built for private trackers.** It shares your account's download slots across the cluster
   and publishes to UNIT3D sites with the site's own categories, wording and image host.
+- **Your client, or ours.** A Node runs the qBittorrent SeedGrid installs, or joins with the
+  qBittorrent or rTorrent it already runs — on a shared seedbox too, without root.
 
 ## How it works
 

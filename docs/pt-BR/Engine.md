@@ -34,10 +34,22 @@ O Agent deverá possuir uma camada de adaptação para o Engine.
 Cada Engine suportado deverá possuir seu próprio adaptador, expondo a mesma interface interna para o restante do Agent.
 Exemplos:
 - qBittorrent Adapter (V1);
+- rTorrent Adapter (ADR-045);
 - Transmission Adapter (futuro);
 - Deluge Adapter (futuro).
 ## 6.1 Versões suportadas do qBittorrent (ADR-043)
 Todo Node roda o qBittorrent **5.0 ou superior**. Os Nodes que o SeedGrid instala usam a versão 5.x. Um Node que entra com o qBittorrent já existente também deve atender a esse requisito. A versão 5.0 é a primeira a incluir o criador de torrents (`torrentcreator/*`), necessário para publicação (ADR-019). Ela também traz os endpoints `torrents/stop` e `torrents/start`, usados pelo adaptador. O bootstrap rejeita a versão 4.x e solicita a atualização. Um Node incapaz de publicar criaria um segundo tipo de Node.
+## 6.2 rTorrent (ADR-045)
+Um Node pode rodar rTorrent **0.9.8 ou superior**, entrando com o rTorrent que a máquina já roda (`bootstrap-node.sh ENGINE=rtorrent`, Deployment §50.8). O SeedGrid não o instala. O adaptador se comunica via XML-RPC do rTorrent, sobre SCGI (um socket Unix ou `host:port`) ou pelo `/RPC2` de um servidor web, usando seu próprio codec leve. O ruTorrent, se presente, continua funcionando normalmente, e o SeedGrid não depende dele.
+
+Um Node com rTorrent é como qualquer outro Node: mesmos estados, configurações, publicação, migração e Portal. O que falta no rTorrent, o Agent fornece:
+- **A fila de downloads.** O rTorrent inicia todos os torrents que possui. O Agent aplica as configurações `engine.*` por conta própria, a cada poucos segundos: os mais antigos primeiro, com limites de downloads, uploads e torrents ativos. Com `dont_count_slow`, um torrent lento deixa de contar para esses limites. Ele marca o que para (chave `d.custom` `seedgrid`) e só inicia o que marcou: um torrent parado pelo operador ou pela admissão permanece parado. Com a fila ativa, um torrent adicionado via `.torrent` entra parado e enfileirado. O `max_active_checking` não tem efeito limitador: o rTorrent verifica apenas um torrent por vez. A fila só atua após a chegada das configurações do Control Plane.
+- **O criador de torrents.** Para publicação, o Agent cria o `.torrent` (BitTorrent v1, tamanho de peça equivalente ao do libtorrent, flag private e `source` conforme solicitado) e o carrega apontando para os dados; o rTorrent o verifica e faz o seed.
+- **A exportação do `.torrent`.** O Agent o lê da pasta de sessão do rTorrent e remove as chaves adicionadas por ele (`rtorrent`, `libtorrent_resume`), recuperando os bytes originais e o info hash.
+
+Os estados vêm de vários campos: `d.hashing` definido é CHECKING; uma `d.message` de qualquer origem que não seja tracker (erro de armazenamento, falha na verificação de hash) é ERROR; parado ou pausado é PAUSED, exceto se a fila do Agent tiver parado o torrent, caso em que será QUEUED se incompleto e SEEDING se completo; iniciado é SEEDING quando completo e DOWNLOADING caso contrário. A resposta do tracker é o veredito do tracker, não o estado do torrent, assim como no qBittorrent. O rTorrent não informa sua conectabilidade de entrada: o Node não reporta nada (desconhecido, ADR-034) e conta peers de entrada pela lista de peers.
+
+O adaptador lida com duas diferenças entre versões: o rTorrent 0.16 renomeou `network.port_range`/`network.port_random` para `network.listen.port.range`/`network.listen.port.random` (o adaptador tenta o nome novo e depois o antigo), e distingue XML-RPC de JSON-RPC pelo content type, sempre enviado pelo adaptador. O rTorrent responde 0 ao carregar um torrent mesmo quando o rejeita (a versão 0.9.8 rejeita torrents sem tracker), então o adaptador confirma cada `.torrent` carregado.
 # **7. Contrato do Adapter**
 Todo Engine Adapter deverá expor, no mínimo, as seguintes operações ao Torrent Manager:
 - adicionar torrent (arquivo .torrent ou magnet). Quando a origem for um arquivo `.torrent`, o adapter deverá repassar os **bytes originais** ao Engine (não reduzir a um magnet/infohash): isso preserva os metadados — evitando que o Engine precise buscá-los na rede (estado `metaDL`) — e honra a flag `private` do torrent, indispensável para trackers privados, onde não há DHT para recuperar metadados;

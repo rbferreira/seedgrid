@@ -34,10 +34,22 @@ The Agent must have an adaptation layer for the Engine.
 Each supported Engine must have its own adapter, exposing the same internal interface to the rest of the Agent.
 Examples:
 - qBittorrent Adapter (V1);
+- rTorrent Adapter (ADR-045);
 - Transmission Adapter (future);
 - Deluge Adapter (future).
 ## 6.1 Supported qBittorrent versions (ADR-043)
 Every Node runs qBittorrent **5.0 or later**: the Nodes SeedGrid installs run 5.x, and a Node that joins with the qBittorrent it already runs must too. 5.0 is the first with the torrent creator (`torrentcreator/*`), which publishing (ADR-019) needs, and with `torrents/stop`/`torrents/start`, which the adapter uses. The bootstrap refuses a 4.x and asks to update it; a Node that could not publish would be a second kind of Node.
+## 6.2 rTorrent (ADR-045)
+A Node can run rTorrent **0.9.8 or later**, joined with the rTorrent the machine already runs (`bootstrap-node.sh ENGINE=rtorrent`, Deployment §50.8). SeedGrid does not install it. The adapter speaks rTorrent's XML-RPC, over SCGI (a Unix socket or `host:port`) or through a web server's `/RPC2`, with its own small codec. ruTorrent, if present, keeps working next to it, and SeedGrid does not depend on it.
+
+An rTorrent Node is a Node like any other: same states, settings, publishing, migration and Portal. What rTorrent does not have, the Agent supplies:
+- **The download queue.** rTorrent starts every torrent it holds. The Agent applies the `engine.*` settings itself, every few seconds: oldest first, at most so many downloads, uploads and torrents active, and with `dont_count_slow` a slow torrent stops counting. It marks what it stops (`d.custom` key `seedgrid`) and only ever starts what it marked: a torrent the operator or admission stopped stays stopped. With the queue on, a torrent added from a `.torrent` comes in stopped and queued. `max_active_checking` has nothing to limit: rTorrent checks one torrent at a time. The queue acts only once the Control Plane's settings arrived.
+- **The torrent creator.** For publishing, the Agent creates the `.torrent` (BitTorrent v1, the piece size libtorrent would choose, private flag and `source` as asked) and loads it pointing at the data; rTorrent checks it and seeds.
+- **The `.torrent` export.** The Agent reads it from rTorrent's session folder and removes the keys rTorrent adds (`rtorrent`, `libtorrent_resume`), which gives back the original bytes and info hash.
+
+States come from several fields: `d.hashing` set is CHECKING; a `d.message` from anything but a tracker (a storage error, a failed hash check) is ERROR; stopped or paused is PAUSED, except a torrent the Agent's queue stopped, which is QUEUED when incomplete and SEEDING when complete; started is SEEDING when complete and DOWNLOADING otherwise. A tracker's answer is the tracker verdict, not the torrent's state, as with qBittorrent. rTorrent has no verdict on its own inbound connectability: the Node reports none (unknown, ADR-034) and counts incoming peers from the peer list.
+
+Two version differences the adapter handles: rTorrent 0.16 renamed `network.port_range`/`network.port_random` to `network.listen.port.range`/`network.listen.port.random` (the adapter tries the new name, then the old), and it tells XML-RPC from JSON-RPC by the content type, which the adapter always sends. rTorrent answers a load with 0 even when it drops the `.torrent` (0.9.8 drops one without a tracker), so the adapter confirms each `.torrent` it loads.
 # **7. Adapter Contract**
 Every Engine Adapter must expose at least the following operations to the Torrent Manager:
 - add torrent (.torrent file or magnet). When the source is a `.torrent` file, the adapter must pass the **original bytes** to the Engine (do not reduce to a magnet/infohash): this preserves the metadata — preventing the Engine from needing to fetch it from the network (`metaDL` state) — and honors the torrent's `private` flag, which is essential for private trackers, where there is no DHT to recover metadata;

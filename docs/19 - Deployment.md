@@ -473,7 +473,10 @@ Configuration is always external, via `.env` generated from the `.env.example`.
 | `SEEDGRID_CONTROL_PLANE_URL` | — | **yes** | Control Plane URL — port `80` of the host, served by the Portal's nginx (e.g., `http://controller.example`). |
 | `SEEDGRID_AGENT_REGISTRATION_TOKEN` | — | 1st registration | Registration token (after the 1st registration, the identity lives in `StateDirectory`). |
 | `SEEDGRID_AGENT_DATA_DIR` | `/var/lib/seedgrid-agent` | no | Agent local state. |
-| `SEEDGRID_AGENT_ENGINE` | `qbittorrent` | no | Torrent Engine. |
+| `SEEDGRID_AGENT_ENGINE` | `qbittorrent` | no | Torrent Engine adapter: `qbittorrent` or `rtorrent` (ADR-045). Any other value stops the Agent at start. |
+| `SEEDGRID_ENGINE_RTORRENT_URL` | — | with `rtorrent` | rTorrent's XML-RPC: `scgi:///path/to/rpc.socket`, `scgi://host:port` or `http(s)://[user:pass@]host/RPC2`. |
+| `SEEDGRID_ENGINE_RESTART_CMD` | — | no | Command (`sh -c`) the Portal's restart runs instead of asking the Engine to quit — a seedbox provider's restart command (ADR-045 §9). Written by the bootstrap from `ENGINE_RESTART_CMD`. |
+| `SEEDGRID_AGENT_SUPERVISED` | `true` | no | `false` when cron, not systemd, keeps the Agent running (a user install, §50.9): the self-update then re-executes the new binary instead of exiting. Written by the bootstrap. |
 | `SEEDGRID_ENGINE_QBT_URL` | `http://127.0.0.1:8080` | no | qBittorrent WebUI API. |
 | `SEEDGRID_ENGINE_QBT_USERNAME` | `admin` | no | WebUI user. |
 | `SEEDGRID_ENGINE_QBT_PASSWORD` | — | recommended | WebUI password. |
@@ -747,3 +750,30 @@ Removing a Node keeps its row, for history. When a machine with the same hostnam
 - **A different machine** with that hostname: a **new Node**, inheriting nothing. The removed row stays in the history.
 
 A reinstalled operating system has a new `machine-id` and no identity file, and joins as a new Node.
+
+## 50.8 A machine that runs rTorrent (ADR-045, #31)
+A machine that runs rTorrent **0.9.8 or later** joins the same way as a qBittorrent (§50.6), through rTorrent's XML-RPC. SeedGrid does not install rTorrent, and ruTorrent, if you use it, keeps working next to SeedGrid:
+
+```sh
+curl -fsSL http://<cp>/node/bootstrap-node.sh | sudo CP_URL=http://<cp> JOIN_TOKEN=<token> \
+  ENGINE=rtorrent RTORRENT_URL=scgi:///path/to/rpc.socket sh
+```
+
+`RTORRENT_URL` is where rTorrent's XML-RPC answers: `scgi:///<socket>` (`network.scgi.open_local` in `.rtorrent.rc`), `scgi://127.0.0.1:<port>` (`network.scgi.open_port`), or `http(s)://[user:pass@]host/RPC2` when only a web server exposes it (as ruTorrent's does). `RTORRENT_CONTAINER` chooses the container when Docker runs more than one; `ENGINE_PATH_MAP` overrides the mapping read from Docker; `ENGINE_RESTART_CMD` gives the command that restarts rTorrent when nothing else would.
+
+**Before enrolling**, the script downloads the Agent and reads rTorrent with it (`--probe-rtorrent`): the version, the listening port, the default folder and the session folder. It refuses an rTorrent without a session folder (it would forget its torrents at the Portal's restart). If rTorrent runs in a container (an image named `rtorrent` or `rutorrent`), it reads the container's mounts as the path mapping, leaving `/config` out but adding the session folder when it lives there: the Agent reads each torrent's `.torrent` from it. The download folder must exist on the host and the session folder must be readable. Then it finds what brings rTorrent back after the Portal's restart, as for qBittorrent: a container that restarts, a service (found from the process listening on the BitTorrent port), or `ENGINE_RESTART_CMD`. An rTorrent running in tmux or screen is refused, with that option. A port range or a random port is a warning: SeedGrid keeps rTorrent on one port, from its next start. Any failure stops it with "Nothing was changed".
+
+**What it does** is what §50.6 does: the enroll reserves rTorrent's own port, a restart policy or drop-in where needed, the Agent (`SEEDGRID_AGENT_ENGINE=rtorrent`, `SEEDGRID_ENGINE_RTORRENT_URL`, the mapping, the storage), and host metrics from port 9100 or a node-exporter in Docker.
+
+**In the Portal:** the Node joins in Manual. rTorrent has no download queue, so SeedGrid's starts **off** (Event `NODE_ENGINE_SEEDED` with `engine.queueing_enabled=false`): turn it on in the Node's settings if you want SeedGrid to limit simultaneous downloads. Then move the Node to SG; from then on it is a Node like any other, publishing included (Engine.md §6.2).
+
+## 50.9 Without root: a shared seedbox (ADR-045)
+On a machine where you are not root, run the `ENGINE=existing` or `ENGINE=rtorrent` command **without sudo**. The Agent is installed for your user and nothing outside your home changes:
+- the Agent in `~/.local/bin/seedgrid-agent`, its settings in `~/.config/seedgrid-agent.env`, its identity in `~/.local/share/seedgrid-agent`, and the copy of the script in `~/.local/share/seedgrid-node`;
+- **what keeps it running**, decided before the enroll: a systemd user service when your systemd runs and lingers (it starts at boot without a login; the script tries `loginctl enable-linger`), otherwise **cron** — `@reboot` and every minute, a script that starts the Agent unless it is running and keeps its log (`agent.log`, rotated at 10 MB). With neither, it refuses;
+- the Engine's restart: a container, your own systemd user service, or — typical on a seedbox — the provider's restart command in `ENGINE_RESTART_CMD`;
+- host metrics from whatever answers on port 9100, or a node-exporter in Docker when your user can run Docker.
+
+Updating the Agent from the Portal works the same: under cron the Agent re-executes the new binary in place. `ENGINE=install` still needs root: it installs Docker and changes disks and the network.
+
+The script stops when the Agent does not stay up after starting, with the last lines of its log.
