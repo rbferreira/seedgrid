@@ -108,7 +108,7 @@ func infoHash(t *testing.T, data []byte) string {
 			t.Fatal(err)
 		}
 		if string(data[i:keyEnd]) == "4:info" {
-			return fmt.Sprintf("%x", sha1.Sum(data[keyEnd:valEnd]))
+			return fmt.Sprintf("%x", sha1.Sum(data[keyEnd:valEnd])) //nolint:gosec // G401: the BitTorrent v1 info hash is SHA-1
 		}
 		i = valEnd
 	}
