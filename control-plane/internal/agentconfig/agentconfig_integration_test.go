@@ -481,7 +481,7 @@ func TestSeedRejectsGiantReport(t *testing.T) {
 	}
 }
 
-// A Node that joined with the qBittorrent it already ran (ADR-043) reports its engine.* values
+// A Node that joined with the Torrent Engine it already ran (ADR-043, ADR-045) reports its engine.* values
 // from that Engine. They win over an explicit cluster value, and a value outside the catalog
 // range is brought into it: the first application must change nothing in the Engine. The
 // agent.* keys of the same report still follow the ordinary rule.

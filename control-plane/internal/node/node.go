@@ -46,7 +46,7 @@ type Node struct {
 	// OperationMode is the per-Node "sg"|"manual" mode (ADR-024). It only takes effect under
 	// the global Flex gate; in Full auto the controller ignores it and treats every Node as SG.
 	OperationMode string `json:"operation_mode"`
-	// EngineAdopted: the Node joined with the qBittorrent it already ran (ADR-043). Its Engine
+	// EngineAdopted: the Node joined with the Torrent Engine it already ran (ADR-043, ADR-045). Its Engine
 	// is the operator's: SeedGrid does not write its preferences or restart it.
 	EngineAdopted bool       `json:"engine_adopted"`
 	Engine        *string    `json:"engine,omitempty"`
@@ -106,7 +106,7 @@ type RegisterInput struct {
 	AgentVersion  string `json:"agent_version"`
 	Engine        string `json:"engine"`
 	EngineVersion string `json:"engine_version"`
-	// EngineAdopted: the Agent runs against the qBittorrent the machine already had (ADR-043).
+	// EngineAdopted: the Agent runs against the Torrent Engine the machine already had (ADR-043, ADR-045).
 	// A Node that becomes adopted starts in Manual.
 	EngineAdopted bool `json:"engine_adopted"`
 	// MachineID and PreviousNodeID identify the machine (ADR-044): /etc/machine-id, and the Node id
@@ -431,7 +431,7 @@ func (s *Service) startAdoptedInManual(ctx context.Context, nodeID, hostname str
 		return fmt.Errorf("adopted node mode: %w", err)
 	}
 	if s.events != nil {
-		msg := fmt.Sprintf("Seed Node %q joined with the qBittorrent it already ran and starts in Manual: review its settings, then move it to SG; until then the admission controller leaves its torrents alone", hostname)
+		msg := fmt.Sprintf("Seed Node %q joined with the Torrent Engine it already ran and starts in Manual: review its settings, then move it to SG; until then the admission controller leaves its torrents alone", hostname)
 		if gateMoved {
 			msg += " — the Cluster moved from Full auto to Flex for it; the other Nodes stay SG"
 		}

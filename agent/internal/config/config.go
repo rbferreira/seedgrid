@@ -71,7 +71,7 @@ type Config struct {
 	// Default: DefaultEngineContainer.
 	EngineContainer string
 	LogLevel        string
-	// EngineAdopted: the Node joined with the qBittorrent the machine already ran (ADR-043,
+	// EngineAdopted: the Node joined with the Torrent Engine the machine already ran (ADR-043, ADR-045,
 	// SEEDGRID_ENGINE_ADOPTED). It registers so, and its first settings are read from that Engine
 	// (remotecfg.Hooks.EngineValues); from then on it is managed like any Node.
 	EngineAdopted bool
