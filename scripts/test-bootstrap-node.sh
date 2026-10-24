@@ -10,8 +10,9 @@
 # Usage:  sh scripts/test-bootstrap-node.sh
 
 # Stub bodies go in single quotes ON PURPOSE: they are the fake command code,
-# which expands inside it, not here.
-# shellcheck disable=SC2016
+# which expands inside it, not here. Variables set here are read by the bootstrap functions loaded
+# with eval, which shellcheck cannot see.
+# shellcheck disable=SC2016,SC2034
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -797,7 +798,7 @@ assert_eq "script without root: does not reach enroll" "0" "$(printf '%s
 STORAGE_REQUIRE_MOUNT=maybe CP_URL=http://controller.example JOIN_TOKEN=x sh "$SCRIPT" >/dev/null 2>&1
 assert_eq "script without root and with invalid value: exits 2 (usage), not 1" "2" "$?"
 unset FAKE_UID FAKE_USER
-assert_eq "final messages (both onboardings) point to the existing screen" "2" "$(grep -c '(Health & Metrics)' "$SCRIPT")"
+assert_eq "final messages (the three onboardings) point to the existing screen" "3" "$(grep -c '(Health & Metrics)' "$SCRIPT")"
 
 # ---------------------------------------------------------------------------
 # ENGINE=existing — a qBittorrent the machine already runs (ADR-043).
@@ -1000,6 +1001,192 @@ assert_eq "ENGINE=existing with no WebUI: exits 1" "1" "$rc"
 assert_eq "ENGINE=existing with no WebUI: says nothing changed" "1" "$(printf '%s\n' "$out" | grep -c 'Nothing was changed')"
 assert_eq "ENGINE=existing with no WebUI: does not reach the enroll" "0" "$(printf '%s\n' "$out" | grep -c 'enroll no Control Plane')"
 rm -f "$STUBS/id" "$STUBS/docker"
+
+# ---------------------------------------------------------------------------
+# ENGINE=rtorrent (ADR-045) and the user install — the pieces either way in shares.
+# ---------------------------------------------------------------------------
+load engine_container container_path_map user_unit system_unit unit_restarts listening_pid url_port \
+  plan_engine_restart apply_engine_restart plan_user_agent start_agent agent_env_extra probe_value \
+  container_restarts
+
+stub docker 'case "$1" in
+  ps) printf "%s" "$FAKE_PS" ;;
+  inspect) printf "%s" "$FAKE_MOUNTS" ;;
+esac'
+FAKE_PS='rtorrent crazymax/rtorrent-rutorrent:latest
+qbittorrent lscr.io/linuxserver/qbittorrent:5.0.4
+'
+assert_eq "engine_container finds the rTorrent container" "rtorrent" "$(engine_container 'ru?torrent' "" RTORRENT_CONTAINER)"
+FAKE_PS='rutorrent lscr.io/linuxserver/rutorrent:latest
+'
+assert_eq "engine_container finds a ruTorrent image" "rutorrent" "$(engine_container 'ru?torrent' "" RTORRENT_CONTAINER)"
+FAKE_PS='rt-a crazymax/rtorrent-rutorrent:latest
+rt-b crazymax/rtorrent-rutorrent:4.3.1
+'
+out=$(engine_container 'ru?torrent' "" RTORRENT_CONTAINER 2>&1); rc=$?
+assert_eq "engine_container with two rTorrents fails" "1" "$rc"
+assert_eq "and names RTORRENT_CONTAINER" "1" "$(printf '%s\n' "$out" | grep -c 'RTORRENT_CONTAINER=')"
+assert_eq "RTORRENT_CONTAINER chooses" "rt-b" "$(engine_container 'ru?torrent' rt-b RTORRENT_CONTAINER)"
+FAKE_PS='qbittorrent lscr.io/linuxserver/qbittorrent:5.0.4
+'
+assert_eq "a qBittorrent is not an rTorrent" "" "$(engine_container 'ru?torrent' "" RTORRENT_CONTAINER)"
+FAKE_MOUNTS='/config=/srv/rt/config
+/downloads=/srv/rt/downloads
+'
+assert_eq "container_path_map with all keeps /config (for the session folder)" \
+  "/config=/srv/rt/config;/downloads=/srv/rt/downloads" "$(container_path_map rtorrent all)"
+rm -f "$STUBS/docker"
+
+PROBE='version=0.16.25
+port=50000
+port_range=50000-50000
+port_random=false
+directory=/downloads/temp
+session=/data/rtorrent/.session'
+assert_eq "probe_value reads the port" "50000" "$(probe_value port)"
+assert_eq "probe_value reads the session folder" "/data/rtorrent/.session" "$(probe_value session)"
+assert_eq "probe_value of a missing key is empty" "" "$(probe_value nothing)"
+
+PROC="$WORK/proc"
+export PROC
+cgroup 20 '0::/user.slice/user-1000.slice/user@1000.service/app.slice/rtorrent.service'
+cgroup 21 '0::/user.slice/user-1000.slice/session-7.scope'
+assert_eq "user_unit of a user service" "rtorrent.service" "$(user_unit 20)"
+user_unit 21 >/dev/null
+assert_eq "user_unit refuses a session (tmux, screen)" "1" "$?"
+user_unit 11 >/dev/null
+assert_eq "user_unit refuses a system service" "1" "$?"
+
+# What brings the Engine back (ADR-045 §9): the operator's command first, then a user service.
+stub ss 'printf "%s\n" "$FAKE_SS"'
+stub systemctl 'echo "$@" >> "$WORK/systemctl-user.log"; case "$*" in *show*) printf "%s\n" "$FAKE_RESTART" ;; esac'
+export FAKE_SS FAKE_RESTART WORK
+ENGINE_CONTAINER="" ENGINE_RESTART_CMD='app-rtorrent restart'
+plan_engine_restart >/dev/null
+assert_eq "plan: ENGINE_RESTART_CMD is the operator's answer" "command" "$RESTART_HOW"
+ENGINE_RESTART_CMD="" USER_INSTALL=1 SYSTEMCTL="systemctl --user" ENGINE_PORT_FOR_PID=50000
+FAKE_SS='LISTEN 0 50 *:50000 *:* users:(("rtorrent",pid=20,fd=9))' FAKE_RESTART=no
+plan_engine_restart >/dev/null
+assert_eq "plan: a user service of a user install gets fixed" "unit-fix" "$RESTART_HOW"
+assert_eq "plan: and names the user unit" "rtorrent.service" "$RESTART_UNIT"
+assert_eq "plan: asks the user's systemd" "1" "$(grep -c -- '--user show -p Restart --value rtorrent.service' "$WORK/systemctl-user.log")"
+FAKE_SS='LISTEN 0 50 *:50000 *:* users:(("rtorrent",pid=21,fd=9))'
+out=$(ENGINE_NAME=rTorrent plan_engine_restart); rc=$?
+assert_eq "plan: rTorrent in tmux is refused" "1" "$rc"
+assert_eq "plan: the refusal offers ENGINE_RESTART_CMD" "1" "$(printf '%s\n' "$out" | grep -c "ENGINE_RESTART_CMD='<command>'")"
+assert_eq "plan: the refusal names rTorrent" "1" "$(printf '%s\n' "$out" | grep -c 'what runs this rTorrent')"
+HOME="$WORK/home" RESTART_HOW=unit-fix RESTART_UNIT=rtorrent.service
+export HOME
+apply_engine_restart >/dev/null
+assert_eq "apply: a user service gets its drop-in in the user's systemd" "Restart=always" \
+  "$(grep '^Restart=' "$WORK/home/.config/systemd/user/rtorrent.service.d/seedgrid-restart.conf")"
+assert_eq "apply: the user's systemd reloads it" "1" "$(grep -c -- '--user daemon-reload' "$WORK/systemctl-user.log")"
+unset PROC ENGINE_PORT_FOR_PID
+rm -f "$STUBS/ss"
+
+# What keeps a user install's Agent running (ADR-045 §10).
+stub id 'case "$1" in -u) echo 1000 ;; -un) echo seeder ;; esac'
+stub loginctl 'case "$1" in show-user) echo "$FAKE_LINGER" ;; enable-linger) exit "$FAKE_ENABLE" ;; esac'
+stub systemctl 'case "$*" in "--user show-environment") exit "$FAKE_USER_SD" ;; esac; echo "$@" >> "$WORK/systemctl-user.log"'
+# As crontab does, `crontab -` reads all of its input before replacing the table.
+stub crontab 'case "$1" in -l) cat "$WORK/crontab" 2>/dev/null ;; -) t=$(cat); printf "%s\n" "$t" > "$WORK/crontab" ;; esac'
+export FAKE_LINGER FAKE_ENABLE FAKE_USER_SD
+FAKE_USER_SD=0 FAKE_LINGER=yes FAKE_ENABLE=1
+plan_user_agent >/dev/null
+assert_eq "plan_user_agent: a lingering user systemd" "systemd" "$AGENT_SUPERVISOR"
+FAKE_LINGER=no FAKE_ENABLE=0
+plan_user_agent >/dev/null
+assert_eq "plan_user_agent: linger it turns on" "systemd" "$AGENT_SUPERVISOR"
+FAKE_ENABLE=1
+plan_user_agent >/dev/null
+assert_eq "plan_user_agent: no linger, so cron" "cron" "$AGENT_SUPERVISOR"
+FAKE_USER_SD=1
+plan_user_agent >/dev/null
+assert_eq "plan_user_agent: no user systemd, so cron" "cron" "$AGENT_SUPERVISOR"
+mv "$STUBS/crontab" "$WORK/crontab-stub"
+out=$(PATH="$STUBS" plan_user_agent 2>&1); rc=$? # only the stubs: no crontab anywhere
+assert_eq "plan_user_agent: neither refuses" "1" "$rc"
+assert_eq "plan_user_agent: and says nothing changed" "1" "$(printf '%s\n' "$out" | grep -c 'Nothing was changed')"
+mv "$WORK/crontab-stub" "$STUBS/crontab"
+
+USER_INSTALL=1 AGENT_DATA_DIR="$WORK/home/.local/share/seedgrid-agent" AGENT_SUPERVISOR=cron ENGINE_RESTART_CMD='app-rtorrent restart'
+assert_eq "agent_env_extra of a cron user install" \
+  "SEEDGRID_AGENT_DATA_DIR=$WORK/home/.local/share/seedgrid-agent
+SEEDGRID_AGENT_SUPERVISED=false
+SEEDGRID_ENGINE_RESTART_CMD=app-rtorrent restart" "$(agent_env_extra)"
+AGENT_SUPERVISOR=systemd ENGINE_RESTART_CMD=""
+assert_eq "agent_env_extra of a systemd user install" \
+  "SEEDGRID_AGENT_DATA_DIR=$WORK/home/.local/share/seedgrid-agent" "$(agent_env_extra)"
+USER_INSTALL=0
+assert_eq "agent_env_extra of a root install" "" "$(agent_env_extra)"
+
+# start_agent, user install with systemd: the user's unit, enabled and restarted.
+USER_INSTALL=1 AGENT_SUPERVISOR=systemd INSTALL_DIR="$WORK/home/.local/share/seedgrid-node"
+AGENT_UNIT="$WORK/home/.config/systemd/user/seedgrid-agent.service" AGENT_ENV="$WORK/home/.config/seedgrid-agent.env"
+AGENT_BIN="$WORK/home/.local/bin/seedgrid-agent"
+FAKE_USER_SD=0
+: > "$WORK/systemctl-user.log"
+start_agent
+assert_eq "user unit runs the user's binary" "1" "$(grep -c "^ExecStart=$AGENT_BIN\$" "$AGENT_UNIT")"
+assert_eq "user unit reads the user's env" "1" "$(grep -c "^EnvironmentFile=$AGENT_ENV\$" "$AGENT_UNIT")"
+assert_eq "user unit restarts it" "1" "$(grep -c '^Restart=always$' "$AGENT_UNIT")"
+assert_eq "user unit starts with the user's systemd" "1" "$(grep -c '^WantedBy=default.target$' "$AGENT_UNIT")"
+assert_eq "user unit enabled and restarted" "2" "$(grep -c -- '--user \(enable\|restart\) seedgrid-agent' "$WORK/systemctl-user.log")"
+
+# start_agent, user install with cron: @reboot and every minute, once each, and the Agent started.
+mkdir -p "$INSTALL_DIR" "$(dirname "$AGENT_BIN")"
+printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "$SEEDGRID_AGENT_DATA_DIR|$SEEDGRID_ENGINE_PATH_MAP|$SEEDGRID_ENGINE_RESTART_CMD" > "%s/agent-ran"\nexec /bin/sleep 30\n' "$WORK" > "$AGENT_BIN"
+rm -f "$STUBS/sleep" # start_agent waits for the old Agent to go
+chmod +x "$AGENT_BIN"
+# Found on the bench: values with ; and spaces, which sourcing the env as shell would run.
+printf 'SEEDGRID_AGENT_DATA_DIR=%s\nSEEDGRID_ENGINE_PATH_MAP=/downloads=/srv/a;/data=/srv/b\nSEEDGRID_ENGINE_RESTART_CMD=touch %s/ran-at-start\n' \
+  "$AGENT_DATA_DIR" "$WORK" > "$AGENT_ENV"
+AGENT_SUPERVISOR=cron
+# No crontab yet, under set -e as the bootstrap runs: the table still gets the two lines.
+rm -f "$WORK/crontab"
+( set -e; start_agent ) >/dev/null 2>&1
+assert_eq "cron from no crontab at all, under set -e" "2" "$(grep -c 'run-agent.sh$' "$WORK/crontab" 2>/dev/null)"
+printf '0 3 * * * backup.sh\n' > "$WORK/crontab"
+start_agent
+start_agent # again: replaces, does not add
+assert_eq "cron keeps the user's own lines" "1" "$(grep -c 'backup.sh' "$WORK/crontab")"
+assert_eq "cron starts the Agent at boot, once" "1" "$(grep -c "^@reboot $INSTALL_DIR/run-agent.sh\$" "$WORK/crontab")"
+assert_eq "cron checks it every minute, once" "1" "$(grep -c "^\* \* \* \* \* $INSTALL_DIR/run-agent.sh\$" "$WORK/crontab")"
+sleep 1
+assert_eq "the run script started the Agent with its env, values intact" \
+  "$AGENT_DATA_DIR|/downloads=/srv/a;/data=/srv/b|touch $WORK/ran-at-start" "$(cat "$WORK/agent-ran" 2>/dev/null)"
+assert_eq "the run script runs nothing from the env" "0" "$([ -e "$WORK/ran-at-start" ] && echo 1 || echo 0)"
+pid=$(cat "$AGENT_DATA_DIR/agent.pid")
+kill -0 "$pid" 2>/dev/null
+assert_eq "the Agent runs, with its pid kept" "0" "$?"
+"$INSTALL_DIR/run-agent.sh"
+assert_eq "the run script leaves a running Agent alone" "$pid" "$(cat "$AGENT_DATA_DIR/agent.pid")"
+kill "$pid" 2>/dev/null
+# An Agent that stops at once (a bad setting) fails the install, with its last log lines.
+printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "invalid SEEDGRID_AGENT_ENGINE"\nexit 1\n' > "$AGENT_BIN"
+out=$(start_agent 2>&1); rc=$?
+assert_eq "start_agent with an Agent that does not stay up fails" "1" "$rc"
+assert_eq "and shows why" "1" "$(printf '%s\n' "$out" | grep -c 'invalid SEEDGRID_AGENT_ENGINE')"
+USER_INSTALL=0
+rm -f "$STUBS/id" "$STUBS/loginctl" "$STUBS/systemctl" "$STUBS/crontab"
+
+# The whole script: rTorrent needs its URL, and is onboarding only.
+ENGINE=rtorrent CP_URL=http://controller.example JOIN_TOKEN=x sh "$SCRIPT" >/dev/null 2>&1
+assert_eq "ENGINE=rtorrent without RTORRENT_URL: exits 2" "2" "$?"
+ENGINE=rtorrent RTORRENT_URL=scgi:///x sh "$SCRIPT" --network-only >/dev/null 2>&1
+assert_eq "ENGINE=rtorrent with --network-only: exits 2" "2" "$?"
+# As a regular user it is a user install, and an Agent that cannot be downloaded stops it before
+# the enroll, with nothing in the user's home.
+stub id 'case "$1" in -u) echo 1000 ;; -un) echo seeder ;; esac'
+out=$(HOME="$WORK/home2" ENGINE=rtorrent RTORRENT_URL=scgi:///x CP_URL=http://127.0.0.1:9 ARTIFACTS=http://127.0.0.1:9 JOIN_TOKEN=x sh "$SCRIPT" 2>&1); rc=$?
+assert_eq "ENGINE=rtorrent as a user, no Agent to download: fails" "1" "$([ "$rc" -ne 0 ] && echo 1)"
+assert_eq "ENGINE=rtorrent as a user: not asked for root" "0" "$(printf '%s\n' "$out" | grep -c 'must run as root')"
+assert_eq "ENGINE=rtorrent as a user: does not reach the enroll" "0" "$(printf '%s\n' "$out" | grep -c 'enroll no Control Plane')"
+assert_eq "ENGINE=rtorrent as a user: no env written" "0" "$([ -e "$WORK/home2/.config/seedgrid-agent.env" ] && echo 1 || echo 0)"
+# ENGINE=install still needs root: it installs Docker and changes disks and network.
+out=$(CP_URL=http://127.0.0.1:9 ARTIFACTS=http://127.0.0.1:9 JOIN_TOKEN=x sh "$SCRIPT" 2>&1)
+assert_eq "ENGINE=install as a user still asks for root" "1" "$(printf '%s\n' "$out" | grep -c 'must run as root')"
+rm -f "$STUBS/id"
 
 echo "== test-bootstrap-node: $pass ok, $fail failure(s)"
 [ "$fail" -eq 0 ]
