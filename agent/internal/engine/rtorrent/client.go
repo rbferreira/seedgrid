@@ -86,7 +86,7 @@ func (c *client) call(ctx context.Context, method string, params ...any) (any, e
 }
 
 func (c *client) postHTTP(ctx context.Context, body []byte) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.httpURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.httpURL, bytes.NewReader(body)) //nolint:gosec // G704: the URL is the operator's SEEDGRID_ENGINE_RTORRENT_URL
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (c *client) postHTTP(ctx context.Context, body []byte) ([]byte, error) {
 	if c.user != "" {
 		req.SetBasicAuth(c.user, c.pass)
 	}
-	res, err := c.http.Do(req)
+	res, err := c.http.Do(req) //nolint:gosec // G704: the URL is the operator's SEEDGRID_ENGINE_RTORRENT_URL
 	if err != nil {
 		return nil, err
 	}

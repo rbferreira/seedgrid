@@ -120,7 +120,7 @@ func writeInt(b *bytes.Buffer, n int64) {
 
 // decodeResponse reads a methodResponse: its single value, or the Fault.
 func decodeResponse(r io.Reader) (any, error) {
-	d := xml.NewDecoder(r)
+	d := xml.NewDecoder(r) //nolint:gosec // G709: decoded into plain values only (no types chosen by the input), from the local Engine, size-bounded by maxResponse
 	if err := expectPath(d, "methodResponse"); err != nil {
 		return nil, err
 	}
