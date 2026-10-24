@@ -59,7 +59,7 @@ var fields = []string{
 	"d.hash=", "d.name=", "d.state=", "d.is_active=", "d.complete=", "d.hashing=", "d.message=",
 	"d.size_bytes=", "d.completed_bytes=", "d.down.rate=", "d.up.rate=", "d.ratio=",
 	"d.down.total=", "d.up.total=", "d.peers_complete=", "d.peers_connected=",
-	"d.directory=", "d.is_multi_file=", "d.custom=" + customKey,
+	"d.directory=", "d.is_multi_file=", "d.custom=" + customKey, "d.load_date=",
 }
 
 // row is one torrent as rTorrent reports it.
@@ -76,6 +76,7 @@ type row struct {
 	directory                   string
 	multiFile                   bool
 	custom                      string
+	loaded                      int64 // d.load_date: when rTorrent got it
 	scrapeSeeds, scrapeLeechers int64
 	trackers                    trackerInfo
 }
@@ -109,7 +110,7 @@ func (a *Adapter) rows(ctx context.Context, withTrackers bool) ([]row, error) {
 			hashing: num(f[5]), message: str(f[6]),
 			size: num(f[7]), done: num(f[8]), downRate: num(f[9]), upRate: num(f[10]), ratio: num(f[11]),
 			downTotal: num(f[12]), upTotal: num(f[13]), seedsConnected: num(f[14]), connected: num(f[15]),
-			directory: str(f[16]), multiFile: num(f[17]) != 0, custom: str(f[18]),
+			directory: str(f[16]), multiFile: num(f[17]) != 0, custom: str(f[18]), loaded: num(f[19]),
 		})
 	}
 	if !withTrackers || len(out) == 0 {
@@ -199,8 +200,9 @@ func contentPath(r row) string {
 //   - d.hashing set: CHECKING;
 //   - d.message set by anything but a tracker (a storage error, a failed hash check): ERROR. A
 //     tracker's answer is the tracker verdict (#160), as with qBittorrent, not the torrent's state;
-//   - stopped (d.state 0) or paused (started, not active): PAUSED, except an incomplete torrent the
-//     Agent's queue stopped, which is QUEUED;
+//   - stopped (d.state 0) or paused (started, not active): PAUSED, except a torrent the Agent's
+//     queue stopped: QUEUED when incomplete, SEEDING when complete (qBittorrent's queuedUP is
+//     SEEDING too: complete and only waiting for an upload slot);
 //   - started: SEEDING when complete, DOWNLOADING otherwise.
 func mapState(r row) string {
 	switch {
@@ -208,8 +210,10 @@ func mapState(r row) string {
 		return "CHECKING"
 	case r.message != "" && !strings.HasPrefix(r.message, "Tracker:"):
 		return "ERROR"
-	case !r.started && !r.complete && r.custom == queuedMark:
+	case !r.started && r.custom == queuedMark && !r.complete:
 		return "QUEUED"
+	case !r.started && r.custom == queuedMark:
+		return "SEEDING"
 	case !r.started || !r.active:
 		return "PAUSED"
 	case r.complete:

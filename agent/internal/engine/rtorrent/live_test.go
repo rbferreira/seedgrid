@@ -5,11 +5,15 @@ import (
 	"context"
 	"crypto/sha1" //nolint:gosec // G505: the BitTorrent v1 info hash is SHA-1
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rbferreira/seedgrid/agent/internal/engine"
+	"github.com/rbferreira/seedgrid/agent/internal/engine/queue"
 )
 
 // TestLive_ReadSide reads a real rTorrent when SEEDGRID_TEST_RTORRENT_URL points at one (the bench,
@@ -114,4 +118,51 @@ func infoHash(t *testing.T, data []byte) string {
 	}
 	t.Fatal("no info dictionary")
 	return ""
+}
+
+// TestLive_Queue runs the Agent's queue on a real rTorrent over the two incomplete torrents of
+// SEEDGRID_TEST_RTORRENT_DOWNLOADS (oldest first): with one download allowed the newer is queued,
+// with two it runs again. Both end stopped.
+func TestLive_Queue(t *testing.T) {
+	u, dls := os.Getenv("SEEDGRID_TEST_RTORRENT_URL"), strings.Split(os.Getenv("SEEDGRID_TEST_RTORRENT_DOWNLOADS"), ",")
+	if u == "" || len(dls) != 2 {
+		t.Skip("SEEDGRID_TEST_RTORRENT_URL and SEEDGRID_TEST_RTORRENT_DOWNLOADS (two hashes) not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	a, err := New(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		for _, h := range dls {
+			_ = a.Stop(context.Background(), h)
+		}
+	}()
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	q := queue.New()
+	for _, h := range dls {
+		if err := a.Start(ctx, h); err != nil {
+			t.Fatalf("Start %s: %v", h, err)
+		}
+	}
+	one := engine.Config{QueueingEnabled: true, MaxActiveDownloads: 1, MaxActiveUploads: -1, MaxActiveTorrents: -1}
+	_ = a.ConfigureQueue(ctx, one)
+	if err := a.queueRound(ctx, q, time.Now(), log); err != nil {
+		t.Fatalf("round: %v", err)
+	}
+	_, older, _ := a.State(ctx, dls[0])
+	_, newer, _ := a.State(ctx, dls[1])
+	if older != "DOWNLOADING" || newer != "QUEUED" {
+		t.Errorf("one download allowed: %s %s, want DOWNLOADING QUEUED", older, newer)
+	}
+	two := one
+	two.MaxActiveDownloads = 2
+	_ = a.ConfigureQueue(ctx, two)
+	if err := a.queueRound(ctx, q, time.Now(), log); err != nil {
+		t.Fatalf("round: %v", err)
+	}
+	if _, st, _ := a.State(ctx, dls[1]); st != "DOWNLOADING" {
+		t.Errorf("two downloads allowed: %s, want DOWNLOADING", st)
+	}
 }

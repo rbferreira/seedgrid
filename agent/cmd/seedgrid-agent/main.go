@@ -127,8 +127,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// An Engine without a queue gets the Agent's (ADR-045 §4).
+	if q, ok := eng.(interface {
+		RunQueue(context.Context, *slog.Logger)
+	}); ok {
+		go q.RunQueue(ctx, logger)
+	}
 	if cfg.EngineAdopted {
-		logger.Info("Node joined with the qBittorrent it already ran: its first settings are read from it (ADR-043)",
+		logger.Info("Node joined with the Engine it already ran: its first settings are read from it (ADR-043)",
 			"storage", cfg.StoragePath, "path_map", cfg.EnginePathMap)
 	}
 
