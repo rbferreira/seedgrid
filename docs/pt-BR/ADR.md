@@ -2066,7 +2066,7 @@ Uma máquina com o hostname de um Node removido pode ser esse Node voltando (foi
 
 **Título:** rTorrent como Torrent Engine — mais um adaptador, o mesmo Node
 
-**Status:** Proposta (#31)
+**Status:** Aprovada — implementação em fatias (#31)
 
 **Contexto**
 O Agent tem um único adaptador de Engine, o do qBittorrent. Muitos operadores fazem seed com rTorrent, geralmente pela interface web ruTorrent. A maioria dos provedores de seedbox já o inclui, muitas vezes em máquinas compartilhadas onde o usuário não tem root. O usuário do fórum que pediu a #31 coordena instâncias locais de qBittorrent e seedboxes remotas com ruTorrent.
