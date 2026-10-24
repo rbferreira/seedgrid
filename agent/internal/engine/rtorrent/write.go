@@ -151,7 +151,7 @@ func (a *Adapter) Delete(ctx context.Context, hash string, deleteFiles bool) err
 	if data == "" {
 		return nil
 	}
-	return os.RemoveAll(data)
+	return os.RemoveAll(data) //nolint:gosec // G703: the torrent's data path as rTorrent reports it, checked above
 }
 
 // Export returns the .torrent of a torrent rTorrent holds (backfill, ADR-018). rTorrent keeps it
