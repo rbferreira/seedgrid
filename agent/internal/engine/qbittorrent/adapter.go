@@ -13,19 +13,12 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rbferreira/seedgrid/agent/internal/engine"
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
-
-// slotLimitRe extracts the DL slot limit per account from the UNIT3D tracker message
-// (error 164): "Your slot limit is reached! You may at most download N torrents at
-// the same time". The N is the very L that the CP's admission controller needs.
-var slotLimitRe = regexp.MustCompile(`(?i)at most download\s+(\d+)\s+torrents`)
 
 // Adapter is the qBittorrent WebUI API client.
 type Adapter struct {
@@ -724,10 +717,8 @@ func (a *Adapter) SlotLimit(ctx context.Context, hashes []string) (int, bool) {
 			continue
 		}
 		for _, t := range trackers {
-			if m := slotLimitRe.FindStringSubmatch(t.Msg); m != nil {
-				if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
-					return n, true
-				}
+			if n, ok := engine.SlotLimitIn(t.Msg); ok {
+				return n, true
 			}
 		}
 	}

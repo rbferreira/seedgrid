@@ -3,7 +3,11 @@
 // into these operations and types, with the SeedGrid state already mapped (Database.md §36).
 package engine
 
-import "context"
+import (
+	"context"
+	"regexp"
+	"strconv"
+)
 
 // Engine is the Torrent Engine as the Agent uses it. Paths it receives and returns are the host's;
 // an adapter whose Engine sees other paths (a container, ADR-043) translates them.
@@ -116,4 +120,23 @@ type Config struct {
 type TrackerVerdict struct {
 	Status  int    // libtorrent status: 2=working, 4=not working, 5=refused…
 	Message string // raw tracker message (e.g.: "Torrent has been deleted.")
+}
+
+// slotLimitRe extracts the DL slot limit per account from the UNIT3D tracker message
+// (error 164): "Your slot limit is reached! You may at most download N torrents at
+// the same time". The N is the very L that the CP's admission controller needs.
+var slotLimitRe = regexp.MustCompile(`(?i)at most download\s+(\d+)\s+torrents`)
+
+// SlotLimitIn returns the per-account download limit a tracker message announces (#21), for
+// adapters to implement SlotLimit with.
+func SlotLimitIn(msg string) (int, bool) {
+	m := slotLimitRe.FindStringSubmatch(msg)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
