@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rbferreira/seedgrid/agent/internal/engine"
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
 )
 
@@ -88,7 +89,7 @@ func TestReadQueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadQueue: %v", err)
 	}
-	want := EngineConfig{
+	want := engine.Config{
 		QueueingEnabled: true, MaxActiveDownloads: 3, MaxActiveUploads: -1, MaxActiveTorrents: 5,
 		MaxActiveCheckingTorrents: 1, DontCountSlowTorrents: true, SlowTorrentDlRateThreshold: 2,
 		SlowTorrentUlRateThreshold: 2, SlowTorrentInactiveTimer: 60,
@@ -98,9 +99,9 @@ func TestReadQueue(t *testing.T) {
 	}
 }
 
-// TestConfigureEngine_SavePathInAContainer (ADR-043): the Agent pins save_path to its storage,
+// TestConfigure_SavePathInAContainer (ADR-043): the Agent pins save_path to its storage,
 // a host folder; an Engine in a container gets the container's path for it.
-func TestConfigureEngine_SavePathInAContainer(t *testing.T) {
+func TestConfigure_SavePathInAContainer(t *testing.T) {
 	var sent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v2/app/setPreferences" {
@@ -116,8 +117,8 @@ func TestConfigureEngine_SavePathInAContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := New(srv.URL, "admin", "pw").WithPaths(m)
-	if err := a.ConfigureEngine(context.Background(), EngineConfig{BTPort: 51413, SavePath: "/mnt/user/torrents"}); err != nil {
-		t.Fatalf("ConfigureEngine: %v", err)
+	if err := a.Configure(context.Background(), engine.Config{BTPort: 51413, SavePath: "/mnt/user/torrents"}); err != nil {
+		t.Fatalf("Configure: %v", err)
 	}
 	if !strings.Contains(sent, `"save_path":"/downloads"`) || !strings.Contains(sent, `"listen_port":51413`) {
 		t.Errorf("preferences sent = %s, want save_path /downloads and the port", sent)

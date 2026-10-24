@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/rbferreira/seedgrid/agent/internal/engine"
 )
 
 // captureSetPreferences spins up a fake server that responds 200 and captures the body
@@ -26,19 +28,19 @@ func captureSetPreferences(t *testing.T) (*httptest.Server, *map[string]any) {
 	return srv, &got
 }
 
-func TestConfigureEngine_QueueingOn(t *testing.T) {
+func TestConfigure_QueueingOn(t *testing.T) {
 	srv, got := captureSetPreferences(t)
 	defer srv.Close()
 
 	a := New(srv.URL, "admin", "pw")
-	ec := EngineConfig{
+	ec := engine.Config{
 		BTPort: 6881, SavePath: "/data", QueueingEnabled: true,
 		MaxActiveDownloads: 3, MaxActiveUploads: 8, MaxActiveTorrents: 40, MaxActiveCheckingTorrents: 1,
 		DontCountSlowTorrents: true, SlowTorrentDlRateThreshold: 1, SlowTorrentUlRateThreshold: 1,
 		SlowTorrentInactiveTimer: 300,
 	}
-	if err := a.ConfigureEngine(context.Background(), ec); err != nil {
-		t.Fatalf("ConfigureEngine: %v", err)
+	if err := a.Configure(context.Background(), ec); err != nil {
+		t.Fatalf("Configure: %v", err)
 	}
 	// Numbers arrive as float64 after json.Unmarshal into any.
 	want := map[string]any{
@@ -61,14 +63,14 @@ func TestConfigureEngine_QueueingOn(t *testing.T) {
 	}
 }
 
-func TestConfigureEngine_QueueingOff(t *testing.T) {
+func TestConfigure_QueueingOff(t *testing.T) {
 	srv, got := captureSetPreferences(t)
 	defer srv.Close()
 
 	a := New(srv.URL, "admin", "pw")
-	ec := EngineConfig{BTPort: 6882, QueueingEnabled: false, MaxActiveDownloads: 3}
-	if err := a.ConfigureEngine(context.Background(), ec); err != nil {
-		t.Fatalf("ConfigureEngine: %v", err)
+	ec := engine.Config{BTPort: 6882, QueueingEnabled: false, MaxActiveDownloads: 3}
+	if err := a.Configure(context.Background(), ec); err != nil {
+		t.Fatalf("Configure: %v", err)
 	}
 	if (*got)["queueing_enabled"] != false {
 		t.Errorf("queueing_enabled = %v; want false", (*got)["queueing_enabled"])
@@ -89,7 +91,7 @@ func TestConfigureQueue_OnlyQueue(t *testing.T) {
 	defer srv.Close()
 
 	a := New(srv.URL, "admin", "pw")
-	ec := EngineConfig{
+	ec := engine.Config{
 		BTPort: 6884, SavePath: "/data", QueueingEnabled: true,
 		MaxActiveDownloads: 3, MaxActiveUploads: 10000, MaxActiveTorrents: 10000, MaxActiveCheckingTorrents: 1,
 		DontCountSlowTorrents: false, SlowTorrentDlRateThreshold: 1, SlowTorrentUlRateThreshold: 1, SlowTorrentInactiveTimer: 300,
@@ -112,7 +114,7 @@ func TestConfigureQueue_QueueDisabledOnlySends_QueueingEnabled(t *testing.T) {
 	defer srv.Close()
 
 	a := New(srv.URL, "admin", "pw")
-	if err := a.ConfigureQueue(context.Background(), EngineConfig{QueueingEnabled: false, MaxActiveDownloads: 3}); err != nil {
+	if err := a.ConfigureQueue(context.Background(), engine.Config{QueueingEnabled: false, MaxActiveDownloads: 3}); err != nil {
 		t.Fatalf("ConfigureQueue: %v", err)
 	}
 	if len(*got) != 1 || (*got)["queueing_enabled"] != false {
@@ -129,7 +131,7 @@ func TestConfigureQueue_EngineError(t *testing.T) {
 	a := New(srv.URL, "admin", "pw")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := a.ConfigureQueue(ctx, EngineConfig{QueueingEnabled: true, MaxActiveDownloads: 3}); err == nil {
+	if err := a.ConfigureQueue(ctx, engine.Config{QueueingEnabled: true, MaxActiveDownloads: 3}); err == nil {
 		t.Fatal("expected error with Engine returning 500")
 	}
 }
