@@ -123,6 +123,21 @@ func TestLoad_UnknownEngine(t *testing.T) {
 	}
 }
 
+// TestLoad_RTorrent (ADR-045): rTorrent is chosen by SEEDGRID_AGENT_ENGINE and needs its XML-RPC URL.
+func TestLoad_RTorrent(t *testing.T) {
+	t.Setenv("SEEDGRID_CONTROL_PLANE_URL", "http://cp:8080")
+	t.Setenv("SEEDGRID_AGENT_ENGINE", "rtorrent")
+	t.Setenv("SEEDGRID_ENGINE_RTORRENT_URL", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SEEDGRID_ENGINE_RTORRENT_URL") {
+		t.Fatalf("Load() without the URL = %v, want an error naming SEEDGRID_ENGINE_RTORRENT_URL", err)
+	}
+	t.Setenv("SEEDGRID_ENGINE_RTORRENT_URL", "scgi:///run/rtorrent/rpc.socket")
+	c, err := Load()
+	if err != nil || c.Engine != EngineRTorrent || c.EngineRTorrentURL != "scgi:///run/rtorrent/rpc.socket" {
+		t.Fatalf("Load() = %q %q %v", c.Engine, c.EngineRTorrentURL, err)
+	}
+}
+
 func TestLoad_EngineContainerDefault(t *testing.T) {
 	t.Setenv("SEEDGRID_CONTROL_PLANE_URL", "http://cp:8080")
 	t.Setenv("SEEDGRID_ENGINE_CONTAINER", "")

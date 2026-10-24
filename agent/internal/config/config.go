@@ -20,8 +20,11 @@ import (
 // `engine_started_at` NULL on a new Node (#146).
 const DefaultEngineContainer = "seedgrid-engine"
 
-// EngineQBittorrent is the SEEDGRID_AGENT_ENGINE of qBittorrent, the default (ADR-045).
-const EngineQBittorrent = "qbittorrent"
+// SEEDGRID_AGENT_ENGINE values: the Engines the Agent has an adapter for (ADR-045).
+const (
+	EngineQBittorrent = "qbittorrent" // the default
+	EngineRTorrent    = "rtorrent"
+)
 
 // Config gathers the Agent's execution parameters.
 type Config struct {
@@ -34,7 +37,10 @@ type Config struct {
 	EngineURL           string
 	EngineUsername      string
 	EnginePassword      string
-	StoragePath         string
+	// EngineRTorrentURL is rTorrent's XML-RPC (SEEDGRID_ENGINE_RTORRENT_URL, ADR-045):
+	// scgi:///path/to/rpc.socket, scgi://host:port or http(s)://[user:pass@]host/RPC2.
+	EngineRTorrentURL string
+	StoragePath       string
 	// StorageRequireMount: the Node declared dedicated disk at StoragePath, so storage is only
 	// healthy if it's a mountpoint (SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT). Set by the
 	// bootstrap on install; absent = true, which is the safe side and what existing Nodes have
@@ -77,6 +83,7 @@ func Load() (Config, error) {
 		EngineURL:           getenv("SEEDGRID_ENGINE_QBT_URL", "http://127.0.0.1:8080"),
 		EngineUsername:      getenv("SEEDGRID_ENGINE_QBT_USERNAME", "admin"),
 		EnginePassword:      os.Getenv("SEEDGRID_ENGINE_QBT_PASSWORD"),
+		EngineRTorrentURL:   os.Getenv("SEEDGRID_ENGINE_RTORRENT_URL"),
 		StoragePath:         getenv("SEEDGRID_AGENT_STORAGE_PATH", "/data"),
 		StorageRequireMount: getenvBool("SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT", true),
 		BTPort:              getenvInt("SEEDGRID_ENGINE_BT_PORT", 6881),
@@ -138,8 +145,14 @@ func Load() (Config, error) {
 	if c.ControlPlaneURL == "" {
 		return c, fmt.Errorf("SEEDGRID_CONTROL_PLANE_URL is required")
 	}
-	if c.Engine != EngineQBittorrent {
-		return c, fmt.Errorf("invalid SEEDGRID_AGENT_ENGINE: %q (supported: %s)", c.Engine, EngineQBittorrent)
+	switch c.Engine {
+	case EngineQBittorrent:
+	case EngineRTorrent:
+		if c.EngineRTorrentURL == "" {
+			return c, fmt.Errorf("SEEDGRID_ENGINE_RTORRENT_URL is required with SEEDGRID_AGENT_ENGINE=%s", EngineRTorrent)
+		}
+	default:
+		return c, fmt.Errorf("invalid SEEDGRID_AGENT_ENGINE: %q (supported: %s, %s)", c.Engine, EngineQBittorrent, EngineRTorrent)
 	}
 	if _, err := pathmap.Parse(c.EnginePathMap); err != nil {
 		return c, fmt.Errorf("invalid SEEDGRID_ENGINE_PATH_MAP: %w", err)
