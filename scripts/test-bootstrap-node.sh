@@ -1141,8 +1141,12 @@ chmod +x "$AGENT_BIN"
 # Found on the bench: values with ; and spaces, which sourcing the env as shell would run.
 printf 'SEEDGRID_AGENT_DATA_DIR=%s\nSEEDGRID_ENGINE_PATH_MAP=/downloads=/srv/a;/data=/srv/b\nSEEDGRID_ENGINE_RESTART_CMD=touch %s/ran-at-start\n' \
   "$AGENT_DATA_DIR" "$WORK" > "$AGENT_ENV"
-printf '0 3 * * * backup.sh\n' > "$WORK/crontab"
 AGENT_SUPERVISOR=cron
+# No crontab yet, under set -e as the bootstrap runs: the table still gets the two lines.
+rm -f "$WORK/crontab"
+( set -e; start_agent ) >/dev/null 2>&1
+assert_eq "cron from no crontab at all, under set -e" "2" "$(grep -c 'run-agent.sh$' "$WORK/crontab" 2>/dev/null)"
+printf '0 3 * * * backup.sh\n' > "$WORK/crontab"
 start_agent
 start_agent # again: replaces, does not add
 assert_eq "cron keeps the user's own lines" "1" "$(grep -c 'backup.sh' "$WORK/crontab")"

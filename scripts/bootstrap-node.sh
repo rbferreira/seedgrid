@@ -1268,7 +1268,9 @@ nohup "$AGENT_BIN" >> "\$log" 2>&1 &
 echo \$! > "$AGENT_DATA_DIR/agent.pid"
 RUN
   chmod 0755 "$run"
-  { crontab -l 2>/dev/null | grep -vF "$run"; echo "@reboot $run"; echo "* * * * * $run"; } | crontab -
+  # `|| true`: with no crontab yet, `crontab -l` fails, grep finds nothing — and under set -e the
+  # group would stop there and install an empty table (found on the bench).
+  { crontab -l 2>/dev/null | grep -vF "$run" || true; echo "@reboot $run"; echo "* * * * * $run"; } | crontab -
   pid=$(cat "$AGENT_DATA_DIR/agent.pid" 2>/dev/null) || pid=""
   [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
   sleep 1
