@@ -7,6 +7,17 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-24
+
+A Node can run rTorrent, and a Node can be installed without root, on a shared seedbox.
+
+### Upgrading
+- **Control Plane:** with the Compose file, download the `compose.yaml` of this release (or set
+  `SEEDGRID_VERSION=0.4.0`) and `docker compose up -d`. With `bootstrap-controller.sh`, update as
+  before (`git pull && git fetch --tags && sh scripts/bootstrap-controller.sh`). No migrations.
+- **Nodes:** update the Agent from the Portal. Existing Nodes keep working as they are; the new
+  Agent is what an rTorrent Node and a user install need.
+
 ### Added
 
 - **A Node can run rTorrent (#31, ADR-045).** `bootstrap-node.sh` with `ENGINE=rtorrent` and
