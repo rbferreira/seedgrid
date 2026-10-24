@@ -90,7 +90,7 @@ func (c *client) postHTTP(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "text/xml")
+	req.Header.Set("Content-Type", "text/xml") // rTorrent 0.16 tells XML-RPC from JSON-RPC by it
 	if c.user != "" {
 		req.SetBasicAuth(c.user, c.pass)
 	}
@@ -124,7 +124,9 @@ func (c *client) postSCGI(ctx context.Context, body []byte) ([]byte, error) {
 	}
 	_ = conn.SetDeadline(deadline)
 
-	headers := "CONTENT_LENGTH\x00" + strconv.Itoa(len(body)) + "\x00SCGI\x001\x00REQUEST_METHOD\x00POST\x00REQUEST_URI\x00/RPC2\x00"
+	// CONTENT_TYPE matters: rTorrent 0.16 also speaks JSON-RPC and drops a request that does not
+	// say it is XML.
+	headers := "CONTENT_LENGTH\x00" + strconv.Itoa(len(body)) + "\x00SCGI\x001\x00REQUEST_METHOD\x00POST\x00REQUEST_URI\x00/RPC2\x00CONTENT_TYPE\x00text/xml\x00"
 	req := make([]byte, 0, len(headers)+len(body)+16)
 	req = append(req, strconv.Itoa(len(headers))+":"+headers+","...)
 	req = append(req, body...)

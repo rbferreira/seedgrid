@@ -168,10 +168,17 @@ func (f *fakeRTorrent) handleSCGI(t *testing.T, conn net.Conn) {
 	}
 	kv := strings.Split(string(hdr[:n]), "\x00")
 	var clen int
+	var ctype string
 	for i := 0; i+1 < len(kv); i += 2 {
-		if kv[i] == "CONTENT_LENGTH" {
+		switch kv[i] {
+		case "CONTENT_LENGTH":
 			clen, _ = strconv.Atoi(kv[i+1])
+		case "CONTENT_TYPE":
+			ctype = kv[i+1]
 		}
+	}
+	if ctype != "text/xml" {
+		return // as rTorrent 0.16 does: it drops what does not say it is XML
 	}
 	body := make([]byte, clen)
 	if _, err := io.ReadFull(r, body); err != nil {
@@ -187,7 +194,7 @@ func (f *fakeRTorrent) serveHTTP(t *testing.T, user, pass string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
-		if !ok || u != user || p != pass {
+		if !ok || u != user || p != pass || r.Header.Get("Content-Type") != "text/xml" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
