@@ -25,6 +25,19 @@
 # Docker and changes no disk or network. The Node joins in Manual: review its settings in the
 # Portal and move it to SG; from then on it is managed like any Node.
 #
+# A machine that runs rTorrent (ADR-045) — the same way in, through rTorrent's XML-RPC:
+#   curl -fsSL http://<IP_DO_CP>/node/bootstrap-node.sh | sudo CP_URL=http://<IP_DO_CP> \
+#     JOIN_TOKEN=<token> ENGINE=rtorrent RTORRENT_URL=scgi:///path/to/rpc.socket sh
+#   RTORRENT_URL is scgi:///<socket>, scgi://127.0.0.1:<port> or http(s)://[user:pass@]host/RPC2
+#   RTORRENT_CONTAINER=<name>       the rTorrent container, when Docker runs more than one
+#   ENGINE_RESTART_CMD='<command>'  what restarts the Engine when nothing else would (a seedbox whose
+#                                   provider owns it, e.g. its "restart rtorrent" command); either Engine
+# rTorrent 0.9.8 or later. It joins with SeedGrid's queue off, as it ran: turn it on in the Portal.
+#
+# Without root (a shared seedbox): run either of the two above without sudo. The Agent is installed
+# for that user (~/.local/bin, ~/.config/seedgrid-agent.env) and kept running by a systemd user
+# service that lingers, or else by cron. Nothing outside the user's home changes.
+#
 # Dedicated disk, or system disk (#221): the script WRITES to /etc/seedgrid-agent.env whether the Agent
 # should require /data to be a mountpoint (SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT). It is declared here,
 # during install, and never inferred later: an unmounted disk looks like a local folder.
@@ -69,7 +82,7 @@ for arg in "$@"; do
     --storage-only) MODE=storage ;;
     --network-only) MODE=network ;;
     -h|--help)
-      sed -n '2,63p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,76p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "!! unknown argument: $arg (use --storage-only, --network-only or --help)"; exit 2 ;;
   esac
@@ -101,11 +114,16 @@ esac
 # ENGINE: install (default) brings up SeedGrid's own qBittorrent; existing keeps the one the machine
 # already runs (ADR-043). Only the onboarding chooses it.
 case "${ENGINE:-install}" in
-  install|existing) ;;
-  *) echo "!! ENGINE must be install or existing (got '$ENGINE')"; exit 2 ;;
+  install|existing|rtorrent) ;;
+  *) echo "!! ENGINE must be install, existing or rtorrent (got '$ENGINE')"; exit 2 ;;
 esac
-if [ "${ENGINE:-install}" = existing ] && [ "$MODE" != full ]; then
-  echo "!! ENGINE=existing is for the onboarding; --storage-only and --network-only do not take it"
+if [ "${ENGINE:-install}" != install ] && [ "$MODE" != full ]; then
+  echo "!! ENGINE=$ENGINE is for the onboarding; --storage-only and --network-only do not take it"
+  exit 2
+fi
+if [ "${ENGINE:-install}" = rtorrent ] && [ -z "${RTORRENT_URL:-}" ]; then
+  echo "!! ENGINE=rtorrent needs RTORRENT_URL: scgi:///path/to/rpc.socket, scgi://127.0.0.1:<port> or"
+  echo "   http(s)://[user:pass@]host/RPC2 — what rTorrent's network.scgi.open_local / open_port or ruTorrent use"
   exit 2
 fi
 if [ "$MODE" = storage ] && [ "${STORAGE_REQUIRE_MOUNT:-}" = false ]; then
@@ -116,6 +134,20 @@ fi
 INSTALL_DIR=/opt/seedgrid-node
 AGENT_ENV=/etc/seedgrid-agent.env
 AGENT_UNIT=/etc/systemd/system/seedgrid-agent.service
+AGENT_BIN=/usr/local/bin/seedgrid-agent
+AGENT_DATA_DIR=/var/lib/seedgrid-agent
+# A user install (ADR-045 §10): a machine's own Engine joined by a regular user — a shared seedbox.
+# Everything lives in the user's home; nothing needs root. ENGINE=install brings up Docker and
+# changes disks and network, so it stays root's.
+USER_INSTALL=0
+if [ "$MODE" = full ] && [ "${ENGINE:-install}" != install ] && [ "$(id -u)" -ne 0 ]; then
+  USER_INSTALL=1
+  INSTALL_DIR="$HOME/.local/share/seedgrid-node"
+  AGENT_ENV="$HOME/.config/seedgrid-agent.env"
+  AGENT_UNIT="$HOME/.config/systemd/user/seedgrid-agent.service"
+  AGENT_BIN="$HOME/.local/bin/seedgrid-agent"
+  AGENT_DATA_DIR="$HOME/.local/share/seedgrid-agent"
+fi
 # The fstab where setup_storage writes the /data mount. Variable only so the test can
 # point it to a disposable file (like NETWORKD_DIR).
 FSTAB=/etc/fstab
@@ -146,7 +178,7 @@ else
   : "${CP_URL:?set CP_URL=http://<cp-ip>}"   # port 80 (the Portal nginx); the backend 8080 is local to the CP
   : "${JOIN_TOKEN:?set JOIN_TOKEN=<join token issued by the Control Plane>}"
 fi
-require_root "$MODE" || exit 1
+[ "$USER_INSTALL" = 1 ] || require_root "$MODE" || exit 1
 
 # Base of the artifacts served by the Portal (nginx on port 80 of the CP).
 ARTIFACTS="${ARTIFACTS:-$(printf '%s' "${CP_URL:-}" | sed -E 's#:[0-9]+$##')}"
@@ -860,22 +892,31 @@ configure_ipv6_suffix() {
 # cross-compiled ARM64 for the RPi — on an amd64 Node it downloaded but wouldn't run.
 # Resolving the arch here is what makes onboarding correct in both worlds.
 install_agent_binary() {
+  download_agent_binary
+  mv -f "$AGENT_BIN.new" "$AGENT_BIN"
+}
+
+# download_agent_binary leaves the Agent at $AGENT_BIN.new, proved to run here. ENGINE=rtorrent
+# needs it before the enroll: the Agent is what speaks to rTorrent (--probe-rtorrent).
+download_agent_binary() {
+  [ "${AGENT_DOWNLOADED:-0}" = 0 ] || return 0
   case "$(uname -m)" in
     x86_64|amd64)  NODE_ARCH=amd64 ;;
     aarch64|arm64) NODE_ARCH=arm64 ;;
     *) echo "!! unsupported architecture: $(uname -m) (the CP publishes amd64 and arm64)"; exit 1 ;;
   esac
   echo "==> downloading Agent for $NODE_ARCH"
+  mkdir -p "$(dirname "$AGENT_BIN")"
   # Next to the binary, then renamed over it: on a machine the bootstrap runs on again the Agent
   # is running, and writing into its binary fails (text file busy); a rename does not.
-  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o /usr/local/bin/seedgrid-agent.new
-  chmod 0755 /usr/local/bin/seedgrid-agent.new
+  curl -fsSL "$ARTIFACTS/node/seedgrid-agent-$NODE_ARCH" -o "$AGENT_BIN.new"
+  chmod 0755 "$AGENT_BIN.new"
   # Proves the binary runs HERE before installing it — same smoke-test that the self-update
   # uses (ADR-027); failing early with a clear message is better than a systemd in a restart loop.
-  /usr/local/bin/seedgrid-agent.new --version >/dev/null 2>&1 || {
-    rm -f /usr/local/bin/seedgrid-agent.new
+  "$AGENT_BIN.new" --version >/dev/null 2>&1 || {
+    rm -f "$AGENT_BIN.new"
     echo "!! the downloaded binary does not run on this host (wrong architecture?)"; exit 1; }
-  mv -f /usr/local/bin/seedgrid-agent.new /usr/local/bin/seedgrid-agent
+  AGENT_DOWNLOADED=1
 }
 
 # start_agent_service installs the Agent's systemd unit and (re)starts it. Restart, not
@@ -1000,29 +1041,54 @@ system_unit() {
   esac
 }
 
-# unit_restarts UNIT: is the service already Restart=always?
-unit_restarts() {
-  [ "$(systemctl show -p Restart --value "$1" 2>/dev/null)" = always ]
+# user_unit PID prints the systemd user service that runs PID (a user install, ADR-045 §10): the
+# service of the user's own systemd, which lingers to run without a login.
+user_unit() {
+  cg=$(sed -n 's/^0::\(.*\)/\1/p; s/^[0-9]*:name=systemd:\(.*\)/\1/p' "${PROC:-/proc}/$1/cgroup" 2>/dev/null | head -1)
+  case "$cg" in
+    */user@*.service/*.service) ;;
+    *) return 1 ;;
+  esac
+  echo "${cg##*/}"
 }
 
-# plan_engine_restart decides how qBittorrent comes back after the Portal's restart (ADR-043 item 7)
-# and sets RESTART_HOW: "container" or "unit" (already restarts), "container-fix" or "unit-fix"
-# (the bootstrap sets it after the enroll). Status 1, with the reason, when nothing would bring it back.
+# unit_restarts UNIT: is the service already Restart=always? SYSTEMCTL is `systemctl --user` for a
+# user install.
+unit_restarts() {
+  [ "$(${SYSTEMCTL:-systemctl} show -p Restart --value "$1" 2>/dev/null)" = always ]
+}
+
+# plan_engine_restart decides how the Engine comes back after the Portal's restart (ADR-043 item 7,
+# ADR-045 §9) and sets RESTART_HOW: "command" (ENGINE_RESTART_CMD, the operator's), "container" or
+# "unit" (already restarts), "container-fix" or "unit-fix" (the bootstrap sets it after the enroll).
+# ENGINE_PORT_FOR_PID is a port the Engine listens on (qBittorrent's WebUI, rTorrent's BitTorrent
+# port). Status 1, with the reason, when nothing would bring it back.
 plan_engine_restart() {
   RESTART_UNIT=""
+  if [ -n "${ENGINE_RESTART_CMD:-}" ]; then
+    RESTART_HOW="command"
+    return 0
+  fi
   if [ -n "$ENGINE_CONTAINER" ]; then
     if container_restarts "$ENGINE_CONTAINER"; then RESTART_HOW=container; else RESTART_HOW="container-fix"; fi
     return 0
   fi
-  pid=$(listening_pid "$(url_port "$QBT_URL")")
-  if [ -n "$pid" ] && RESTART_UNIT=$(system_unit "$pid"); then
+  pid=$(listening_pid "${ENGINE_PORT_FOR_PID:-$(url_port "$QBT_URL")}")
+  if [ -n "$pid" ]; then
+    if [ "${USER_INSTALL:-0}" = 1 ]; then RESTART_UNIT=$(user_unit "$pid") || RESTART_UNIT=""
+    else RESTART_UNIT=$(system_unit "$pid") || RESTART_UNIT=""; fi
+  fi
+  if [ -n "$RESTART_UNIT" ]; then
     if unit_restarts "$RESTART_UNIT"; then RESTART_HOW=unit; else RESTART_HOW="unit-fix"; fi
     return 0
   fi
-  echo "!! could not find what runs this qBittorrent: it is not in a Docker container nor a system"
-  echo "   service. Restarting the Engine from the Portal shuts it down and relies on something bringing"
-  echo "   it back. Run qBittorrent in a container or as a system service (e.g. qbittorrent-nox@<user>)"
-  echo "   and run this again. Nothing was changed."
+  name=${ENGINE_NAME:-qBittorrent}
+  kind="a system service (e.g. qbittorrent-nox@<user>)"
+  [ "${USER_INSTALL:-0}" = 0 ] || kind="a systemd user service that lingers"
+  echo "!! could not find what runs this $name: it is not in a Docker container nor $kind"
+  echo "   (in tmux or screen?). Restarting the Engine from the Portal shuts it down and relies on something"
+  echo "   bringing it back. Run $name in a container or as such a service, or give the command that"
+  echo "   restarts it with ENGINE_RESTART_CMD='<command>', and run this again. Nothing was changed."
   return 1
 }
 
@@ -1037,29 +1103,45 @@ apply_engine_restart() {
         echo "      next docker compose up puts the old policy back."
       fi ;;
     unit-fix)
-      dir="${SYSTEMD_DIR:-/etc/systemd/system}/$RESTART_UNIT.d"
+      base=/etc/systemd/system
+      [ "${USER_INSTALL:-0}" = 0 ] || base="$HOME/.config/systemd/user"
+      dir="${SYSTEMD_DIR:-$base}/$RESTART_UNIT.d"
       mkdir -p "$dir"
       printf '[Service]\nRestart=always\nRestartSec=5\n' > "$dir/seedgrid-restart.conf"
-      systemctl daemon-reload
+      ${SYSTEMCTL:-systemctl} daemon-reload
       echo "   service $RESTART_UNIT: Restart=always (drop-in seedgrid-restart.conf; the Portal's restart needs it)" ;;
   esac
 }
 
-# engine_container prints the name of the running qBittorrent container: QBT_CONTAINER when given,
-# otherwise the only running container whose image is a qBittorrent. Prints nothing for a
-# qBittorrent installed on the host (or without Docker); returns 1 when there are several and
-# none was chosen.
+# say_restart_plan tells what plan_engine_restart found.
+say_restart_plan() {
+  case "$RESTART_HOW" in
+    command) echo "   restart: the Portal's restart runs ENGINE_RESTART_CMD" ;;
+    container) echo "   restart: container $ENGINE_CONTAINER brings it back" ;;
+    unit) echo "   restart: service $RESTART_UNIT brings it back" ;;
+    container-fix) echo "   restart: the container's policy will be set to unless-stopped" ;;
+    unit-fix) echo "   restart: service $RESTART_UNIT will get Restart=always" ;;
+  esac
+}
+
+# engine_container [PATTERN CHOSEN VAR] prints the name of the running Engine container: CHOSEN when
+# given, otherwise the only running container whose image matches PATTERN (default: qBittorrent's,
+# with QBT_CONTAINER). Prints nothing for an Engine installed on the host (or without Docker);
+# returns 1, naming VAR, when there are several and none was chosen.
 engine_container() {
-  if [ -n "${QBT_CONTAINER:-}" ]; then
-    echo "$QBT_CONTAINER"
+  pattern=${1:-qbittorrent}
+  chosen=${2-${QBT_CONTAINER:-}}
+  var=${3:-QBT_CONTAINER}
+  if [ -n "$chosen" ]; then
+    echo "$chosen"
     return 0
   fi
   command -v docker >/dev/null 2>&1 || return 0
-  found=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($2) ~ /qbittorrent/ { print $1 }')
+  found=$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk -v re="$pattern" 'tolower($2) ~ re { print $1 }')
   case "$(printf '%s\n' "$found" | grep -c .)" in
     0) return 0 ;;
     1) echo "$found" ;;
-    *) echo "!! several qBittorrent containers are running ($(echo "$found" | tr '\n' ' ')): choose one with QBT_CONTAINER=<name>" >&2
+    *) echo "!! several containers match ($(echo "$found" | tr '\n' ' ')): choose one with $var=<name>" >&2
        return 1 ;;
   esac
 }
@@ -1069,7 +1151,7 @@ engine_container() {
 # left out: no torrent lives there, and the Agent may serve data from every mapped folder.
 container_path_map() {
   docker inspect -f '{{range .Mounts}}{{.Destination}}={{.Source}}{{"\n"}}{{end}}' "$1" 2>/dev/null \
-    | awk -F= 'NF == 2 && $1 != "/config" && $1 != "" { printf "%s%s", sep, $0; sep = ";" }'
+    | awk -F= -v all="${2:-}" 'NF == 2 && (all != "" || $1 != "/config") && $1 != "" { printf "%s%s", sep, $0; sep = ";" }'
 }
 
 # host_path MAP PATH translates an Engine path to the host, by the longest matching prefix of MAP
@@ -1098,6 +1180,107 @@ extract_exporter_compose() {
   ' "$1"
 }
 
+# start_host_metrics uses a node-exporter already on :9100, or starts SeedGrid's in Docker. Without
+# either the Node joins without host metrics, as it says.
+start_host_metrics() {
+  if curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:9100/metrics 2>/dev/null; then
+    echo "==> port 9100 already serves metrics — using that exporter"
+  elif docker info >/dev/null 2>&1; then
+    echo "==> starting node-exporter (host metrics)"
+    TMP_COMPOSE=$(mktemp)
+    curl -fsSL "$ARTIFACTS/node/docker-compose.yml" -o "$TMP_COMPOSE"
+    extract_exporter_compose "$TMP_COMPOSE" > "$INSTALL_DIR/node-exporter.yml"
+    rm -f "$TMP_COMPOSE"
+    ( cd "$INSTALL_DIR" && docker compose -f node-exporter.yml up -d )
+  else
+    echo "   !! no Docker and nothing on port 9100: the Node joins without host metrics (CPU, network)."
+    echo "      Run a node-exporter on port 9100 (prometheus-node-exporter, or its binary) to get them."
+  fi
+}
+
+# plan_user_agent decides, before the enroll, what keeps a user install's Agent running
+# (ADR-045 §10) and sets AGENT_SUPERVISOR: "systemd" — the user's systemd, lingering, so it runs
+# without a login and starts at boot — or "cron" (@reboot and every minute). Status 1 with neither.
+plan_user_agent() {
+  if systemctl --user show-environment >/dev/null 2>&1; then
+    if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ] \
+       || loginctl enable-linger "$(id -un)" >/dev/null 2>&1; then
+      AGENT_SUPERVISOR=systemd
+      return 0
+    fi
+  fi
+  if command -v crontab >/dev/null 2>&1; then
+    AGENT_SUPERVISOR=cron
+    return 0
+  fi
+  echo "!! nothing here can keep the Agent running for $(id -un): no systemd user service that lingers"
+  echo "   (loginctl enable-linger) and no crontab. Ask the provider for either, or install as root."
+  echo "   Nothing was changed."
+  return 1
+}
+
+# start_agent (re)starts the Agent: the system service, or a user install's supervisor.
+start_agent() {
+  if [ "$USER_INSTALL" = 0 ]; then
+    start_agent_service
+    return
+  fi
+  mkdir -p "$AGENT_DATA_DIR"
+  # Self-update rollback (ADR-027), as the system unit's ExecStartPre does.
+  rollback="$AGENT_BIN --version >/dev/null 2>&1 || { [ -x $AGENT_BIN.prev ] && cp -f $AGENT_BIN.prev $AGENT_BIN; }"
+  if [ "$AGENT_SUPERVISOR" = systemd ]; then
+    mkdir -p "$(dirname "$AGENT_UNIT")"
+    cat > "$AGENT_UNIT" <<UNIT
+[Unit]
+Description=SeedGrid Agent
+After=network-online.target
+
+[Service]
+EnvironmentFile=$AGENT_ENV
+ExecStartPre=-/bin/sh -c '$rollback'
+ExecStart=$AGENT_BIN
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+    systemctl --user daemon-reload
+    systemctl --user enable seedgrid-agent
+    systemctl --user restart seedgrid-agent
+    return
+  fi
+  run="$INSTALL_DIR/run-agent.sh"
+  cat > "$run" <<RUN
+#!/bin/sh
+# Starts the SeedGrid Agent unless it runs (cron, ADR-045 §10). The self-update re-executes in place.
+pid=\$(cat "$AGENT_DATA_DIR/agent.pid" 2>/dev/null)
+[ -n "\$pid" ] && kill -0 "\$pid" 2>/dev/null && exit 0
+$rollback
+log="$AGENT_DATA_DIR/agent.log"
+[ "\$(wc -c 2>/dev/null < "\$log" || echo 0)" -lt 10485760 ] || mv -f "\$log" "\$log.1"
+set -a; . "$AGENT_ENV"; set +a
+nohup "$AGENT_BIN" >> "\$log" 2>&1 &
+echo \$! > "$AGENT_DATA_DIR/agent.pid"
+RUN
+  chmod 0755 "$run"
+  { crontab -l 2>/dev/null | grep -vF "$run"; echo "@reboot $run"; echo "* * * * * $run"; } | crontab -
+  pid=$(cat "$AGENT_DATA_DIR/agent.pid" 2>/dev/null) || pid=""
+  [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+  sleep 1
+  "$run"
+}
+
+# agent_env_extra prints the env lines every Agent of a machine's own Engine may need: a user
+# install's data folder and supervisor, and the operator's restart command.
+agent_env_extra() {
+  if [ "$USER_INSTALL" = 1 ]; then
+    echo "SEEDGRID_AGENT_DATA_DIR=$AGENT_DATA_DIR"
+    [ "$AGENT_SUPERVISOR" = systemd ] || echo "SEEDGRID_AGENT_SUPERVISED=false"
+  fi
+  [ -z "${ENGINE_RESTART_CMD:-}" ] || echo "SEEDGRID_ENGINE_RESTART_CMD=$ENGINE_RESTART_CMD"
+}
+
 # write_adopted_agent_env writes the Agent env of a Node joining with its own qBittorrent. The
 # storage is the host folder of the Engine's save_path; there is no dedicated-disk requirement,
 # because SeedGrid did not mount that disk.
@@ -1114,8 +1297,18 @@ write_adopted_agent_env() {
     [ -z "$PATH_MAP" ] || echo "SEEDGRID_ENGINE_PATH_MAP=$PATH_MAP"
     echo "SEEDGRID_AGENT_STORAGE_PATH=$HOST_SAVE"
     echo "SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false"
+    agent_env_extra
   } > "$AGENT_ENV"
   chmod 0600 "$AGENT_ENV"
+}
+
+# install_node_files installs, after the enroll, what an adopted Node keeps: the script's copy, the
+# Agent (and its system unit, for a root install).
+install_node_files() {
+  mkdir -p "$INSTALL_DIR"
+  [ "$USER_INSTALL" = 1 ] || curl -fsSL "$ARTIFACTS/node/seedgrid-agent.service" -o "$INSTALL_DIR/seedgrid-agent.service"
+  save_self
+  install_agent_binary
 }
 
 # adopt_existing_engine is the whole onboarding of ENGINE=existing.
@@ -1163,12 +1356,8 @@ adopt_existing_engine() {
   fi
   echo "   storage: $HOST_SAVE ($(df -h "$HOST_SAVE" 2>/dev/null | awk 'NR==2{print $4" free of "$2}'))"
   plan_engine_restart || exit 1
-  case "$RESTART_HOW" in
-    container) echo "   restart: container $ENGINE_CONTAINER brings it back" ;;
-    unit) echo "   restart: service $RESTART_UNIT brings it back" ;;
-    container-fix) echo "   restart: the container's policy will be set to unless-stopped" ;;
-    unit-fix) echo "   restart: service $RESTART_UNIT will get Restart=always" ;;
-  esac
+  say_restart_plan
+  if [ "$USER_INSTALL" = 1 ]; then plan_user_agent || exit 1; fi
   # The one thing that changes (ADR-043 item 5): the Agent pins the port, as on every Node.
   if printf '%s' "$PREFS" | json_true upnp; then
     echo "   !! UPnP is on in this qBittorrent. SeedGrid turns it off, as on every Node: if the router"
@@ -1191,29 +1380,11 @@ adopt_existing_engine() {
     echo "      have the port forward; on different networks this is fine."
   fi
 
-  mkdir -p "$INSTALL_DIR"
-  curl -fsSL "$ARTIFACTS/node/seedgrid-agent.service" -o "$INSTALL_DIR/seedgrid-agent.service"
-  save_self
-  install_agent_binary
-
-  # Host metrics (node-exporter on :9100, scraped by Prometheus).
-  if curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:9100/metrics 2>/dev/null; then
-    echo "==> port 9100 already serves metrics — using that exporter"
-  elif command -v docker >/dev/null 2>&1; then
-    echo "==> starting node-exporter (host metrics)"
-    TMP_COMPOSE=$(mktemp)
-    curl -fsSL "$ARTIFACTS/node/docker-compose.yml" -o "$TMP_COMPOSE"
-    extract_exporter_compose "$TMP_COMPOSE" > "$INSTALL_DIR/node-exporter.yml"
-    rm -f "$TMP_COMPOSE"
-    ( cd "$INSTALL_DIR" && docker compose -f node-exporter.yml up -d )
-  else
-    echo "   !! no Docker and nothing on port 9100: the Node joins without host metrics (CPU, network)."
-    echo "      Install prometheus-node-exporter from your distribution to get them."
-  fi
-
+  install_node_files
+  start_host_metrics
   apply_engine_restart
   write_adopted_agent_env
-  start_agent_service
+  start_agent
 
   echo "==> done. The Node registered with the Control Plane keeping qBittorrent as it is:"
   echo "    port $BT_PORT (your port forward and firewall rule stay valid), downloads in $SAVE_PATH,"
@@ -1221,6 +1392,124 @@ adopt_existing_engine() {
   echo "    A new Node joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or"
   echo "    rotate them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
   echo "    from then on SeedGrid manages it like any Node. A removed Node coming back keeps its mode."
+  [ "$USER_INSTALL" = 0 ] || echo "    The Agent runs as $(id -un) ($AGENT_SUPERVISOR); its settings are in $AGENT_ENV."
+  echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
+}
+
+# probe_value KEY prints KEY's value from the Agent's --probe-rtorrent output (PROBE).
+probe_value() {
+  printf '%s\n' "$PROBE" | sed -n "s/^$1=//p" | head -1
+}
+
+# write_rtorrent_agent_env writes the Agent env of a Node joining with its rTorrent (ADR-045).
+write_rtorrent_agent_env() {
+  mkdir -p "$(dirname "$AGENT_ENV")"
+  {
+    echo "SEEDGRID_CONTROL_PLANE_URL=$CP_URL"
+    echo "SEEDGRID_AGENT_REGISTRATION_TOKEN=$JOIN_TOKEN"
+    echo "SEEDGRID_AGENT_ENGINE=rtorrent"
+    echo "SEEDGRID_ENGINE_RTORRENT_URL=$RTORRENT_URL"
+    echo "SEEDGRID_ENGINE_BT_PORT=$BT_PORT"
+    echo "SEEDGRID_ENGINE_ADOPTED=true"
+    [ -z "$ENGINE_CONTAINER" ] || echo "SEEDGRID_ENGINE_CONTAINER=$ENGINE_CONTAINER"
+    [ -z "$PATH_MAP" ] || echo "SEEDGRID_ENGINE_PATH_MAP=$PATH_MAP"
+    echo "SEEDGRID_AGENT_STORAGE_PATH=$HOST_SAVE"
+    echo "SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT=false"
+    agent_env_extra
+  } > "$AGENT_ENV"
+  chmod 0600 "$AGENT_ENV"
+}
+
+# join_rtorrent is the whole onboarding of ENGINE=rtorrent (ADR-045 §8): the way in of ADR-043,
+# with rTorrent read through the Agent. Everything is checked before the enroll.
+join_rtorrent() {
+  ENGINE_NAME=rTorrent
+  echo "==> checking the rTorrent at $RTORRENT_URL (ADR-045)"
+  download_agent_binary
+  if ! PROBE=$("$AGENT_BIN.new" --probe-rtorrent "$RTORRENT_URL" 2>&1); then
+    rm -f "$AGENT_BIN.new"
+    echo "!! $PROBE"
+    echo "   Check RTORRENT_URL and that this user can open it. Nothing was changed."
+    exit 1
+  fi
+  RT_VERSION=$(probe_value version)
+  ENGINE_PORT=$(probe_value port)
+  RT_RANGE=$(probe_value port_range)
+  RT_DIR=$(probe_value directory)
+  RT_SESSION=$(probe_value session)
+  echo "   rTorrent $RT_VERSION — port $ENGINE_PORT, downloads in $RT_DIR"
+  if [ -z "$RT_SESSION" ]; then
+    rm -f "$AGENT_BIN.new"
+    echo "!! this rTorrent runs without a session folder (session.path): it forgets its torrents when it"
+    echo "   restarts, and SeedGrid restarts it. Set session.path in its .rtorrent.rc and run this again."
+    echo "   Nothing was changed."
+    exit 1
+  fi
+
+  ENGINE_CONTAINER=$(engine_container 'ru?torrent' "${RTORRENT_CONTAINER:-}" RTORRENT_CONTAINER) || exit 1
+  PATH_MAP="${ENGINE_PATH_MAP:-}"
+  if [ -z "$PATH_MAP" ] && [ -n "$ENGINE_CONTAINER" ]; then
+    PATH_MAP=$(container_path_map "$ENGINE_CONTAINER")
+    # The session folder is where the Agent reads each .torrent (ADR-045 §6); a container may keep it
+    # under /config, which the map leaves out: that one folder goes in.
+    SESSION_HOST=$(host_path "$(container_path_map "$ENGINE_CONTAINER" all)" "$RT_SESSION")
+    if [ "$(host_path "$PATH_MAP" "$RT_SESSION")" != "$SESSION_HOST" ]; then
+      PATH_MAP="${PATH_MAP:+$PATH_MAP;}$RT_SESSION=$SESSION_HOST"
+    fi
+  fi
+  [ -z "$ENGINE_CONTAINER" ] || echo "   container: $ENGINE_CONTAINER"
+  [ -z "$PATH_MAP" ] || echo "   paths (container=host): $PATH_MAP"
+  HOST_SAVE=$(host_path "$PATH_MAP" "$RT_DIR")
+  if [ ! -d "$HOST_SAVE" ]; then
+    rm -f "$AGENT_BIN.new"
+    echo "!! rTorrent saves to $RT_DIR, which is $HOST_SAVE on this machine — and that folder does not exist here."
+    echo "   If rTorrent runs in a container, pass ENGINE_PATH_MAP=<container path>=<host path>. Nothing was changed."
+    exit 1
+  fi
+  if [ ! -r "$(host_path "$PATH_MAP" "$RT_SESSION")" ]; then
+    rm -f "$AGENT_BIN.new"
+    echo "!! the Agent cannot read rTorrent's session folder ($(host_path "$PATH_MAP" "$RT_SESSION")), where it reads"
+    echo "   each torrent's .torrent. Run this as the user rTorrent runs as, or map the folder with ENGINE_PATH_MAP."
+    echo "   Nothing was changed."
+    exit 1
+  fi
+  echo "   storage: $HOST_SAVE ($(df -h "$HOST_SAVE" 2>/dev/null | awk 'NR==2{print $4" free of "$2}'))"
+  ENGINE_PORT_FOR_PID=$ENGINE_PORT
+  if [ "$USER_INSTALL" = 1 ]; then SYSTEMCTL="systemctl --user"; fi
+  plan_engine_restart || { rm -f "$AGENT_BIN.new"; exit 1; }
+  say_restart_plan
+  if [ "$USER_INSTALL" = 1 ]; then plan_user_agent || { rm -f "$AGENT_BIN.new"; exit 1; }; fi
+  # As on every Node, one fixed port (ADR-043 item 5); rTorrent opens it at its next start.
+  if [ "$(probe_value port_random)" = true ] || [ "$RT_RANGE" != "$ENGINE_PORT-$ENGINE_PORT" ]; then
+    echo "   !! rTorrent may listen on any port of $RT_RANGE$([ "$(probe_value port_random)" = true ] && echo ', picked at random'):"
+    echo "      SeedGrid keeps it at $ENGINE_PORT, from rTorrent's next start. Forward that one port."
+  fi
+
+  echo "==> enroll no Control Plane"
+  ENROLL_JSON=$(curl -fsS -X POST "$CP_URL/api/v1/agent/enroll" -H 'Content-Type: application/json' \
+    -d "{\"token\":\"$JOIN_TOKEN\",\"bt_port\":$ENGINE_PORT,$(enroll_identity)}") || ENROLL_JSON=""
+  BT_PORT=$(printf '%s' "$ENROLL_JSON" | json_num bt_port)
+  [ -n "$BT_PORT" ] || { rm -f "$AGENT_BIN.new"; echo "!! enroll failed (invalid/expired join token?)"; exit 1; }
+  SHARED=$(printf '%s' "$ENROLL_JSON" | json_str bt_port_shared_with)
+  if [ -n "$SHARED" ]; then
+    echo "   !! port $BT_PORT is also the port of Node «$SHARED». Behind the same IPv4 only one of them can"
+    echo "      have the port forward; on different networks this is fine."
+  fi
+
+  install_node_files
+  start_host_metrics
+  apply_engine_restart
+  write_rtorrent_agent_env
+  start_agent
+
+  echo "==> done. The Node registered with the Control Plane keeping rTorrent as it is: port $BT_PORT,"
+  echo "    downloads in $RT_DIR. ruTorrent, if you use it, keeps working next to SeedGrid."
+  echo "    rTorrent has no download queue: SeedGrid's starts OFF, as rTorrent ran — turn it on in the"
+  echo "    Node's settings if you want SeedGrid to limit simultaneous downloads."
+  echo "    A new Node joins in MANUAL mode: SeedGrid shows its torrents but does not pause, start or"
+  echo "    rotate them. Review the Node's settings in the Portal, then move it to SG (Dashboard → Mode):"
+  echo "    from then on SeedGrid manages it like any Node. A removed Node coming back keeps its mode."
+  [ "$USER_INSTALL" = 0 ] || echo "    The Agent runs as $(id -un) ($AGENT_SUPERVISOR); its settings are in $AGENT_ENV."
   echo "    Check the Portal: $ARTIFACTS  (Health & Metrics)."
 }
 
@@ -1274,7 +1563,13 @@ fi
 
 # A machine that already runs qBittorrent: its own path, from here to the end (ADR-043).
 if [ "${ENGINE:-install}" = existing ]; then
+  if [ "$USER_INSTALL" = 1 ]; then SYSTEMCTL="systemctl --user"; fi
   adopt_existing_engine
+  exit 0
+fi
+# A machine that runs rTorrent: the same way in, through rTorrent's XML-RPC (ADR-045).
+if [ "${ENGINE:-install}" = rtorrent ]; then
+  join_rtorrent
   exit 0
 fi
 
