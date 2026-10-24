@@ -24,6 +24,7 @@ import (
 	"github.com/rbferreira/seedgrid/agent/internal/config"
 	"github.com/rbferreira/seedgrid/agent/internal/engine"
 	"github.com/rbferreira/seedgrid/agent/internal/engine/qbittorrent"
+	"github.com/rbferreira/seedgrid/agent/internal/engine/rtorrent"
 	"github.com/rbferreira/seedgrid/agent/internal/identity"
 	"github.com/rbferreira/seedgrid/agent/internal/inventory"
 	"github.com/rbferreira/seedgrid/agent/internal/pathmap"
@@ -161,19 +162,8 @@ func run() error {
 	applyEngine := func(actx context.Context, q config.QueueSettings, first bool) error {
 		lctx, lcancel := context.WithTimeout(actx, 15*time.Second)
 		defer lcancel()
-		ec := engine.Config{
-			BTPort:                     cfg.BTPort,
-			SavePath:                   cfg.StoragePath,
-			QueueingEnabled:            q.Enabled,
-			MaxActiveDownloads:         q.MaxActiveDownloads,
-			MaxActiveUploads:           q.MaxActiveUploads,
-			MaxActiveTorrents:          q.MaxActiveTorrents,
-			MaxActiveCheckingTorrents:  q.MaxActiveChecking,
-			DontCountSlowTorrents:      q.DontCountSlow,
-			SlowTorrentDlRateThreshold: q.SlowDlThreshold,
-			SlowTorrentUlRateThreshold: q.SlowUlThreshold,
-			SlowTorrentInactiveTimer:   q.SlowInactiveTimer,
-		}
+		ec := queueConfig(q)
+		ec.BTPort, ec.SavePath = cfg.BTPort, cfg.StoragePath
 		if first {
 			// First application of the process: also sets what belongs to the MACHINE — the listening
 			// BitTorrent port (matches the operator's port forward) and the save_path.
@@ -378,8 +368,29 @@ func newEngine(cfg config.Config, paths pathmap.Map) (engine.Engine, error) {
 	switch cfg.Engine {
 	case config.EngineQBittorrent:
 		return qbittorrent.New(cfg.EngineURL, cfg.EngineUsername, cfg.EnginePassword).WithPaths(paths), nil
+	case config.EngineRTorrent:
+		a, err := rtorrent.New(cfg.EngineRTorrentURL)
+		if err != nil {
+			return nil, err
+		}
+		return a.WithPaths(paths).WithQueue(queueConfig(cfg.Behavior().Queue)), nil
 	default:
 		return nil, fmt.Errorf("no adapter for Engine %q", cfg.Engine)
+	}
+}
+
+// queueConfig is the Engine queue of the engine.* settings (ADR-039).
+func queueConfig(q config.QueueSettings) engine.Config {
+	return engine.Config{
+		QueueingEnabled:            q.Enabled,
+		MaxActiveDownloads:         q.MaxActiveDownloads,
+		MaxActiveUploads:           q.MaxActiveUploads,
+		MaxActiveTorrents:          q.MaxActiveTorrents,
+		MaxActiveCheckingTorrents:  q.MaxActiveChecking,
+		DontCountSlowTorrents:      q.DontCountSlow,
+		SlowTorrentDlRateThreshold: q.SlowDlThreshold,
+		SlowTorrentUlRateThreshold: q.SlowUlThreshold,
+		SlowTorrentInactiveTimer:   q.SlowInactiveTimer,
 	}
 }
 

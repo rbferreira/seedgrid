@@ -28,6 +28,7 @@ type Adapter struct {
 	// paths translates between the Engine's paths and the host's (ADR-043); the zero value is
 	// the identity.
 	paths pathmap.Map
+	queue queueState
 }
 
 // New creates the adapter. rawURL is SEEDGRID_ENGINE_RTORRENT_URL: scgi:///path/to/rpc.socket,
@@ -43,6 +44,13 @@ func New(rawURL string) (*Adapter, error) {
 // WithPaths sets the translation between the Engine's paths and the host's (ADR-043).
 func (a *Adapter) WithPaths(m pathmap.Map) *Adapter {
 	a.paths = m
+	return a
+}
+
+// WithQueue sets the queue settings the Agent starts from (its env baseline), before the Control
+// Plane's arrive: they are what ReadQueue reports, with the queue off.
+func (a *Adapter) WithQueue(c engine.Config) *Adapter {
+	a.queue.cfg = c
 	return a
 }
 
