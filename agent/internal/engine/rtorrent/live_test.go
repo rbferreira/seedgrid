@@ -3,7 +3,7 @@ package rtorrent
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: the BitTorrent v1 info hash is SHA-1
 	"fmt"
 	"os"
 	"regexp"
@@ -108,7 +108,7 @@ func infoHash(t *testing.T, data []byte) string {
 			t.Fatal(err)
 		}
 		if string(data[i:keyEnd]) == "4:info" {
-			return fmt.Sprintf("%x", sha1.Sum(data[keyEnd:valEnd])) //nolint:gosec // G401: the BitTorrent v1 info hash is SHA-1
+			return fmt.Sprintf("%x", sha1.Sum(data[keyEnd:valEnd]))
 		}
 		i = valEnd
 	}

@@ -74,7 +74,7 @@ func TestAddFileTo(t *testing.T) {
 func TestDelete_Files(t *testing.T) {
 	dir := t.TempDir()
 	data := filepath.Join(dir, "album")
-	if err := os.MkdirAll(filepath.Join(data, "cd1"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(data, "cd1"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	f := fakeWithTorrents(torrentRow("AAAA", "album", 1, 1, 1, 0, "", 1, 1, 0, 0, 0, 0, data, 1, ""))
