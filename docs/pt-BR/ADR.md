@@ -2062,6 +2062,82 @@ Uma máquina com o hostname de um Node removido pode ser esse Node voltando (foi
 2. Control Plane: migração (`machine_id`, índice único parcial), registro e enroll, `NODE_RETURNED`, `410 node_removed`.
 3. Agent: `machine_id` e `node_id` no registro, tratamento do `410`; bootstrap: `machine_id` e hostname no enroll. Guias.
 
+# **ADR-045**
+
+**Título:** rTorrent como Torrent Engine — mais um adaptador, o mesmo Node
+
+**Status:** Aprovada — implementação em fatias (#31)
+
+**Contexto**
+O Agent tem um único adaptador de Engine, o do qBittorrent. Muitos operadores fazem seed com rTorrent, geralmente pela interface web ruTorrent. A maioria dos provedores de seedbox já o inclui, muitas vezes em máquinas compartilhadas onde o usuário não tem root. O usuário do fórum que pediu a #31 coordena instâncias locais de qBittorrent e seedboxes remotas com ruTorrent.
+
+A §9 de `Engine.md` diz que trocar o Engine não pode alterar o Control Plane, o Scheduler, o Portal ou a API. A ADR-043 (revisada) adiciona o princípio definido pelo operador na #32: uma vez no Cluster, um Node é igual a qualquer outro. Se um Node não tiver uma capacidade (publicação, reinício), ele não é suportado, em vez de ser suportado com limitações.
+
+**Problema**
+(a) O Agent foi escrito diretamente contra o adaptador do qBittorrent: o tipo é usado em `main` e strings de estado vazam para o loop de sincronização. (b) O rTorrent usa XML-RPC, via SCGI (socket Unix ou porta TCP) ou servidor web, e não uma API JSON WebUI. (c) O rTorrent não tem um campo único de estado. (d) Funcionalidades que o SeedGrid usa no qBittorrent e faltam no rTorrent: fila de download (`engine.*`, ADR-039), criador de torrents (publicação, ADR-019), exportação de `.torrent` e veredito de conectividade (ADR-034). (e) Em seedboxes compartilhadas, o Agent roda sem root, units de sistema do systemd ou Docker, e o ciclo de vida do rTorrent pode ser gerenciado por outro processo.
+
+**Alternativas consideradas**
+1. **Usar os endpoints HTTP do ruTorrent.** São backend de UI: não documentados, dependentes de plugins e inexistentes quando o rTorrent roda sem ruTorrent. Rejeitada.
+2. **Suportar o rTorrent como um Node reduzido** (sem fila, sem publicação, sem reinício), com o Portal indicando quais configurações não se aplicam. Esse é exatamente o tipo de Node que a ADR-043 rejeitou. Rejeitada.
+3. **Envolver o rTorrent num shim compatível com qBittorrent.** Mais um daemon para instalar e manter alinhado com duas APIs. Rejeitada.
+4. **Um adaptador de rTorrent atrás de uma interface Engine, com o Agent fornecendo o que falta.** A fila e o criador de torrents são implementados no Agent, uma única vez, para qualquer Engine que não os tenha.
+
+**Decisão** (alternativa 4)
+
+1. **Uma interface de Engine no Agent.** O código do Agent depende de `engine.Engine`, não de um adaptador concreto: torrents com o estado SeedGrid já mapeado (Database.md §36), adicionar/parar/iniciar/reverificar/excluir, exportar, caminho do conteúdo, trackers, versão, disponibilidade, conectividade, preferências (porta, pasta, fila) e desligamento. O adaptador qBittorrent passa para trás dela sem mudanças. `SEEDGRID_ENGINE` (`qbittorrent`, o padrão, ou `rtorrent`) escolhe o adaptador.
+
+2. **Protocolo: XML-RPC, local.** `SEEDGRID_ENGINE_RTORRENT_URL` é `scgi:///path/to/rpc.socket`, `scgi://127.0.0.1:5000` ou `http(s)://…/RPC2` (com basic auth) para setups que só expõem via servidor web. O codec XML-RPC é pequeno e está no Agent: sem dependência externa. Suportado: rTorrent **0.9.8 ou superior** (`d.multicall2`, `system.client_version`).
+
+3. **Mapeamento de estado.** `d.hashing` ≠ 0 → CHECKING; `d.message` definido e tracker recusando → ERROR (a mensagem é o motivo, como no qBittorrent); parado (`d.state` 0) e completo → PAUSED; parado, incompleto e marcado como enfileirado pelo Agent → QUEUED; parado e incompleto nos demais casos → PAUSED; iniciado e completo → SEEDING; iniciado e incompleto → DOWNLOADING. As contagens de swarm e peers conectados vêm do scrape dos trackers (`t.scrape_complete`/`t.scrape_incomplete`) e da lista de peers.
+
+4. **A fila é do Agent quando a Engine não tem.** O rTorrent inicia todo torrent que possui. Para uma Engine sem fila, o Agent aplica as configurações `engine.*` num loop curto: mantém no máximo `max_active_downloads` downloads ativos (e os limites de upload e total), para os demais e marca como enfileirados (chave `d.custom` `seedgrid`), inicia o mais antigo quando vaga abre e, com `dont_count_slow`, ignora downloads abaixo dos limites lentos por tempo maior que o timer. Só inicia torrents que ele mesmo enfileirou: torrent parado pelo operador ou pelo admission controller (ADR-021) continua parado. A verificação é serial no rTorrent; `max_active_checking` não tem efeito ali. As configurações, seus significados e o Portal permanecem iguais para todo Node.
+
+5. **O criador de torrents é do Agent.** O rTorrent não cria `.torrent`. O Agent constrói (BitTorrent v1, tamanho de peça escolhido pelo tamanho total como no qBittorrent, flag private e `source` conforme solicitado), e o adaptador carrega apontando para os dados, para a Engine verificar e semear — mesmo resultado da publicação atual (ADR-019). O adaptador qBittorrent continua usando o criador do qBittorrent.
+
+6. **Exportação.** O rTorrent guarda o `.torrent` de cada torrent na pasta de sessão. O adaptador lê e remove as chaves adicionadas pelo rTorrent (`rtorrent`, `libtorrent_resume`), deixando os bytes originais que o Control Plane armazena (ADR-018).
+
+7. **Conectividade.** O rTorrent não tem veredito "firewalled". O adaptador não reporta nada (o Control Plane lê como desconhecido, ADR-034) e informa peers de entrada pela lista de peers (`p.is_incoming`), base do alerta de silêncio de entrada.
+
+8. **Como entra: o caminho da ADR-043.** O SeedGrid não instala rTorrent; uma máquina com ele entra com `ENGINE=rtorrent` pelo mesmo fluxo de `ENGINE=existing`: nada muda na entrada, porta e pasta são lidas do rTorrent (`network.port_range`, `directory.default`), e o Node inicia em Manual. As configurações de fila começam desligadas (`engine.queueing_enabled=false`), pois o rTorrent rodava sem fila; o operador ativa a fila do Agent ao revisar o Node. Não há UPnP no rTorrent; nada a alertar.
+
+9. **Reinício.** O reinício pelo Portal chama `system.shutdown.normal` e confia em algo para trazer o rTorrent de volta, como no qBittorrent: política de reinício de container, unit systemd (do sistema ou do usuário com lingering) ou — numa seedbox cujo provedor gerencia o rTorrent — um comando dado na instalação (`ENGINE_RESTART_CMD`, ex.: `app-rtorrent restart` do provedor), executado pelo Agent no lugar. Sem nenhum desses, o bootstrap recusa, como faz para qBittorrent.
+
+10. **Um Node sem root.** Rodar `bootstrap-node.sh` como usuário comum instala o Agent para esse usuário: binário em `~/.local/bin`, ambiente em `~/.config/seedgrid-agent.env`, identidade em `~/.local/share/seedgrid-agent`, iniciado por unit systemd de usuário com lingering quando disponível, senão por crontab que inicia no boot e a cada minuto se não estiver rodando. Sem supervisor que reinicie, a autoatualização (ADR-027) reexecuta o novo binário em vez de sair. Funciona para qualquer Engine. Métricas de host exigem um node-exporter que o usuário possa rodar; sem ele, o Node entra sem métricas, como um Node adotado sem Docker hoje.
+
+**Fora do escopo**
+- Instalação do rTorrent. O SeedGrid ainda instala apenas o qBittorrent.
+- ruTorrent: continua funcionando ao lado do Agent, como antes; o SeedGrid não depende dele.
+- Transmission e Deluge: a interface do item 1 é o que precisariam, mas esta ADR não os adiciona.
+
+**Consequências**
+
+*Positivas*
+- Um Node com rTorrent é um Node como qualquer outro: mesmos estados, configurações, publicação, migração e Portal.
+- O Agent deixa de depender dos tipos do qBittorrent; o próximo Engine é um adaptador.
+- A instalação rootless atende qualquer Engine numa máquina onde o operador não é root.
+
+*Custos e limites aceitos*
+- A fila do Agent reage no seu próprio loop (segundos), não dentro do Engine.
+- O Agent faz o hash dos dados ao criar um `.torrent` para o rTorrent: a mesma leitura de disco que o criador do qBittorrent faz, em outro processo.
+- Num seedbox, o provedor pode limitar recursos, portas e processos; o Agent não pede nada privilegiado, mas o plano do operador deve permitir um processo de longa duração.
+
+**Relação com outras ADRs**
+- **ADR-017 / ADR-043**: o rTorrent entra apenas pelo caminho definido na ADR-043.
+- **ADR-019**: a publicação no rTorrent usa o criador do Agent.
+- **ADR-021 / ADR-024**: a admissão para e inicia torrents pela mesma interface; a fila do Agent nunca inicia o que a admissão parou.
+- **ADR-027**: a autoatualização se reexecuta quando nenhum supervisor reinicia o Agent.
+- **ADR-039**: as configurações `engine.*` significam o mesmo em todo Node; para o rTorrent, o Agent as aplica.
+
+**Implementação (fatias)**
+1. Esta ADR.
+2. A interface do Engine; o adaptador do qBittorrent por trás dela, sem mudança de comportamento.
+3. XML-RPC sobre SCGI/HTTP e o adaptador do rTorrent, lado de leitura (torrents, estados, trackers, versão, peers).
+4. O adaptador do rTorrent, lado de escrita (adicionar, parar/iniciar, rechecar, excluir, exportar, pasta).
+5. A fila do Agent.
+6. O criador de torrents do Agent.
+7. `bootstrap-node.sh ENGINE=rtorrent`, a instalação rootless e a autoatualização por reexecução.
+8. Guias e um teste em bancada com rTorrent (e ruTorrent) em container e como instalação rootless.
+
 # **10. Template Oficial**
 Toda ADR deverá seguir uma estrutura padronizada.
 Campos mínimos:
