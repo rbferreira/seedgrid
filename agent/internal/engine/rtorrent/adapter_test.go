@@ -81,7 +81,7 @@ func TestNewClient_URLs(t *testing.T) {
 func torrentRow(hash, name string, state, active, complete, hashing int, message string, size, done int64,
 	down, up int64, peersComplete, peersConnected int, dir string, multi int, custom string) []any {
 	return []any{hash, name, state, active, complete, hashing, message, size, done, down, up,
-		1500, done, up * 10, peersComplete, peersConnected, dir, multi, custom}
+		1500, done, up * 10, peersComplete, peersConnected, dir, multi, custom, 1792800000}
 }
 
 func fakeWithTorrents(rows ...[]any) *fakeRTorrent {
@@ -187,7 +187,7 @@ func TestMapState(t *testing.T) {
 		{"stopped and complete", row{complete: true}, "PAUSED"},
 		{"stopped by the Agent's queue", row{custom: queuedMark}, "QUEUED"},
 		{"stopped by the operator", row{}, "PAUSED"},
-		{"complete keeps no queue mark", row{complete: true, custom: queuedMark}, "PAUSED"},
+		{"complete, waiting for an upload slot", row{complete: true, custom: queuedMark}, "SEEDING"},
 		{"paused (started, not active)", row{started: true}, "PAUSED"},
 		{"seeding", row{started: true, active: true, complete: true}, "SEEDING"},
 		{"downloading", row{started: true, active: true}, "DOWNLOADING"},

@@ -15,30 +15,53 @@ import (
 )
 
 // queueState holds the engine.* settings the Agent's queue applies for rTorrent (ADR-045 §4).
+// applied: the queue acts only once the settings came through Configure or ConfigureQueue — the
+// env baseline alone must change nothing on an rTorrent that just joined (ADR-043).
 type queueState struct {
-	mu  sync.Mutex
-	cfg engine.Config
+	mu      sync.Mutex
+	cfg     engine.Config
+	applied bool
 }
 
 // The Adapter is an engine.Engine.
 var _ engine.Engine = (*Adapter)(nil)
 
-// AddURL adds a torrent from a magnet or a .torrent URL; rTorrent fetches it.
+// AddURL adds a torrent from a magnet or a .torrent URL; rTorrent fetches it. With the Agent's
+// queue on, a .torrent URL comes in queued and the queue starts it when a slot is free; a magnet
+// starts, because rTorrent only fetches its metadata while it runs, and the queue then holds it.
 func (a *Adapter) AddURL(ctx context.Context, magnetOrURL string) error {
+	if a.queueing() && !strings.HasPrefix(magnetOrURL, "magnet:") {
+		_, err := a.rpc.call(ctx, "load.normal", "", magnetOrURL, markQueued)
+		return err
+	}
 	_, err := a.rpc.call(ctx, "load.start", "", magnetOrURL)
 	return err
 }
 
-// AddFile adds a torrent from the contents of a .torrent file, into rTorrent's default folder.
+// AddFile adds a torrent from the contents of a .torrent file, into rTorrent's default folder:
+// queued when the Agent's queue is on, so that adding many at once does not start them all.
 func (a *Adapter) AddFile(ctx context.Context, data []byte) error {
+	if a.queueing() {
+		_, err := a.rpc.call(ctx, "load.raw", "", data, markQueued)
+		return err
+	}
 	_, err := a.rpc.call(ctx, "load.raw_start", "", data)
 	return err
 }
 
+// markQueued is the load command that marks a torrent as the queue's.
+const markQueued = "d.custom.set=" + customKey + "," + queuedMark
+
+func (a *Adapter) queueing() bool {
+	a.queue.mu.Lock()
+	defer a.queue.mu.Unlock()
+	return a.queue.applied && a.queue.cfg.QueueingEnabled
+}
+
 // AddFileTo adds a torrent whose data is already at savePath (a host path), laid out as the
 // .torrent says (migration, ADR-018): d.directory is the folder holding a single file and the
-// parent of a multi-file torrent's own folder, which is how Pull extracted it. rTorrent checks the
-// data before seeding.
+// parent of a multi-file torrent's own folder, which is how Pull extracted it. It starts, queue or
+// not, so that rTorrent checks the data the migration waits on; the queue counts it from then on.
 func (a *Adapter) AddFileTo(ctx context.Context, data []byte, savePath string) error {
 	_, err := a.rpc.call(ctx, "load.raw_start", "", data, "d.directory.set="+a.paths.ToEngine(savePath))
 	return err
@@ -148,7 +171,7 @@ func (a *Adapter) Configure(ctx context.Context, c engine.Config) error {
 // ConfigureQueue keeps the queue settings; the Agent's queue applies them (ADR-045 §4).
 func (a *Adapter) ConfigureQueue(_ context.Context, c engine.Config) error {
 	a.queue.mu.Lock()
-	a.queue.cfg = c
+	a.queue.cfg, a.queue.applied = c, true
 	a.queue.mu.Unlock()
 	return nil
 }
