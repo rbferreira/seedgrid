@@ -83,6 +83,14 @@ func main() {
 		case "--version", "-version", "-v":
 			fmt.Println(version)
 			return
+		case "--probe-rtorrent":
+			// The bootstrap's check of an rTorrent before enrolling it (ADR-045 §8): a shell cannot
+			// speak SCGI, the Agent can. Prints key=value lines; exit 1 with the reason otherwise.
+			if len(os.Args) != 3 {
+				fmt.Fprintln(os.Stderr, "usage: seedgrid-agent --probe-rtorrent <scgi:// or http(s):// URL>")
+				os.Exit(2)
+			}
+			os.Exit(probeRTorrent(os.Args[2]))
 		}
 	}
 	if err := run(); err != nil {
@@ -133,6 +141,9 @@ func run() error {
 	}); ok {
 		go q.RunQueue(ctx, logger)
 	}
+	if cfg.EngineRestartCmd != "" {
+		eng = restartByCommand{Engine: eng, cmd: cfg.EngineRestartCmd}
+	}
 	if cfg.EngineAdopted {
 		logger.Info("Node joined with the Engine it already ran: its first settings are read from it (ADR-043)",
 			"storage", cfg.StoragePath, "path_map", cfg.EnginePathMap)
@@ -157,7 +168,7 @@ func run() error {
 	// ADR-027: after an update_agent swaps the binary (and the CP has already received the ack), exiting
 	// with 0 is enough — systemd (Restart=always) brings the Agent back up on the new binary.
 	poller := commands.NewPoller(cli, holder.token, executor, cfg.CommandPollInterval, logger).
-		OnSelfUpdate(func() { os.Exit(0) })
+		OnSelfUpdate(afterSelfUpdate(cfg.Supervised, logger))
 	go poller.Run(ctx)
 
 	// Behavior configuration coming from the Control Plane (ADR-039). Baseline = env + code
@@ -383,6 +394,53 @@ func newEngine(cfg config.Config, paths pathmap.Map) (engine.Engine, error) {
 	default:
 		return nil, fmt.Errorf("no adapter for Engine %q", cfg.Engine)
 	}
+}
+
+// restartByCommand restarts the Engine with the operator's command instead of asking it to quit
+// (SEEDGRID_ENGINE_RESTART_CMD, ADR-045 §9): on a seedbox the provider owns the Engine's lifecycle.
+type restartByCommand struct {
+	engine.Engine
+	cmd string
+}
+
+func (r restartByCommand) Shutdown(ctx context.Context) error {
+	out, err := exec.CommandContext(ctx, "sh", "-c", r.cmd).CombinedOutput() //nolint:gosec // G204: the operator's own restart command
+	if err != nil {
+		return fmt.Errorf("engine restart command: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// afterSelfUpdate is what the Agent does once update_agent swapped its binary (ADR-027): exit, for
+// systemd to start the new one, or — kept running by cron, with nothing to restart it at once
+// (ADR-045 §10) — re-execute the new binary in place.
+func afterSelfUpdate(supervised bool, logger *slog.Logger) func() {
+	if supervised {
+		return func() { os.Exit(0) }
+	}
+	return func() {
+		self, err := os.Executable()
+		if err == nil {
+			err = syscall.Exec(self, os.Args, os.Environ()) //nolint:gosec // G204: the Agent's own, just-verified binary
+		}
+		// Exec only returns on failure: exiting leaves it to cron, within a minute.
+		logger.Error("re-execute the updated Agent; exiting for cron to start it", "error", err)
+		os.Exit(0)
+	}
+}
+
+// probeRTorrent prints what the bootstrap reads of an rTorrent (ADR-045 §8).
+func probeRTorrent(url string) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	p, err := rtorrent.Probe(ctx, url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("version=%s\nport=%d\nport_range=%s\nport_random=%t\ndirectory=%s\nsession=%s\n",
+		p.Version, p.Port, p.PortRange, p.Random, p.Directory, p.Session)
+	return 0
 }
 
 // queueConfig is the Engine queue of the engine.* settings (ADR-039).

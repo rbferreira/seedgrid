@@ -216,3 +216,20 @@ func TestLive_CreateTorrent(t *testing.T) {
 		t.Errorf("content path %q, want %q", cp, root)
 	}
 }
+
+func TestLive_Probe(t *testing.T) {
+	u := os.Getenv("SEEDGRID_TEST_RTORRENT_URL")
+	if u == "" {
+		t.Skip("SEEDGRID_TEST_RTORRENT_URL not set")
+	}
+	p, err := Probe(context.Background(), u)
+	if err != nil || p.Port == 0 || p.Directory == "" || p.Session == "" {
+		t.Fatalf("Probe = %+v %v", p, err)
+	}
+	t.Logf("%+v", p)
+	// Configure with what rTorrent has changes nothing, and finds its commands on either version.
+	a, _ := New(u)
+	if err := a.Configure(context.Background(), engine.Config{BTPort: p.Port, SavePath: p.Directory}); err != nil {
+		t.Errorf("Configure: %v", err)
+	}
+}

@@ -197,16 +197,19 @@ func (a *Adapter) CreateTorrent(ctx context.Context, sourcePath string, trackers
 // keeps the queue for the Agent's queue. On a Node that joined with its rTorrent both were read
 // from it (ADR-043), so this changes nothing there. rTorrent opens its port at start.
 func (a *Adapter) Configure(ctx context.Context, c engine.Config) error {
-	calls := []rpcCall{{"network.port_random.set", []any{"", 0}}}
+	if _, err := a.call(ctx, portRandomCmd+".set", "", 0); err != nil {
+		return err
+	}
 	if c.BTPort > 0 {
 		p := strconv.Itoa(c.BTPort)
-		calls = append(calls, rpcCall{"network.port_range.set", []any{"", p + "-" + p}})
+		if _, err := a.call(ctx, portRangeCmd+".set", "", p+"-"+p); err != nil {
+			return err
+		}
 	}
 	if c.SavePath != "" {
-		calls = append(calls, rpcCall{"directory.default.set", []any{"", a.paths.ToEngine(c.SavePath)}})
-	}
-	if err := a.all(ctx, calls); err != nil {
-		return err
+		if _, err := a.call(ctx, "directory.default.set", "", a.paths.ToEngine(c.SavePath)); err != nil {
+			return err
+		}
 	}
 	return a.ConfigureQueue(ctx, c)
 }

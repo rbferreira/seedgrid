@@ -40,7 +40,15 @@ type Config struct {
 	// EngineRTorrentURL is rTorrent's XML-RPC (SEEDGRID_ENGINE_RTORRENT_URL, ADR-045):
 	// scgi:///path/to/rpc.socket, scgi://host:port or http(s)://[user:pass@]host/RPC2.
 	EngineRTorrentURL string
-	StoragePath       string
+	// EngineRestartCmd, when set, is what the Portal's restart runs instead of asking the Engine to
+	// quit (SEEDGRID_ENGINE_RESTART_CMD, ADR-045 §9): the provider's command on a seedbox whose
+	// provider owns the Engine. Run with sh -c.
+	EngineRestartCmd string
+	// Supervised: something restarts the Agent when it exits (systemd). The bootstrap writes false
+	// for an Agent kept running by cron (ADR-045 §10): the self-update then re-executes the new
+	// binary instead of exiting (SEEDGRID_AGENT_SUPERVISED).
+	Supervised  bool
+	StoragePath string
 	// StorageRequireMount: the Node declared dedicated disk at StoragePath, so storage is only
 	// healthy if it's a mountpoint (SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT). Set by the
 	// bootstrap on install; absent = true, which is the safe side and what existing Nodes have
@@ -84,6 +92,8 @@ func Load() (Config, error) {
 		EngineUsername:      getenv("SEEDGRID_ENGINE_QBT_USERNAME", "admin"),
 		EnginePassword:      os.Getenv("SEEDGRID_ENGINE_QBT_PASSWORD"),
 		EngineRTorrentURL:   os.Getenv("SEEDGRID_ENGINE_RTORRENT_URL"),
+		EngineRestartCmd:    os.Getenv("SEEDGRID_ENGINE_RESTART_CMD"),
+		Supervised:          getenvBool("SEEDGRID_AGENT_SUPERVISED", true),
 		StoragePath:         getenv("SEEDGRID_AGENT_STORAGE_PATH", "/data"),
 		StorageRequireMount: getenvBool("SEEDGRID_AGENT_STORAGE_REQUIRE_MOUNT", true),
 		BTPort:              getenvInt("SEEDGRID_ENGINE_BT_PORT", 6881),
