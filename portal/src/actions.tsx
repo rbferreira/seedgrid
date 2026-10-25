@@ -167,8 +167,10 @@ export async function startAction(opts: {
   run: () => Promise<string>; // returns the command_id
   confirm?: { probe: () => Promise<Probe>; timeoutMs: number };
   onSettled?: () => void | Promise<void>;
-}): Promise<void> {
-  if (busyFor(opts.id)) return;
+}): Promise<boolean> {
+  // Resolves true when the action succeeded (with `confirm`, when the effect was observed), so a
+  // caller can chain on it (ADR-046: the other Nodes wait for the first one).
+  if (busyFor(opts.id)) return false;
   const key = ++seq;
   const base: Base = { key, id: opts.id, label: opts.label, kind: "action" };
   upsert({ ...base, status: t("actions.actions.statusQueued"), terminal: false, startedAt: Date.now() });
@@ -178,9 +180,9 @@ export async function startAction(opts: {
   } catch (err) {
     fail(key, base, err instanceof Error ? err.message : t("actions.actions.sendFailed"));
     await opts.onSettled?.();
-    return;
+    return false;
   }
-  const ok = await pollLoop(
+  let ok = await pollLoop(
     key,
     base,
     async () => probeCommand(await getCommand(cmdID)),
@@ -188,9 +190,10 @@ export async function startAction(opts: {
     !opts.confirm,
   );
   if (ok && opts.confirm) {
-    await pollLoop(key, base, opts.confirm.probe, opts.confirm.timeoutMs);
+    ok = await pollLoop(key, base, opts.confirm.probe, opts.confirm.timeoutMs);
   }
   await opts.onSettled?.();
+  return ok;
 }
 
 // startMigration tracks a MIGRATION (ADR-018) — which is not a command: run() returns the

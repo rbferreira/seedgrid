@@ -205,6 +205,7 @@ Gated buttons, by screen (permission = that of the route they call):
 | Dashboard | Full auto/Flex admission | `nodes:operation-mode` |
 | Dashboard | SG/Manual per Node mode | `nodes:operation-mode` |
 | Dashboard | "↑ version" (update Agent) | `nodes:write` |
+| Dashboard | "Update all" (Agents, ADR-046) | `nodes:write` |
 | Dashboard | Queue: prioritize, pause/resume, reverify | `torrents:write` |
 | Dashboard | Queue: download content | `torrents:download` |
 | Dashboard | Queue: migrate | `torrents:migrate` |
@@ -294,7 +295,10 @@ From this screen it will be possible to access the full details of the Node.
 > above continue to be met, divided by question:
 > - **Dashboard → "Seed Nodes" table**: Node name (the nickname, if any —
 >   see below), state, operation mode (ADR-024), health, Engine, BT endpoint,
->   Agent version (with the update button — ADR-027) and last heartbeat.
+>   Agent version (with the update button — ADR-027) and last heartbeat. With two
+>   or more online Nodes behind, **Update all** in the panel header updates them
+>   with one confirmation: one Node first, the others once it is back on the new
+>   version (ADR-046).
 > - **Health & Metrics → cards per Node**: free space, memory, disk I/O,
 >   CPU/load, uptimes, storage OK/FAILED with the reason, number of torrents and
 >   traffic aggregates, plus the actions (Drain, Restart Engine,

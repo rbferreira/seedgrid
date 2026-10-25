@@ -37,6 +37,7 @@ import { MigratePicker, useMigrateTarget } from "../components/MigratePicker";
 import { ratioOf, topBy, TOP_STEPS } from "../lib/ranking";
 import { hasNickname, nodeLabel, nodeLabelById, nodeLabelFull } from "../lib/node-label";
 import { ClusterThroughput } from "../components/ClusterThroughput";
+import { agentOutdated, bulkUpdateTargets, updateWithCanary } from "../lib/agent-update";
 import { getLang, rich, useT, type Key } from "../i18n";
 import { askConfirm } from "../components/ConfirmDialog";
 
@@ -81,10 +82,8 @@ export function AgentCell({
 }) {
   const t = useT();
   const current = node.agent_version ?? "";
-  const hasBinary = !!node.architecture && !!available?.archs.includes(node.architecture);
-  const outdated = !!available && !!current && current !== available.version && hasBinary;
 
-  if (!outdated) {
+  if (!agentOutdated(node, available)) {
     return <span>{current || "—"}</span>;
   }
   const badge = "rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400 ring-1 ring-amber-500/30";
@@ -196,6 +195,8 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
   const [gate, setGate] = useState<ClusterMode>("full_auto");
   const [agentRel, setAgentRel] = useState<AgentRelease | null>(null);
   const [modeBusy, setModeBusy] = useState(false);
+  // "Update all" in progress (ADR-046): from the confirmation until the last Node settles.
+  const [bulkBusy, setBulkBusy] = useState(false);
   // A timer refresh that read the mode before a switch must not paint it back (#34).
   const [guard] = useState(refreshGuard);
 
@@ -275,20 +276,10 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
   });
   const { target, setTarget, confirm: confirmMigrate } = useMigrateTarget({ nodes, reload: load });
 
-  // Agent update (ADR-027). Confirms why the Agent restarts: the Node's seeding
-  // goes unsupervised for a few seconds (the Engine keeps running; nothing is lost).
-  const onUpdateAgent = async (n: Node) => {
-    const ok = await askConfirm({
-      title: t("dashboard.dashboard.agent.confirmUpdate.title", {
-        node: nodeLabelFull(n),
-        version: agentRel?.version ?? "",
-      }),
-      message: t("dashboard.dashboard.agent.confirmUpdate.message"),
-      confirmLabel: t("dashboard.dashboard.agent.confirmUpdate.confirm"),
-    });
-    if (!ok) return;
+  // updateOne resolves true once the Node reports the target version.
+  const updateOne = (n: Node) => {
     const targetVersion = agentRel?.version;
-    startAction({
+    return startAction({
       id: n.id,
       label: t("dashboard.dashboard.agent.actionLabel", { node: nodeLabel(n), version: targetVersion ?? "" }),
       run: () => updateAgent(n.id),
@@ -309,6 +300,47 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
       onSettled: load,
     });
   };
+  // Agent update (ADR-027). Confirms why the Agent restarts: the Node's seeding
+  // goes unsupervised for a few seconds (the Engine keeps running; nothing is lost).
+  const onUpdateAgent = async (n: Node) => {
+    const ok = await askConfirm({
+      title: t("dashboard.dashboard.agent.confirmUpdate.title", {
+        node: nodeLabelFull(n),
+        version: agentRel?.version ?? "",
+      }),
+      message: t("dashboard.dashboard.agent.confirmUpdate.message"),
+      confirmLabel: t("dashboard.dashboard.agent.confirmUpdate.confirm"),
+    });
+    if (!ok) return;
+    updateOne(n);
+  };
+  // Update all (ADR-046): one confirmation, one Node first. The others start only after it
+  // reported the new version; when it does not, they are left as they are.
+  const onUpdateAll = async () => {
+    const targets = bulkUpdateTargets(nodes, agentRel);
+    if (targets.length === 0) return;
+    const ok = await askConfirm({
+      title: t("dashboard.dashboard.agent.updateAll.confirmTitle", {
+        count: targets.length,
+        version: agentRel?.version ?? "",
+      }),
+      message: t("dashboard.dashboard.agent.updateAll.confirmMessage", {
+        canary: nodeLabel(targets[0]),
+        nodes: targets.map(nodeLabel).join(", "),
+      }),
+      confirmLabel: t("dashboard.dashboard.agent.updateAll.confirm"),
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      if (!(await updateWithCanary(targets, updateOne))) {
+        toast(t("dashboard.dashboard.agent.updateAll.stopped", { node: nodeLabel(targets[0]) }), "error");
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const bulkTargets = canNode ? bulkUpdateTargets(nodes, agentRel) : [];
   const onlineNodes = nodes.filter((n) => n.status === "ONLINE").length;
   const seeding = torrents.filter((tItem) => tItem.status === "SEEDING").length;
   const downloading = torrents.filter((tItem) => tItem.status === "DOWNLOADING").length;
@@ -462,7 +494,27 @@ export function Dashboard({ can, onLogout }: { can: (perm: string) => boolean; o
 
       <MigratePicker target={target} nodes={nodes} onPick={confirmMigrate} onClose={() => setTarget(null)} />
 
-      <Panel title={t("dashboard.dashboard.seedNodes.title")}>
+      <Panel
+        title={t("dashboard.dashboard.seedNodes.title")}
+        right={
+          // Only from two Nodes on: with one, its own button in the Agent column is the same click.
+          bulkTargets.length >= 2 && (
+            <button
+              onClick={onUpdateAll}
+              disabled={bulkBusy || bulkTargets.some((n) => running.has(n.id))}
+              title={t("dashboard.dashboard.agent.updateAll.title")}
+              className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-400 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25 disabled:opacity-50"
+            >
+              {bulkBusy
+                ? t("dashboard.dashboard.agent.updating")
+                : t("dashboard.dashboard.agent.updateAll.button", {
+                    count: bulkTargets.length,
+                    version: agentRel?.version ?? "",
+                  })}
+            </button>
+          )
+        }
+      >
         <table className="w-full text-left text-sm">
           <thead className="text-xs uppercase text-slate-500">
             <tr>

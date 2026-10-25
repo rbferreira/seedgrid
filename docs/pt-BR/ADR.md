@@ -781,7 +781,7 @@ Atualizar o Agent é hoje 100% manual: buildar no node-01, `pct pull` do binári
 **Decisão adotada** (alternativa 4)
 - **Novo comando `update_agent`** (`payload: {version, url, sha256}`): o CP enfileira; o Agent, no polling, baixa a URL, confere o **SHA-256**, e só então age. O CP **não** envia o binário pela fila (payload jsonb não é lugar para 6 MB): manda a URL, e o Agent busca — Agent-iniciado, coerente com a ADR-012.
 - **Artefatos por arquitetura:** o build publica `/node/seedgrid-agent-<arch>` (amd64, arm64) + um manifesto `/node/agents.json` (`{version, binaries: {arch: {file, sha256}}}`), servidos pelo Portal como já ocorre na ADR-017. O caminho ambíguo `/node/seedgrid-agent` deixa de existir e o `bootstrap-node.sh` passa a resolver a arquitetura (`uname -m`) — isso **conserta de passagem** o onboarding de Node amd64, que hoje baixaria um binário ARM64. O CP lê o manifesto pela URL base configurada e compara com o `nodes.architecture`/`nodes.agent_version` que **já** persiste do inventário — nenhuma coluna nova.
-- **Rollout manual, um Node por vez:** o Portal mostra "update disponível" por Node (comparando versão reportada × versão do manifesto) e um botão **Atualizar**; nada se move sozinho. Rejeitado o rollout automático nesta ADR: sem rollback por heartbeat, um binário ruim se propagaria pela frota inteira sem supervisão humana — e o ganho (não clicar) não paga o risco numa frota de 3 Nodes com 1 operador. O gancho para automatizar depois é o próprio endpoint.
+- **Rollout manual, um Node por vez** (ADR-046: um clique para todos os Nodes, um Node primeiro): o Portal mostra "update disponível" por Node (comparando versão reportada × versão do manifesto) e um botão **Atualizar**; nada se move sozinho. Rejeitado o rollout automático nesta ADR: sem rollback por heartbeat, um binário ruim se propagaria pela frota inteira sem supervisão humana — e o ganho (não clicar) não paga o risco numa frota de 3 Nodes com 1 operador. O gancho para automatizar depois é o próprio endpoint.
 - **Segurança da troca (o ponto crítico):** o Agent (1) baixa para o **mesmo diretório** do binário atual, resolvido por `os.Executable()` — `rename` só é atômico dentro do mesmo filesystem; (2) confere o SHA-256 contra o que o CP mandou; (3) roda o binário baixado com **`--version`** (flag nova) e exige saída 0 — é o **smoke-test** que prova que aquele binário EXECUTA naquele host, pegando arquitetura errada, corrupção e incompatibilidade de libc **antes** de qualquer troca; (4) guarda o atual como `.prev`; (5) faz `rename` atômico; (6) **confirma o comando ao CP** e só então **sai com código 0** — o systemd (`Restart=always`, já no unit) reergue o processo com o binário novo. Não é preciso invocar `systemctl` nem conceder permissão nova: sair é suficiente.
 - **Proteção contra binário ruim:** o smoke-test pré-troca é a defesa principal (nada é trocado por um binário que não roda). Como suspensório, o unit ganha um `ExecStartPre` que testa `--version` do binário instalado e, falhando, restaura o `.prev` — cobre corrupção posterior à troca. **Rollback por heartbeat** (restaurar quando o Agent novo sobe mas para de reportar) fica **fora** do escopo: exigiria um supervisor externo ao Agent (timer systemd) e cobre um caso que o smoke não pega — bug de runtime — cujo custo hoje é entrar no Node e restaurar o `.prev` na mão.
 - **Confirmar antes de morrer:** o ack vai ao CP **antes** do `exit(0)`, senão o comando ficaria eternamente `DISPATCHED` e o Portal mostraria falha num update que deu certo.
@@ -2137,6 +2137,42 @@ A §9 de `Engine.md` diz que trocar o Engine não pode alterar o Control Plane, 
 6. O criador de torrents do Agent.
 7. `bootstrap-node.sh ENGINE=rtorrent`, a instalação rootless e a autoatualização por reexecução.
 8. Guias e um teste em bancada com rTorrent (e ruTorrent) em container e como instalação rootless.
+
+# **ADR-046**
+
+**Título:** Atualizar todos os Agents com um clique, um Node primeiro
+
+**Status:** Aprovada — implementada (#86)
+
+**Contexto**
+A ADR-027 tornou a atualização do Agent um botão por Node: "rollout manual, um Node por vez". Após uma release, todo Node exibe o badge, e o operador clica e confirma uma vez por Node para a mesma versão. Com cinco Nodes, são cinco confirmações. O operador atualiza um Node, espera e depois faz o resto de qualquer forma: o procedimento é fixo, apenas o clique é manual.
+
+**Problema**
+A ADR-027 manteve o rollout manual por um motivo: um binário ruim não deve atingir toda a frota sem ninguém observando. Um clique para tudo deve manter essa proteção.
+
+**Alternativas consideradas**
+1. **Status quo.** Mantém o trabalho repetitivo; a proteção que oferece é a ordem que o operador já segue manualmente. Rejeitada.
+2. **Atualizar todos de uma vez.** Um clique, mas um binário que roda e depois falha (caso que o smoke-test da ADR-027 não captura) atinge todos os Nodes juntos. Rejeitada.
+3. **Rollout automático ao publicar uma versão.** A ADR-027 rejeitou; nada mudou. Rejeitada.
+4. **Um clique, um Node primeiro (adotada).**
+
+**Decisão** (alternativa 4)
+- Um botão **Atualizar todos** no painel de Seed Nodes do Dashboard, visível para quem tem `nodes:write` quando dois ou mais Nodes **online** rodam um Agent mais antigo que o publicado e possuem um binário para sua arquitetura.
+- Uma confirmação, que lista os Nodes. Nada acontece antes dela.
+- O primeiro Node da lista é o **canário**: o Portal o atualiza e espera até que ele reporte a nova versão, a mesma verificação feita pelo botão individual. Só então os demais são atualizados, juntos.
+- Se o canário falhar ou não retornar a tempo, os outros **não são tocados**, e o Portal informa isso.
+- Nodes offline ficam de fora: seu comando ficaria na fila (ADR-014) e o Portal não poderia confirmá-lo. Eles mantêm o botão individual.
+- Sem mudança na API: o Portal chama `POST /api/v1/nodes/{id}/update-agent` uma vez por Node. A API continua com um Node por requisição, então a ordem é do Portal.
+
+**Consequências**
+- A atualização após uma release exige apenas uma confirmação.
+- Um binário que falha em tempo de execução para no primeiro Node, como quando o operador fazia isso manualmente.
+- Se o operador fechar a página após o canário, os Nodes restantes não são atualizados: a ordem reside no Portal. Seus badges permanecem, e o botão faz o resto.
+- Uma falha em tempo de execução que aparece só após a confirmação do canário ainda atinge os demais; os limites da ADR-027 (sem rollback por heartbeat) permanecem.
+
+**Relação com outras ADRs**
+- **ADR-027**: substitui "um Node por vez" por "um Node primeiro"; todo o resto permanece.
+- **ADR-014**: Nodes offline são excluídos porque seu comando ficaria na fila.
 
 # **10. Template Oficial**
 Toda ADR deverá seguir uma estrutura padronizada.

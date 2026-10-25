@@ -99,6 +99,15 @@ export const dashboard: Catalog["dashboard"] = {
       actionLabel: "Update Agent on {node} → {version}",
       updatedStatus: "Updated ({version})",
       restarting: "Restarting Agent…",
+      updateAll: {
+        button: "↑ Update all ({count}) to {version}",
+        title: "Update the Agent on every online Node that is behind, one Node first",
+        confirmTitle: "Update the Agent on {count} Nodes to {version}?",
+        confirmMessage:
+          "{canary} goes first. The others start only after it comes back on the new version; if it does not, they are left as they are. Nodes: {nodes}.",
+        confirm: "Update all",
+        stopped: "Update all stopped: {node} did not come back on the new version. The other Nodes were not touched.",
+      },
     },
     actions: {
       removePriority: "Remove queue priority",
