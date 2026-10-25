@@ -205,6 +205,7 @@ Botões gateados, por tela (permissão = a da rota que chamam):
 | Dashboard | Admissão Full auto/Flex | `nodes:operation-mode` |
 | Dashboard | Modo por Node SG/Manual | `nodes:operation-mode` |
 | Dashboard | "↑ versão" (atualizar Agent) | `nodes:write` |
+| Dashboard | "Atualizar todos" (Agents, ADR-046) | `nodes:write` |
 | Dashboard | Fila: priorizar, pausar/retomar, reverificar | `torrents:write` |
 | Dashboard | Fila: baixar conteúdo | `torrents:download` |
 | Dashboard | Fila: migrar | `torrents:migrate` |
@@ -294,7 +295,10 @@ A partir dessa tela será possível acessar os detalhes completos do Node.
 > acima continuam atendidas, divididas por pergunta:
 > - **Dashboard → tabela "Seed Nodes"**: nome do Node (o apelido, se houver —
 >   ver abaixo), estado, modo de operação (ADR-024), health, Engine, endpoint BT,
->   versão do Agent (com o botão de atualizar — ADR-027) e último heartbeat.
+>   versão do Agent (com o botão de atualizar — ADR-027) e último heartbeat. Com dois
+>   ou mais Nodes online desatualizados, **Atualizar todos** no cabeçalho do painel os
+>   atualiza com uma confirmação: um Node primeiro, os outros assim que ele voltar na
+>   versão nova (ADR-046).
 > - **Saúde & Métricas → cards por Node**: espaço livre, memória, I/O de disco,
 >   CPU/load, uptimes, storage OK/FALHOU com o motivo, quantidade de torrents e
 >   agregados de tráfego, mais as ações (Esvaziar/drain, Reiniciar Engine,

@@ -97,6 +97,15 @@ export const dashboard = {
       actionLabel: "Atualizar Agent de {node} → {version}",
       updatedStatus: "Atualizado ({version})",
       restarting: "Reiniciando o Agent…",
+      updateAll: {
+        button: "↑ Atualizar todos ({count}) para {version}",
+        title: "Atualiza o Agent de todos os Nodes online desatualizados, um Node primeiro",
+        confirmTitle: "Atualizar o Agent de {count} Nodes para {version}?",
+        confirmMessage:
+          "{canary} vai primeiro. Os outros só começam depois que ele voltar na versão nova; se ele não voltar, ficam como estão. Nodes: {nodes}.",
+        confirm: "Atualizar todos",
+        stopped: "Atualizar todos parou: {node} não voltou na versão nova. Os outros Nodes não foram tocados.",
+      },
     },
     actions: {
       removePriority: "Remover prioridade da fila",

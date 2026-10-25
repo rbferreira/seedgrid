@@ -7,6 +7,13 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- **Update every Agent with one click (#86, ADR-046).** The Dashboard's Seed Nodes panel has an
+  **Update all** button when two or more online Nodes run an older Agent. One confirmation; one
+  Node goes first, and the others only after it is back on the new version. If it does not come
+  back, the others are left alone.
+
 ## [0.4.0] — 2026-10-24
 
 A Node can run rTorrent, and a Node can be installed without root, on a shared seedbox.
