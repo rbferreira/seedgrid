@@ -1,8 +1,8 @@
 // Package tracker manages the cluster's tracker credentials (ADR-019/ADR-020/ADR-047):
 // name + announce URL pairs (with passkey) used to publish content to private
 // trackers. Trackers belong to the cluster: everyone who reads trackers sees the same
-// list, and only trackers:write changes it (ADR-047). The announce is a SECRET — stored in plain text in Postgres, but NEVER
-// returned by the API (the listing only exposes name + host). The CP injects the announce only
+// list, and only trackers:write changes it (ADR-047). The announce is a SECRET — stored in
+// plain text in Postgres, but NEVER returned by the API (the listing only exposes name + host). The CP injects the announce only
 // into the publish command to the Agent. "Public" (no tracker, DHT/PeX) is not a
 // row here — it's the absence of a tracker on publish.
 //

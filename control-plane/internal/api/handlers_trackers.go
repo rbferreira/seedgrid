@@ -1,4 +1,4 @@
-// Operator tracker handlers (ADR-019/020): CRUD of announce/API credentials,
+// Cluster tracker handlers (ADR-019/020/047): CRUD of announce/API credentials,
 // default tracker, catalog browsing (#12) and seeding an item from there.
 
 package api
@@ -123,7 +123,7 @@ func handleDeleteTracker(d Deps) http.HandlerFunc {
 			return
 		}
 		// The profile follows the tracker. Best-effort: an orphan profile is inert (every read
-		// goes through tracker ownership and existence), so it doesn't break the removal.
+		// goes through the tracker's existence), so it doesn't break the removal.
 		if d.Profiles != nil {
 			if err := d.Profiles.Forget(r.Context(), r.PathValue("id")); err != nil {
 				d.Logger.Warn("remove tracker profile", "error", err)

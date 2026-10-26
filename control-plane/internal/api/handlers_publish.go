@@ -95,7 +95,7 @@ func handleCreateTorrent(d Deps) http.HandlerFunc {
 			name = filepath.Base(firstFile.FileName())
 		}
 
-		// Resolves the announce: "public"/empty → no tracker (DHT); otherwise, an operator's
+		// Resolves the announce: "public"/empty → no tracker (DHT); otherwise, a cluster
 		// tracker. For UNIT3D tracker (ADR-020), source is embedded in the .torrent.
 		announce, source, private, trackerRef := "", "", false, ""
 		if trackerID != "" && trackerID != "public" {
@@ -398,7 +398,7 @@ func screenshotError(w http.ResponseWriter, d Deps, err error, logArgs ...any) {
 	case errors.Is(err, torrent.ErrNoHash):
 		httpx.WriteError(w, http.StatusConflict, "no_hash", "torrent has no hash yet; wait for synchronization")
 	case errors.Is(err, trackerprofile.ErrNotFound), errors.Is(err, tracker.ErrNotFound):
-		// The tracker disappeared between the ownership check and the chain setup.
+		// The tracker disappeared between the existence check and the chain setup.
 		httpx.WriteError(w, http.StatusNotFound, "tracker_not_found", "tracker not found")
 	default:
 		d.Logger.Warn("screenshots", append(logArgs, "error", err)...)

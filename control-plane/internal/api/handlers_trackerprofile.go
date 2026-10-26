@@ -210,7 +210,7 @@ func handleResetTrackerImageHost(d Deps) http.HandlerFunc {
 	}
 }
 
-// handleSetTrackerImageHostKey saves the operator's key for the image host (#193).
+// handleSetTrackerImageHostKey saves the key for the tracker's image host (#193).
 // The key is bound to the current upload_url host: if the profile changes host, the old
 // key no longer works. Empty key is 400; profile without image_host is 409.
 func handleSetTrackerImageHostKey(d Deps) http.HandlerFunc {
@@ -320,7 +320,7 @@ func clampPages(n int) int {
 	return min(n, unit3d.MaxDiscoverPages)
 }
 
-// handleDiscoverTaxonomy scans N pages of the tracker's own catalog, with the operator's own
+// handleDiscoverTaxonomy scans N pages of the tracker's own catalog, with the tracker's API
 // token, and returns a taxonomy PROPOSAL. It never saves: applying is another
 // call (apply-taxonomy), after the operator reviews it. Since it doesn't change state, it also doesn't
 // go to the Audit trail (skipAuditPath) — the operator's action is the apply.
