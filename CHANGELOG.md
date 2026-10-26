@@ -7,6 +7,18 @@ the configuration; each release says how to upgrade.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-26
+
+One click updates every Agent, and the Publisher reaches the cluster's trackers.
+
+### Upgrading
+- **Control Plane:** with the Compose file, download the `compose.yaml` of this release (or set
+  `SEEDGRID_VERSION=0.4.1`) and `docker compose up -d`. With `bootstrap-controller.sh`, update as
+  before (`git pull && git fetch --tags && sh scripts/bootstrap-controller.sh`). Migration 00050
+  runs on boot: trackers become the cluster's, the Publisher loses `trackers:write`, a duplicate
+  tracker name gets its owner's username appended and the oldest default stays.
+- **Nodes:** nothing to do; the Agent did not change.
+
 ### Added
 
 - **Update every Agent with one click (#86, ADR-046).** The Dashboard's Seed Nodes panel has an
@@ -220,7 +232,9 @@ coordinates several **Seed Nodes**, each running a Torrent Engine (qBittorrent) 
   boundaries, commit message format and the code language (comments, messages and identifiers
   in English).
 
-[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rbferreira/seedgrid/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/rbferreira/seedgrid/releases/tag/v0.4.1
+[0.4.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.4.0
 [0.3.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.3.0
 [0.2.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rbferreira/seedgrid/releases/tag/v0.1.0
