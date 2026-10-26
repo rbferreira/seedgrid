@@ -1,7 +1,8 @@
-// Package tracker manages the operator's tracker credentials (ADR-019/ADR-020):
+// Package tracker manages the cluster's tracker credentials (ADR-019/ADR-020/ADR-047):
 // name + announce URL pairs (with passkey) used to publish content to private
-// trackers. The announce is a SECRET — stored in plain text in Postgres, but NEVER
-// returned by the API (the listing only exposes name + host). The CP injects the announce only
+// trackers. Trackers belong to the cluster: everyone who reads trackers sees the same
+// list, and only trackers:write changes it (ADR-047). The announce is a SECRET — stored in
+// plain text in Postgres, but NEVER returned by the API (the listing only exposes name + host). The CP injects the announce only
 // into the publish command to the Agent. "Public" (no tracker, DHT/PeX) is not a
 // row here — it's the absence of a tracker on publish.
 //
@@ -24,9 +25,9 @@ import (
 )
 
 var (
-	// ErrNotFound: tracker does not exist (or belongs to another operator).
+	// ErrNotFound: tracker does not exist.
 	ErrNotFound = errors.New("tracker not found")
-	// ErrDuplicateName: a tracker with this name already exists for the operator.
+	// ErrDuplicateName: a tracker with this name already exists in the cluster.
 	ErrDuplicateName = errors.New("a tracker with this name already exists")
 	// ErrInvalidAnnounce: empty or malformed announce URL.
 	ErrInvalidAnnounce = errors.New("invalid announce URL")
@@ -128,8 +129,8 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
-// List returns the operator's trackers (without the announce or the api_token), default first.
-func (s *Service) List(ctx context.Context, userID string) ([]Tracker, error) {
+// List returns the cluster's trackers (without the announce or the api_token), default first.
+func (s *Service) List(ctx context.Context) ([]Tracker, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id::text, name, host,
 		       COALESCE(source, ''), COALESCE(api_url, ''),
@@ -138,8 +139,8 @@ func (s *Service) List(ctx context.Context, userID string) ([]Tracker, error) {
 		       COALESCE(image_host_key_host, '') AS image_host_key_host,
 		       is_default, created_at
 		  FROM trackers
-		 WHERE user_id = $1 AND deleted_at IS NULL
-		 ORDER BY is_default DESC, name ASC`, userID)
+		 WHERE deleted_at IS NULL
+		 ORDER BY is_default DESC, name ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -173,9 +174,10 @@ func validateCreate(in Input) (name, host, apiURL string, err error) {
 	return name, host, apiURL, nil
 }
 
-// Create registers a tracker. If MakeDefault, it unsets the previous operator's
-// default in the same transaction (there is only one default per operator).
-func (s *Service) Create(ctx context.Context, userID string, in Input) (Tracker, error) {
+// Create registers a tracker; createdBy is the registering user, kept as a record only
+// (ADR-047). If MakeDefault, it unsets the previous default in the same transaction (there
+// is only one default in the cluster).
+func (s *Service) Create(ctx context.Context, createdBy string, in Input) (Tracker, error) {
 	name, host, apiURL, err := validateCreate(in)
 	if err != nil {
 		return Tracker{}, err
@@ -192,13 +194,13 @@ func (s *Service) Create(ctx context.Context, userID string, in Input) (Tracker,
 	if in.MakeDefault {
 		if _, err := tx.Exec(ctx,
 			`UPDATE trackers SET is_default = false, updated_at = now()
-			  WHERE user_id = $1 AND is_default AND deleted_at IS NULL`, userID); err != nil {
+			  WHERE is_default AND deleted_at IS NULL`); err != nil {
 			return Tracker{}, err
 		}
 	}
 	var t Tracker
 	err = tx.QueryRow(ctx, `
-		INSERT INTO trackers (user_id, name, announce, host, source, api_url, api_token, is_default)
+		INSERT INTO trackers (created_by, name, announce, host, source, api_url, api_token, is_default)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), $8)
 		RETURNING id::text, name, host,
 		          COALESCE(source, ''), COALESCE(api_url, ''),
@@ -206,7 +208,7 @@ func (s *Service) Create(ctx context.Context, userID string, in Input) (Tracker,
 		          (image_host_key IS NOT NULL AND image_host_key <> ''),
 		          COALESCE(image_host_key_host, ''),
 		          is_default, created_at`,
-		userID, name, strings.TrimSpace(in.Announce), host, source, apiURL, apiToken, in.MakeDefault,
+		createdBy, name, strings.TrimSpace(in.Announce), host, source, apiURL, apiToken, in.MakeDefault,
 	).Scan(&t.ID, &t.Name, &t.Host, &t.Source, &t.APIURL, &t.HasAPIToken, &t.HasImageHostKey, &t.ImageHostKeyHost, &t.IsDefault, &t.CreatedAt)
 	if isUniqueViolation(err) {
 		return Tracker{}, ErrDuplicateName
@@ -220,11 +222,11 @@ func (s *Service) Create(ctx context.Context, userID string, in Input) (Tracker,
 	return t, nil
 }
 
-// Update changes the name/source/api_url of an operator's tracker. The SECRETS
+// Update changes the name/source/api_url of a tracker. The SECRETS
 // (announce and api_token) are only changed when provided filled — empty = keep the
 // current one, since neither is returned in the API to be resent. This allows editing
 // the UNIT3D integration without retyping the passkey. MakeDefault is ignored (use SetDefault).
-func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Tracker, error) {
+func (s *Service) Update(ctx context.Context, id string, in Input) (Tracker, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Tracker{}, ErrInvalidAnnounce
@@ -248,21 +250,21 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Trac
 	var t Tracker
 	err = s.pool.QueryRow(ctx, `
 		UPDATE trackers SET
-		    name       = $3,
-		    announce   = CASE WHEN $4 = '' THEN announce ELSE $4 END,
-		    host       = CASE WHEN $4 = '' THEN host ELSE $5 END,
-		    source     = NULLIF($6, ''),
-		    api_url    = NULLIF($7, ''),
-		    api_token  = CASE WHEN $8 = '' THEN api_token ELSE $8 END,
+		    name       = $2,
+		    announce   = CASE WHEN $3 = '' THEN announce ELSE $3 END,
+		    host       = CASE WHEN $3 = '' THEN host ELSE $4 END,
+		    source     = NULLIF($5, ''),
+		    api_url    = NULLIF($6, ''),
+		    api_token  = CASE WHEN $7 = '' THEN api_token ELSE $7 END,
 		    updated_at = now()
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		 WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id::text, name, host,
 		          COALESCE(source, ''), COALESCE(api_url, ''),
 		          (api_token IS NOT NULL AND api_token <> ''),
 		          (image_host_key IS NOT NULL AND image_host_key <> ''),
 		          COALESCE(image_host_key_host, ''),
 		          is_default, created_at`,
-		id, userID, name, announce, host, source, apiURL, apiToken,
+		id, name, announce, host, source, apiURL, apiToken,
 	).Scan(&t.ID, &t.Name, &t.Host, &t.Source, &t.APIURL, &t.HasAPIToken, &t.HasImageHostKey, &t.ImageHostKeyHost, &t.IsDefault, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tracker{}, ErrNotFound
@@ -276,11 +278,11 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Trac
 	return t, nil
 }
 
-// Delete soft-deletes an operator's tracker.
-func (s *Service) Delete(ctx context.Context, userID, id string) error {
+// Delete soft-deletes a tracker.
+func (s *Service) Delete(ctx context.Context, id string) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE trackers SET deleted_at = now(), is_default = false, updated_at = now()
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID)
+		 WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -290,8 +292,8 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	return nil
 }
 
-// SetDefault sets a tracker as the operator's default (unsets the previous one).
-func (s *Service) SetDefault(ctx context.Context, userID, id string) error {
+// SetDefault sets a tracker as the cluster's default (unsets the previous one).
+func (s *Service) SetDefault(ctx context.Context, id string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -300,12 +302,12 @@ func (s *Service) SetDefault(ctx context.Context, userID, id string) error {
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE trackers SET is_default = false, updated_at = now()
-		  WHERE user_id = $1 AND is_default AND deleted_at IS NULL`, userID); err != nil {
+		  WHERE is_default AND deleted_at IS NULL`); err != nil {
 		return err
 	}
 	tag, err := tx.Exec(ctx,
 		`UPDATE trackers SET is_default = true, updated_at = now()
-		  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID)
+		  WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -315,23 +317,23 @@ func (s *Service) SetDefault(ctx context.Context, userID, id string) error {
 	return tx.Commit(ctx)
 }
 
-// SetImageHostKey saves the operator's key for the image host (#193 / ADR-040).
+// SetImageHostKey saves the key for the tracker's image host (#193 / ADR-040).
 // The key is tied to the host it was registered for: if the profile's upload_url changes
 // host, the old key no longer works (the upload chain skips it). Empty key is
 // normalized to NULL (but the handler rejects it before). Returns the tracker name for
-// Audit (ADR-025); ErrNotFound if the tracker doesn't exist or belongs to another operator.
-func (s *Service) SetImageHostKey(ctx context.Context, userID, id, key, host string) (string, error) {
+// Audit (ADR-025); ErrNotFound if the tracker doesn't exist.
+func (s *Service) SetImageHostKey(ctx context.Context, id, key, host string) (string, error) {
 	if !validUUID(id) {
 		return "", ErrNotFound
 	}
 	var name string
 	err := s.pool.QueryRow(ctx, `
 		UPDATE trackers SET
-		    image_host_key      = NULLIF($3, ''),
-		    image_host_key_host = NULLIF($4, ''),
+		    image_host_key      = NULLIF($2, ''),
+		    image_host_key_host = NULLIF($3, ''),
 		    updated_at          = now()
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-		 RETURNING name`, id, userID, key, host).Scan(&name)
+		 WHERE id = $1 AND deleted_at IS NULL
+		 RETURNING name`, id, key, host).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -343,9 +345,8 @@ func (s *Service) SetImageHostKey(ctx context.Context, userID, id, key, host str
 
 // ClearImageHostKey deletes the image host key (#193 / ADR-040). Idempotent —
 // deleting what doesn't exist is also a success (the handler returns 200). Returns the
-// tracker name for Audit; ErrNotFound if the tracker doesn't exist or belongs to another
-// operator.
-func (s *Service) ClearImageHostKey(ctx context.Context, userID, id string) (string, error) {
+// tracker name for Audit; ErrNotFound if the tracker doesn't exist.
+func (s *Service) ClearImageHostKey(ctx context.Context, id string) (string, error) {
 	if !validUUID(id) {
 		return "", ErrNotFound
 	}
@@ -355,8 +356,8 @@ func (s *Service) ClearImageHostKey(ctx context.Context, userID, id string) (str
 		    image_host_key      = NULL,
 		    image_host_key_host = NULL,
 		    updated_at          = now()
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-		 RETURNING name`, id, userID).Scan(&name)
+		 WHERE id = $1 AND deleted_at IS NULL
+		 RETURNING name`, id).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -368,15 +369,15 @@ func (s *Service) ClearImageHostKey(ctx context.Context, userID, id string) (str
 
 // ImageHostKeyForChain returns the key and the host it was registered for, for use
 // in the screenshot upload chain (#193 / ADR-040). If there is no key, it returns
-// ("", "", nil). ErrNotFound if the tracker doesn't exist or belongs to another operator.
-func (s *Service) ImageHostKeyForChain(ctx context.Context, userID, id string) (key, host string, err error) {
+// ("", "", nil). ErrNotFound if the tracker doesn't exist.
+func (s *Service) ImageHostKeyForChain(ctx context.Context, id string) (key, host string, err error) {
 	if !validUUID(id) {
 		return "", "", ErrNotFound
 	}
 	var k, h *string
 	err = s.pool.QueryRow(ctx, `
 		SELECT image_host_key, image_host_key_host FROM trackers
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID).
+		 WHERE id = $1 AND deleted_at IS NULL`, id).
 		Scan(&k, &h)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", ErrNotFound
@@ -393,15 +394,15 @@ func (s *Service) ImageHostKeyForChain(ctx context.Context, userID, id string) (
 	return key, host, nil
 }
 
-// ForPublish returns the publish secrets of an operator's tracker (announce +
-// UNIT3D integration). Internal use for publishing — NEVER exposed in the API. Returns
-// ErrNotFound if it doesn't exist.
-func (s *Service) ForPublish(ctx context.Context, userID, id string) (Secret, error) {
+// ForPublish returns the publish secrets of a tracker (announce + UNIT3D integration).
+// Internal use for publishing — NEVER exposed in the API. Returns ErrNotFound if it
+// doesn't exist.
+func (s *Service) ForPublish(ctx context.Context, id string) (Secret, error) {
 	var sec Secret
 	var source, apiURL, apiToken *string
 	err := s.pool.QueryRow(ctx,
 		`SELECT announce, source, api_url, api_token FROM trackers
-		  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID).
+		  WHERE id = $1 AND deleted_at IS NULL`, id).
 		Scan(&sec.Announce, &source, &apiURL, &apiToken)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Secret{}, ErrNotFound

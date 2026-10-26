@@ -451,7 +451,9 @@ Limitations:
 > - **The refusal points to the exit.** The 409 `migration_in_flight` says it is possible to cancel and **which** migration (even when the action was on the target copy, whose migration the operator would have no way to discover): *"…wait for completion or cancel the migration (Portal: Alerts & Events → Recent Migrations → Cancel Migration; API: POST /api/v1/migrations/{id}/cancel)"*.
 # **ADR-019**
 # **Local content publishing: upload → `.torrent` creation in the Engine + seeding, with operator trackers (streaming via CP)**
-**Status:** Approved
+**Status:** Approved — **tracker ownership superseded by ADR-047**
+
+> ADR-047 supersedes the part of this ADR that made trackers **per operator, registered in Profile**: trackers now belong to the cluster and the Administrator manages them. The rest stays in effect.
 
 **Context**
 The operator wants to **publish their own content** (ISOs, files) directly from their PC via the Portal: the Cluster generates the `.torrent`, announces it, and starts **seeding**, without needing a local BitTorrent client or an existing `.torrent`. During publishing, they choose **public** or **private** — the latter announces to an **operator's own tracker** (announce URL + passkey). Today, SeedGrid only *consumes* torrents (magnet or existing `.torrent`); it does not *create* them.
@@ -468,8 +470,8 @@ The operator wants to **publish their own content** (ISOs, files) directly from 
 - **Transport:** streaming `browser → CP → Node`. The CP reads the multipart parts and repackages them as a **tar stream** to the Agent (reuses `extractTar` from ADR-018); the Agent extracts to storage (`/data`). Authorization via a **single-use token** issued by the CP; **receiving** channel in the Agent (same family as `transfer.Server` from ADR-018, now with a *push* endpoint), with **path confined** to storage and **sanitized name** (anti-traversal).
 - **`.torrent` creation: the Engine itself creates it** (qBittorrent `torrentcreator`, `startSeeding=true`) — no external library. The Agent triggers the creation (`sourcePath` in `/data`, `trackers`, `isPrivate`), waits for completion, **exports the generated `.torrent`**, and returns it to the CP, which **persists** it in `torrent_files` (`source='created'`, aligns with ADR-018/ADR-006). The torrent is born already **SEEDING** on the Node.
 - **Node selection:** the **Scheduler** decides by default (same eligibility/score as normal add); the operator can **force** a target Node (explicit Scheduler bypass, logged in the decision) — useful to pin to a specific disk.
-- **Operator trackers (announce):** credentials registered **per operator** in Profile (name + announce URL containing the passkey). On publishing: **Public** (no tracker — discovery via DHT/PeX) **or** a registered tracker (**private**, `isPrivate=true`, DHT off). The announce is stored **in plaintext** (operator's decision — no encryption at rest) and **is not returned in the API listing** (only name + masked host); the CP injects the announce only in the command to the Agent at publish time.
-- **Persistence:** new `trackers` relation (per user, plaintext announce, default flag) in Postgres (ADR-006). The created `.torrent` goes into `torrent_files` like any other → the published content is **migratable** (ADR-018) and re-provisionable.
+- **Operator trackers (announce):** credentials registered **per operator** in Profile (ADR-047: cluster trackers, managed by the Administrator) (name + announce URL containing the passkey). On publishing: **Public** (no tracker — discovery via DHT/PeX) **or** a registered tracker (**private**, `isPrivate=true`, DHT off). The announce is stored **in plaintext** (operator's decision — no encryption at rest) and **is not returned in the API listing** (only name + masked host); the CP injects the announce only in the command to the Agent at publish time.
+- **Persistence:** new `trackers` relation (per user — per cluster since ADR-047 —, plaintext announce, default flag) in Postgres (ADR-006). The created `.torrent` goes into `torrent_files` like any other → the published content is **migratable** (ADR-018) and re-provisionable.
 
 **Consequences**
 Benefits:
@@ -1159,7 +1161,7 @@ Define an authorization model for Portal/API operators that: (a) preserves the e
 3. **Permission-based RBAC on the existing schema**: each protected route requires a permission (`resource:action`); roles aggregate permissions via `role_permissions`; the middleware checks `user.HasPermission(perm)`; admin resolves via wildcard. Reuses the schema from migration 00001, maintains granularity, and allows new roles without touching routes. **Adopted.**
 
 **Adopted decision**
-- **Four system roles** (seeded in migration 00034): `Administrator` (full access), `Publisher` (manages content: torrents, trackers, publishing), `Downloader` (consumes: reads and downloads), `Viewer` (read-only).
+- **Four system roles** (seeded in migration 00034): `Administrator` (full access), `Publisher` (manages content: torrents, trackers, publishing — since ADR-047 it publishes to the cluster's trackers but no longer manages them), `Downloader` (consumes: reads and downloads), `Viewer` (read-only).
 - **Permissions in `resource:action` format**, seeded in the same migration, associated with roles via `role_permissions`. Administrator resolves via wildcard (`*`) — no explicit seed is needed for each new permission.
 - **`auth.User` now loads `Roles` and `Permissions`** in `Authenticate` (JOIN with user_roles/role_permissions); gains the `HasPermission(perm)` method.
 - **`httpx.RequirePermission(perm)` middleware** runs INSIDE `RequireOperator` (which already has the user in context) and returns **403** when the permission is missing. Each protected route declares its permission when registered; routes requiring more than one permission combine middlewares.
@@ -1434,7 +1436,7 @@ Delivered in #197 (**no migration**: the new origin lives inside the JSONB, and 
 - **A new term cannot shadow the right one.** The publish panel matches the release name with the term's (`findByLabel`) and pre-fills the first category of each role. A hostile — or just careless — file that brings `{id: 1, "Séries", tv}` in a profile that already has Séries = 2 would change what the panel picks, without the operator having decided anything. Three defenses: **(i)** a file with two names that only differ in case or accent **within the same axis** is rejected (`taxonomy.category[1].name: nome repetido no eixo…`), with the same normalization as the Portal (`NormalizeLabel` ↔ `normalizeLabel`: NFD without accent marks, lowercase, collapsed spaces — there is a parity test); **(ii)** the preview warns, **on each line**, the new or renamed term whose name collides with another id's in the axis — calculated on the state the axis WOULD BE in, not the current one — and the term that would become the **first** category of a role that already had an owner (multiple terms with the same role are normal — series and anime are `tv` —; only changing the default's owner warns); **(iii)** in the Portal, `findByLabel` only returns a term when the label is **unambiguous** — with two ids for the same name, it doesn't pre-fill and the operator chooses. Since the export goes through the same validation, a local profile with repeated names **is not exported** (`409 profile_not_exportable`, with the reason): the export never delivers a file that the import itself would reject.
 - **The site name in the file is the operator's free-form label — and it may contain a credential.** Whoever pastes the announce (or just the passkey) into the tracker name would take the passkey into a file made to be shared. `siteLabel` **does not clean or truncate** (truncating a 90-character announce would leave the first ~27, passkey included): a name that fails `CleanName`, or that **looks like it contains a credential** — slash, `\`, `?`, or `=`, a UUID, or 20 or more consecutive letters and digits —, is replaced by the **public host** (if it fits in 64 characters) or by `tracker`. The 20 limit is a heuristic, and the decision is the operator's: a smaller fragment pasted into the name passes, which is why the Portal says what the file carries and asks to check before sharing.
 - **Audit (ADR-025):** only the applied import is logged («Imported a profile from file on tracker «Y»: N new, M renamed, K role(s) filled; P kept for being the operator's or already confirmed by their site»). **Nothing that came from the file enters the trail**: their site name is third-party text and, with the «» quotes, would forge the rest of the line. The tracker name goes through the same safe label and loses the quotes. Preview and export are reads and stay out.
-- **RBAC in the standard for tracker endpoints:** exporting is `trackers:read` (the content is already in the tracker listing, which the same role reads); previewing and importing are `trackers:write`. Tracker belongs to whoever registered it: another operator's doesn't exist for whoever asks (`404`).
+- **RBAC in the standard for tracker endpoints:** exporting is `trackers:read` (the content is already in the tracker listing, which the same role reads); previewing and importing are `trackers:write`. Tracker belongs to whoever registered it: another operator's doesn't exist for whoever asks (`404`). *(ADR-047: trackers belong to the cluster; only an unknown id is `404`.)*
 
 Delivered in #192 (**no migration**, **no new column**): the upload **description composition** moves out of the Portal and becomes a **section of the tracker profile**.
 - **What moved.** `portal/src/pages/publish/bbcode.ts` assembled the BBCode (poster, synopsis, tags, screenshots, and MediaInfo; cover, title, about, genres, and platforms) — out of reach of any API client, with nowhere for two sites to diverge and no Go tests, being the field the site publishes in full. Now it is `internal/description` (`ComposeMedia`/`ComposeGame`), called via `POST /api/v1/publish/description` (`publish:write`, outside of audit: it only composes text). The Portal requests the text and hands it to the field, which the operator continues to edit — the human review from ADR-020 remains unchanged — and `buildBBCode`/`buildGameBBCode` were removed.
@@ -1732,7 +1734,7 @@ This addresses item (b): the credential goes **only where the operator saw it go
 - **Each failure becomes a Feed entry** (ADR-022), a new type (`screenshot_host_failed`) with the torrent, the tracker, the host (the **DNS name** of the `upload_url`, never the profile `name` label, which is third-party text), the reason, and the next host in the queue. This is item (d): the site host failure stops being invisible just because imgbb saved the post.
 - **All failed** → the same error as today (`502 screenshots_failed`), now with the list of reasons per host; the operator can still paste the BBCode manually (ADR-026). **No host configured** → the same error as today.
 - **The response gains `host`** (who hosted it) **and `failures`** (`[{host, reason}]`), additive fields. The Portal shows where the images ended up and what failed before.
-- **The tracker enters the request:** screenshot routes that upload images accept an optional `tracker_id`. A tracker from another operator does not exist for the requester (`404`, as in profile routes). **Without `tracker_id`, only imgbb** — the current behavior, preserved for those calling the API without the field. The publish panel now sends it.
+- **The tracker enters the request:** screenshot routes that upload images accept an optional `tracker_id`. A tracker from another operator does not exist for the requester (`404`, as in profile routes). *(ADR-047: trackers belong to the cluster; only an unknown id is `404`.)* **Without `tracker_id`, only imgbb** — the current behavior, preserved for those calling the API without the field. The publish panel now sends it.
 - **The URL returned by any host is validated** before entering the BBCode: absolute, `https`, up to 2048 characters, no spaces, control characters, `[`, `]`, or quotes. It is interpolated into `[url=…][img]…[/img][/url]`; without validation, a host's response would inject markup into the description the site publishes. This applies to imgbb as well, which today is interpolated without checking.
 
 **4. Time budget.** The upload phase has **25 s in total**, below the 30 s of the Control Plane's `WriteTimeout` and the 60 s of the proxy at `/api/`. Each host receives the **fair share of what remains** — the remainder divided by the remaining hosts —, and the time a host does not use is passed to the next one: with two hosts, the tracker one has up to 12,5 s, and a host that hangs does not consume the fallback's time. The timeout for each request is limited by the host's deadline. Extending the write deadline only for these routes (`http.ResponseController`) and opening a dedicated `location` in the proxy was considered; it was left out because it changes infrastructure for a phase that usually takes just a few seconds. If a real host proves to be slow, the `tempo esgotado` reason in the Feed is the signal to revisit. The route that extracts **and** uploads in a single call (`POST /torrents/{id}/screenshots`) keeps the limitation it already had (the extraction alone might exceed the deadline); the Portal uses extraction and upload in two calls.
@@ -2173,6 +2175,50 @@ ADR-027 kept the rollout manual for one reason: a bad binary must not reach the 
 **Relationship with other ADRs**
 - **ADR-027**: replaces "one Node at a time" with "one Node first"; everything else stays.
 - **ADR-014**: offline Nodes are excluded because their command would wait in the queue.
+
+# **ADR-047**
+
+**Title:** Trackers belong to the cluster; the Administrator manages them
+
+**Status:** Approved — implemented (#19)
+
+**Context**
+ADR-019 made trackers **per operator**: each one registers their own announce credentials in Profile, and every query filters on who registered them (`trackers.user_id`). The Portal never followed it: tracker registration lives in **Settings › Trackers**, behind `settings:write`, which only the Administrator opens. ADR-035 gave the Publisher `trackers:write`, a permission with no screen behind it.
+
+In practice the Administrator's trackers were invisible to everyone else, and a Publisher had no way to register one. The Publisher could only publish publicly (DHT).
+
+ADR-021 had already treated the tracker account as the cluster's: one passkey shared by every Node, with the download slot limit counted per account, cluster-wide.
+
+**Problem**
+Who registers a tracker, and who sees it.
+
+**Alternatives considered**
+1. **Status quo:** per operator, managed in Settings. A Publisher never has a tracker. Rejected.
+2. **Per operator, managed in Profile** (what ADR-019 described): every Publisher keeps their own account on every site. It spreads secrets and configuration across users, makes each Publisher configure taxonomy and description for sites the cluster already knows, and the admission control of ADR-021 counts slots per tracker row, not per site. Rejected.
+3. **Cluster trackers, managed by the Administrator (adopted).**
+
+**Decision** (alternative 3)
+- A tracker is a **cluster resource**. Everyone with `trackers:read` sees the same list, and publishes and seeds with any of them. Nothing in the Control Plane filters trackers by user any more.
+- Changing trackers is `trackers:write`: create, edit, remove, the default, the site profile (taxonomy, description, image host), the image host key and profile import. The **Publisher loses it**; it keeps `trackers:read` and `trackers:seed`. Out of the box only the Administrator holds it; a custom role can still be granted it.
+- **One default** for the cluster, and tracker names are **unique across the cluster**.
+- The registering user stays in `trackers.created_by`, as a record only. It grants nothing.
+- Existing installations (migration):
+  - Removes `trackers:write` from the Publisher.
+  - Keeps the oldest default.
+  - Renames a duplicate name to `name (username)` of its owner. Nothing is deleted.
+- The Portal keeps tracker management in Settings. Where it tells the user to register a tracker, someone without `trackers:write` is told to ask an administrator.
+
+**Consequences**
+- A Publisher publishes to the trackers the Administrator registered, **with the Administrator's account** on that site: the passkey, the API token and the image host key. Releases appear on the site under that account.
+- Secrets stay in one place; the API still never returns them (ADR-019).
+- A Publisher who registered trackers before keeps using them, now shared with everyone, and can no longer edit them.
+- A Publisher can no longer use a tracker account of their own. If that is ever needed, it is a new ADR (per-user credentials on a cluster tracker).
+
+**Relationship with other ADRs**
+- **ADR-019**: replaces "per operator in Profile" with cluster trackers managed by the Administrator. The rest stays (plaintext secret, never returned by the API).
+- **ADR-020**, **ADR-037**, **ADR-040**: the tracker's site profile, taxonomy and image host key follow the tracker. A tracker id that does not exist is `404`; "another operator's" no longer applies.
+- **ADR-021**: consistent with it. The cluster's tracker account is the one whose slots it counts.
+- **ADR-035**: changes the Publisher's permissions; the role stops "managing trackers".
 
 # **10. Official Template**
 Every ADR must follow a standardized structure.

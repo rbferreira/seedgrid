@@ -121,7 +121,6 @@ func TestPublishDescription_Errors(t *testing.T) {
 	admin := tokens["Administrator"]
 	fake := newSite(t)
 	id, _ := createTracker(t, h, admin, "Errors", fake.srv.URL)
-	foreign, _ := createTracker(t, h, tokens["Publisher"], "From another operator", fake.srv.URL)
 
 	cases := []struct {
 		name  string
@@ -132,7 +131,6 @@ func TestPublishDescription_Errors(t *testing.T) {
 	}{
 		{"nonexistent tracker", admin, `{"tracker_id":"00000000-0000-0000-0000-000000000009","kind":"media"}`, 404, "tracker_not_found"},
 		{"tracker with malformed id", admin, `{"tracker_id":"'; DROP TABLE trackers;--","kind":"media"}`, 404, "tracker_not_found"},
-		{"tracker from another operator does not exist for the requester", admin, fmt.Sprintf(`{"tracker_id":%q,"kind":"media"}`, foreign), 404, "tracker_not_found"},
 		{"invalid kind", admin, fmt.Sprintf(`{"tracker_id":%q,"kind":"tv"}`, id), 400, "invalid_request"},
 		{"kind with different casing", admin, fmt.Sprintf(`{"tracker_id":%q,"kind":"Media"}`, id), 400, "invalid_request"},
 		{"missing kind", admin, fmt.Sprintf(`{"tracker_id":%q}`, id), 400, "invalid_request"},
@@ -165,21 +163,21 @@ func TestPublishDescription_Errors(t *testing.T) {
 }
 
 // RBAC: publish:write (Administrator and Publisher), the same permission as /publish/infer.
+// Trackers belong to the cluster (ADR-047): the Publisher composes with the profile of the
+// tracker the Administrator registered.
 func TestPublishDescription_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
 	fake := newSite(t)
-	id, _ := createTracker(t, h, tokens["Publisher"], "RBAC description", fake.srv.URL)
+	id, _ := createTracker(t, h, tokens["Administrator"], "RBAC description", fake.srv.URL)
 	body := fmt.Sprintf(dMediaBody, id)
 
-	if code, b := dCompose(t, h, tokens["Publisher"], body); code != http.StatusOK {
-		t.Errorf("Publisher on own tracker: %d %.200s, want 200", code, b)
+	for _, role := range []string{"Administrator", "Publisher"} {
+		if code, b := dCompose(t, h, tokens[role], body); code != http.StatusOK {
+			t.Errorf("%s on the cluster's tracker: %d %.200s, want 200", role, code, b)
+		}
 	}
 	if code, _ := dCompose(t, h, tokens["Viewer"], body); code != http.StatusForbidden {
 		t.Errorf("Viewer: %d, want 403 (only has publish:read)", code)
-	}
-	// Tracker is per operator: the Administrator doesn't compose with the Publisher's tracker profile.
-	if code, _ := dCompose(t, h, tokens["Administrator"], body); code != http.StatusNotFound {
-		t.Errorf("Administrator on someone else's tracker: %d, want 404", code)
 	}
 }
 
@@ -379,37 +377,38 @@ func TestTrackerDescription_HostilePayloads(t *testing.T) {
 	}
 }
 
-// RBAC in the standard of the tracker endpoints: writing the section is trackers:write (the Viewer doesn't
-// pass, the owner Publisher does) and a tracker from another operator doesn't exist for whoever asks.
+// RBAC in the standard of the tracker endpoints: writing the section is trackers:write, which only the
+// Administrator holds (ADR-047), and a tracker that does not exist is 404.
 func TestTrackerDescription_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
+	admin := tokens["Administrator"]
 	fake := newSite(t)
-	id, _ := createTracker(t, h, tokens["Publisher"], "RBAC section", fake.srv.URL)
-	other, _ := createTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
+	id, _ := createTracker(t, h, admin, "RBAC section", fake.srv.URL)
 
 	routes := []struct{ method, body string }{{http.MethodPut, dCustomCfg}, {http.MethodDelete, ""}}
 	for _, r := range routes {
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(dSection, id), tokens["Viewer"], r.body); code != http.StatusForbidden {
-			t.Errorf("Viewer on %s: %d, want 403", r.method, code)
+		for _, role := range []string{"Viewer", "Publisher"} {
+			if code, _ := tpCall(t, h, r.method, fmt.Sprintf(dSection, id), tokens[role], r.body); code != http.StatusForbidden {
+				t.Errorf("%s on %s: %d, want 403", role, r.method, code)
+			}
 		}
-		if code, body := tpCall(t, h, r.method, fmt.Sprintf(dSection, id), tokens["Publisher"], r.body); code != http.StatusOK {
-			t.Errorf("Publisher owner on %s: %d %.200s, want 200", r.method, code, body)
+		if code, body := tpCall(t, h, r.method, fmt.Sprintf(dSection, id), admin, r.body); code != http.StatusOK {
+			t.Errorf("Administrator on %s: %d %.200s, want 200", r.method, code, body)
 		}
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(dSection, other), tokens["Publisher"], r.body); code != http.StatusNotFound {
-			t.Errorf("Publisher on admin's tracker, %s: %d, want 404", r.method, code)
+		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(dSection, "00000000-0000-0000-0000-0000000000aa"), admin, r.body); code != http.StatusNotFound {
+			t.Errorf("unknown tracker, %s: %d, want 404", r.method, code)
 		}
 		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(dSection, id), "", r.body); code != http.StatusUnauthorized {
 			t.Errorf("no token on %s: %d, want 401", r.method, code)
 		}
 	}
-	// Reading (the listing loads the section and the catalog) is trackers:read — the Viewer has it. The listing is
-	// per operator: the Viewer doesn't have own trackers (empty list), and the Publisher sees theirs with the
-	// composition catalog.
-	if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens["Viewer"], ""); code != http.StatusOK {
-		t.Errorf("Viewer reading trackers: %d %.200s, want 200", code, body)
-	}
-	if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens["Publisher"], ""); code != http.StatusOK || !strings.Contains(body, `"description_default"`) {
-		t.Errorf("Publisher reading trackers: %d %.200s, want 200 with composition catalog", code, body)
+	// Reading (the listing loads the section and the catalog) is trackers:read. The listing is the
+	// cluster's: the Viewer and the Publisher see the Administrator's tracker, with the composition catalog.
+	for _, role := range []string{"Viewer", "Publisher"} {
+		if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens[role], ""); code != http.StatusOK ||
+			!strings.Contains(body, id) || !strings.Contains(body, `"description_default"`) {
+			t.Errorf("%s reading trackers: %d %.200s, want 200 with the tracker and the composition catalog", role, code, body)
+		}
 	}
 }
 

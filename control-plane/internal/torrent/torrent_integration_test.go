@@ -440,7 +440,7 @@ func TestPendingTrackerAndMarkPublished(t *testing.T) {
 	t.Cleanup(pool.Close)
 	ctx := context.Background()
 
-	// User who owns the tracker.
+	// User who registers the tracker (names are unique across the cluster, ADR-047).
 	var userID string
 	username := fmt.Sprintf("pending-test-%d", time.Now().UnixNano())
 	if err := pool.QueryRow(ctx,
@@ -459,7 +459,7 @@ func TestPendingTrackerAndMarkPublished(t *testing.T) {
 	}
 
 	trk, err := tracker.NewService(pool).Create(ctx, userID, tracker.Input{
-		Name: "Example", Announce: "https://tracker.example/announce/key",
+		Name: "Example " + username, Announce: "https://tracker.example/announce/key",
 		Source: "EXAMPLE", APIURL: "https://tracker.example", APIToken: "tok",
 	})
 	if err != nil {
@@ -481,7 +481,7 @@ func TestPendingTrackerAndMarkPublished(t *testing.T) {
 		t.Fatalf("StoreTorrentFile: %v", err)
 	}
 
-	pending, err := svc.PendingTracker(ctx, userID)
+	pending, err := svc.PendingTracker(ctx)
 	if err != nil {
 		t.Fatalf("PendingTracker: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestPendingTrackerAndMarkPublished(t *testing.T) {
 	if err := svc.MarkPublished(ctx, torrentID, "https://tracker.example/download/abc"); err != nil {
 		t.Fatalf("MarkPublished: %v", err)
 	}
-	pending2, err := svc.PendingTracker(ctx, userID)
+	pending2, err := svc.PendingTracker(ctx)
 	if err != nil {
 		t.Fatalf("PendingTracker (post): %v", err)
 	}

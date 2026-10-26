@@ -133,6 +133,7 @@ export const torrents: Catalog["torrents"] = {
     noTrackersHintPrefix: "No trackers registered — register one in",
     trackersLink: "Settings › Trackers",
     noTrackersHintSuffix: "to publish to a private tracker.",
+    noTrackersAskAdmin: "No trackers registered. To publish to a private tracker, ask an administrator to register one.",
     progressUploading: "Uploading… {pct}%",
     phaseProcessing: "Content received — the Node is creating the torrent…",
     btnCreatingTorrent: "Creating torrent…",

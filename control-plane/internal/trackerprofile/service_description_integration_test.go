@@ -47,7 +47,7 @@ func (e env) rawDoc(t *testing.T, trackerID string) map[string]json.RawMessage {
 
 func (e env) desc(t *testing.T, trackerID string) *description.Config {
 	t.Helper()
-	p, err := e.profiles.Get(context.Background(), e.userID, trackerID)
+	p, err := e.profiles.Get(context.Background(), trackerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -61,11 +61,11 @@ func TestSetDescription_WritesToSameDocumentAndPreservesTaxonomy(t *testing.T) {
 	e.fill(t, id)
 
 	cfg := customDesc()
-	res, err := e.profiles.SetDescription(ctx, e.userID, id, &cfg)
+	res, err := e.profiles.SetDescription(ctx, id, &cfg)
 	if err != nil {
 		t.Fatalf("SetDescription: %v", err)
 	}
-	if res.TrackerName != "With Description" || res.Profile.Description == nil || !reflect.DeepEqual(*res.Profile.Description, cfg) {
+	if res.TrackerName != e.name("With Description") || res.Profile.Description == nil || !reflect.DeepEqual(*res.Profile.Description, cfg) {
 		t.Errorf("result = %+v", res)
 	}
 	if got := e.desc(t, id); got == nil || !reflect.DeepEqual(*got, cfg) {
@@ -95,13 +95,13 @@ func TestSetDescription_WritesToSameDocumentAndPreservesTaxonomy(t *testing.T) {
 	}
 
 	// The taxonomy stayed as it was.
-	p, _ := e.profiles.Get(ctx, e.userID, id)
+	p, _ := e.profiles.Get(ctx, id)
 	if len(p.Taxonomy[trackerprofile.AxisCategory]) != 2 || len(p.Taxonomy[trackerprofile.AxisType]) != 1 {
 		t.Errorf("the taxonomy changed when saving the section: %+v", p.Taxonomy)
 	}
 
 	// Editing the taxonomy manually does NOT delete the section.
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisType: {{ID: 3, Name: "Encode"}, {ID: 4, Name: "WEB-DL"}},
 	}); err != nil {
 		t.Fatal(err)
@@ -111,13 +111,13 @@ func TestSetDescription_WritesToSameDocumentAndPreservesTaxonomy(t *testing.T) {
 	}
 
 	// Applying a discovery doesn't either.
-	if _, err := e.profiles.Apply(ctx, e.userID, id, []trackerprofile.ApplyItem{{Axis: trackerprofile.AxisType, ID: 50, Name: "PC", Origin: trackerprofile.OriginDiscovered}}); err != nil {
+	if _, err := e.profiles.Apply(ctx, id, []trackerprofile.ApplyItem{{Axis: trackerprofile.AxisType, ID: 50, Name: "PC", Origin: trackerprofile.OriginDiscovered}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.desc(t, id); got == nil || !reflect.DeepEqual(*got, cfg) {
 		t.Errorf("Apply deleted or changed the section: %+v", got)
 	}
-	p, _ = e.profiles.Get(ctx, e.userID, id)
+	p, _ = e.profiles.Get(ctx, id)
 	if len(p.Taxonomy[trackerprofile.AxisType]) != 3 {
 		t.Errorf("Apply did not save the term: %+v", p.Taxonomy[trackerprofile.AxisType])
 	}
@@ -125,14 +125,14 @@ func TestSetDescription_WritesToSameDocumentAndPreservesTaxonomy(t *testing.T) {
 	// Importing a file WITHOUT the section doesn't either.
 	src := e.newTracker(t, "Origin without section")
 	e.fill(t, src)
-	doc2, err := e.profiles.Export(ctx, e.userID, src)
+	doc2, err := e.profiles.Export(ctx, src)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if doc2.Description != nil {
 		t.Fatalf("the export of a profile without a section included it: %+v", doc2.Description)
 	}
-	if _, err := e.profiles.Import(ctx, e.userID, id, doc2, nil); err != nil {
+	if _, err := e.profiles.Import(ctx, id, doc2, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.desc(t, id); got == nil || !reflect.DeepEqual(*got, cfg) {
@@ -146,11 +146,11 @@ func TestSetDescription_NilRestoresDefaultAndRemovesKey(t *testing.T) {
 	id := e.newTracker(t, "Restore")
 	e.fill(t, id)
 	cfg := customDesc()
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, &cfg); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, id, &cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := e.profiles.SetDescription(ctx, e.userID, id, nil)
+	res, err := e.profiles.SetDescription(ctx, id, nil)
 	if err != nil {
 		t.Fatalf("restore: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestSetDescription_NilRestoresDefaultAndRemovesKey(t *testing.T) {
 		t.Error("restoring the description deleted the taxonomy")
 	}
 	// Restoring what is already in the default is idempotent.
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, nil); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, id, nil); err != nil {
 		t.Errorf("restore again: %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestSetDescription_InvalidWritesNothing(t *testing.T) {
 	ctx := context.Background()
 	id := e.newTracker(t, "Invalid")
 	cfg := customDesc()
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, &cfg); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, id, &cfg); err != nil {
 		t.Fatal(err)
 	}
 	before := e.rawDoc(t, id)
@@ -186,7 +186,7 @@ func TestSetDescription_InvalidWritesNothing(t *testing.T) {
 		"invalid tag":    {MediaInfoTag: "mediainfo][img"},
 		"huge list":      {MediaBlocks: make([]string, 100000)},
 	} {
-		_, err := e.profiles.SetDescription(ctx, e.userID, id, &bad)
+		_, err := e.profiles.SetDescription(ctx, id, &bad)
 		var ve *trackerprofile.ValidationError
 		if !errors.As(err, &ve) {
 			t.Errorf("%s: error = %v, want *ValidationError", name, err)
@@ -197,17 +197,16 @@ func TestSetDescription_InvalidWritesNothing(t *testing.T) {
 	}
 }
 
-func TestSetDescription_OwnershipAndLineOnDemand(t *testing.T) {
+func TestSetDescription_NotFoundAndLineOnDemand(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	cfg := customDesc()
 
-	for name, args := range map[string][2]string{
-		"other operator": {"00000000-0000-0000-0000-000000000001", e.newTracker(t, "Other")},
-		"nonexistent id": {e.userID, "00000000-0000-0000-0000-000000000002"},
-		"malformed id":   {e.userID, "'; DROP TABLE trackers;--"},
+	for name, id := range map[string]string{
+		"nonexistent id": "00000000-0000-0000-0000-000000000002",
+		"malformed id":   "'; DROP TABLE trackers;--",
 	} {
-		if _, err := e.profiles.SetDescription(ctx, args[0], args[1], &cfg); !errors.Is(err, trackerprofile.ErrNotFound) {
+		if _, err := e.profiles.SetDescription(ctx, id, &cfg); !errors.Is(err, trackerprofile.ErrNotFound) {
 			t.Errorf("%s: error = %v, want ErrNotFound", name, err)
 		}
 	}
@@ -219,10 +218,10 @@ func TestSetDescription_OwnershipAndLineOnDemand(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("the new tracker already has a profile row")
 	}
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, &cfg); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, id, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	p, err := e.profiles.Get(ctx, e.userID, id)
+	p, err := e.profiles.Get(ctx, id)
 	if err != nil || p.Description == nil {
 		t.Fatalf("Get = %+v, %v", p, err)
 	}
@@ -243,15 +242,15 @@ func TestSetDescription_LineInOldFormat(t *testing.T) {
 	if _, err := e.pool.Exec(ctx, `UPDATE tracker_profiles SET taxonomy = '{"type":[{"id":3,"name":"Encode","origin":"seed"}]}'::jsonb WHERE tracker_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
-	p, err := e.profiles.Get(ctx, e.userID, id)
+	p, err := e.profiles.Get(ctx, id)
 	if err != nil || p.Description != nil || len(p.Taxonomy[trackerprofile.AxisType]) != 1 {
 		t.Fatalf("old row read as %+v (%v)", p, err)
 	}
 	cfg := customDesc()
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, &cfg); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, id, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	p, _ = e.profiles.Get(ctx, e.userID, id)
+	p, _ = e.profiles.Get(ctx, id)
 	if p.Description == nil || p.Taxonomy[trackerprofile.AxisType][0].Origin != trackerprofile.OriginSeed {
 		t.Errorf("after saving the section: %+v", p)
 	}
@@ -267,10 +266,17 @@ func TestGet_UnreadableSectionInDBIsError(t *testing.T) {
 	if _, err := e.pool.Exec(ctx, `UPDATE tracker_profiles SET taxonomy = '{"description":"x"}'::jsonb WHERE tracker_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.profiles.Get(ctx, e.userID, id); err == nil || errors.Is(err, trackerprofile.ErrNotFound) {
+	// Trackers belong to the cluster (ADR-047): the later tests list every profile, so the
+	// corrupted one leaves with this test.
+	t.Cleanup(func() {
+		if err := e.trackers.Delete(context.Background(), id); err != nil {
+			t.Errorf("remove the corrupted tracker: %v", err)
+		}
+	})
+	if _, err := e.profiles.Get(ctx, id); err == nil || errors.Is(err, trackerprofile.ErrNotFound) {
 		t.Errorf("Get for unreadable document = %v, want an error other than ErrNotFound", err)
 	}
-	if _, err := e.profiles.SetDescription(ctx, e.userID, id, nil); err == nil {
+	if _, err := e.profiles.SetDescription(ctx, id, nil); err == nil {
 		t.Error("SetDescription on an unreadable document succeeded (would overwrite it)")
 	}
 }
@@ -283,11 +289,11 @@ func TestExportImport_SectionTravelsInFile(t *testing.T) {
 	src := e.newTracker(t, "Origin")
 	e.fill(t, src)
 	cfg := customDesc()
-	if _, err := e.profiles.SetDescription(ctx, e.userID, src, &cfg); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, src, &cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	doc, err := e.profiles.Export(ctx, e.userID, src)
+	doc, err := e.profiles.Export(ctx, src)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -306,7 +312,7 @@ func TestExportImport_SectionTravelsInFile(t *testing.T) {
 
 	// Destination without a section: receives the one from the file, along with the taxonomy, in the same write.
 	dst := e.newTracker(t, "Destination")
-	res, err := e.profiles.Import(ctx, e.userID, dst, parsed, nil)
+	res, err := e.profiles.Import(ctx, dst, parsed, nil)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -319,7 +325,7 @@ func TestExportImport_SectionTravelsInFile(t *testing.T) {
 	if got := e.desc(t, dst); got == nil || !reflect.DeepEqual(*got, cfg) {
 		t.Errorf("section was not saved: %+v", got)
 	}
-	p, _ := e.profiles.Get(ctx, e.userID, dst)
+	p, _ := e.profiles.Get(ctx, dst)
 	if len(p.Taxonomy[trackerprofile.AxisCategory]) != 2 {
 		t.Errorf("file taxonomy was not included: %+v", p.Taxonomy)
 	}
@@ -327,7 +333,7 @@ func TestExportImport_SectionTravelsInFile(t *testing.T) {
 	// Re-importing the same file: everything is "same", nothing to write.
 	var before, after string
 	_ = e.pool.QueryRow(ctx, `SELECT updated_at::text FROM tracker_profiles WHERE tracker_id = $1`, dst).Scan(&before)
-	res, err = e.profiles.Import(ctx, e.userID, dst, parsed, nil)
+	res, err = e.profiles.Import(ctx, dst, parsed, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,10 +350,10 @@ func TestImport_OperatorSectionIsProtected(t *testing.T) {
 	file := customDesc()
 	src := e.newTracker(t, "Origin")
 	e.fill(t, src)
-	if _, err := e.profiles.SetDescription(ctx, e.userID, src, &file); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, src, &file); err != nil {
 		t.Fatal(err)
 	}
-	exported, err := e.profiles.Export(ctx, e.userID, src)
+	exported, err := e.profiles.Export(ctx, src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,12 +366,12 @@ func TestImport_OperatorSectionIsProtected(t *testing.T) {
 
 	dst := e.newTracker(t, "Destination")
 	mine := otherDesc()
-	if _, err := e.profiles.SetDescription(ctx, e.userID, dst, &mine); err != nil {
+	if _, err := e.profiles.SetDescription(ctx, dst, &mine); err != nil {
 		t.Fatal(err)
 	}
 
 	// Preview shows what would be kept — and does not write.
-	plan, err := e.profiles.PreviewImport(ctx, e.userID, dst, doc, nil)
+	plan, err := e.profiles.PreviewImport(ctx, dst, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +380,7 @@ func TestImport_OperatorSectionIsProtected(t *testing.T) {
 	}
 
 	// Applying without requesting: the taxonomy comes in, the operator's section stays.
-	res, err := e.profiles.Import(ctx, e.userID, dst, doc, nil)
+	res, err := e.profiles.Import(ctx, dst, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +392,7 @@ func TestImport_OperatorSectionIsProtected(t *testing.T) {
 	}
 
 	// If requested, it is replaced.
-	res, err = e.profiles.Import(ctx, e.userID, dst, doc, map[trackerprofile.OverwriteKey]bool{trackerprofile.DescriptionKey: true})
+	res, err = e.profiles.Import(ctx, dst, doc, map[trackerprofile.OverwriteKey]bool{trackerprofile.DescriptionKey: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +413,7 @@ func TestPreviewImport_WithSectionDoesNotSave(t *testing.T) {
 		Family: trackerprofile.FamilyUNIT3D, SchemaVersion: trackerprofile.SchemaVersion, Description: &file,
 	}}
 	id := e.newTracker(t, "Preview only")
-	plan, err := e.profiles.PreviewImport(ctx, e.userID, id, d, nil)
+	plan, err := e.profiles.PreviewImport(ctx, id, d, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

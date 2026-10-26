@@ -131,6 +131,7 @@ export const torrents = {
     noTrackersHintPrefix: "Sem trackers cadastrados — cadastre um em",
     trackersLink: "Configurações › Trackers",
     noTrackersHintSuffix: "para publicar em tracker privado.",
+    noTrackersAskAdmin: "Sem trackers cadastrados. Para publicar em tracker privado, peça a um administrador que cadastre um.",
     progressUploading: "Enviando… {pct}%",
     phaseProcessing: "Conteúdo recebido — o Node está criando o torrent…",
     btnCreatingTorrent: "Criando torrent…",

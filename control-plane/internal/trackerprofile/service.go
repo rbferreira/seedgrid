@@ -14,7 +14,7 @@ import (
 	"github.com/rbferreira/seedgrid/control-plane/internal/imagehost"
 )
 
-// ErrNotFound: tracker does not exist, was removed, or belongs to another operator.
+// ErrNotFound: tracker does not exist or was removed.
 var ErrNotFound = errors.New("tracker not found")
 
 // Service operates on the tracker_profiles table (migration 00043). The trackers table is only
@@ -138,17 +138,17 @@ func encodeProfile(p Profile) ([]byte, error) {
 
 // ImageHostSpec returns only the image_host section of the profile (nil = no custom host), for the
 // screenshot chain (torrent.TrackerProfileProvider, ADR-040). ErrNotFound same as Get.
-func (s *Service) ImageHostSpec(ctx context.Context, userID, trackerID string) (*imagehost.Spec, error) {
-	p, err := s.Get(ctx, userID, trackerID)
+func (s *Service) ImageHostSpec(ctx context.Context, trackerID string) (*imagehost.Spec, error) {
+	p, err := s.Get(ctx, trackerID)
 	if err != nil {
 		return nil, err
 	}
 	return p.ImageHost, nil
 }
 
-// Get returns the profile for an operator's tracker. A tracker without a profile row is not an error:
+// Get returns the profile for a tracker. A tracker without a profile row is not an error:
 // it returns the empty profile (all axes present, no terms).
-func (s *Service) Get(ctx context.Context, userID, trackerID string) (Profile, error) {
+func (s *Service) Get(ctx context.Context, trackerID string) (Profile, error) {
 	if !validUUID(trackerID) {
 		return Profile{}, ErrNotFound
 	}
@@ -159,8 +159,8 @@ func (s *Service) Get(ctx context.Context, userID, trackerID string) (Profile, e
 		SELECT p.family, p.schema_version, p.taxonomy
 		  FROM trackers t
 		  LEFT JOIN tracker_profiles p ON p.tracker_id = t.id AND p.deleted_at IS NULL
-		 WHERE t.id = $1 AND t.user_id = $2 AND t.deleted_at IS NULL`,
-		trackerID, userID).Scan(&family, &version, &raw)
+		 WHERE t.id = $1 AND t.deleted_at IS NULL`,
+		trackerID).Scan(&family, &version, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Profile{}, ErrNotFound
 	}
@@ -173,14 +173,14 @@ func (s *Service) Get(ctx context.Context, userID, trackerID string) (Profile, e
 	return decodeProfile(*family, *version, raw)
 }
 
-// ForTrackers returns the profiles of all active trackers for the operator, by tracker
+// ForTrackers returns the profiles of all active trackers in the cluster, by tracker
 // id. Those without a profile row simply do not appear in the map.
-func (s *Service) ForTrackers(ctx context.Context, userID string) (map[string]Profile, error) {
+func (s *Service) ForTrackers(ctx context.Context) (map[string]Profile, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT p.tracker_id::text, p.family, p.schema_version, p.taxonomy
 		  FROM tracker_profiles p
 		  JOIN trackers t ON t.id = p.tracker_id
-		 WHERE t.user_id = $1 AND t.deleted_at IS NULL AND p.deleted_at IS NULL`, userID)
+		 WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -205,14 +205,14 @@ func (s *Service) ForTrackers(ctx context.Context, userID string) (map[string]Pr
 // lock ensures the tracker's profile row exists and locks it for the transaction (FOR UPDATE):
 // editing and discovery application are read-modify-write, and two at the same time
 // without a lock would lose one of them.
-func lock(ctx context.Context, tx pgx.Tx, userID, trackerID string) (string, Profile, error) {
+func lock(ctx context.Context, tx pgx.Tx, trackerID string) (string, Profile, error) {
 	if !validUUID(trackerID) {
 		return "", Profile{}, ErrNotFound
 	}
 	var name string
 	err := tx.QueryRow(ctx,
-		`SELECT name FROM trackers WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-		trackerID, userID).Scan(&name)
+		`SELECT name FROM trackers WHERE id = $1 AND deleted_at IS NULL`,
+		trackerID).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", Profile{}, ErrNotFound
 	}
@@ -253,14 +253,14 @@ func save(ctx context.Context, tx pgx.Tx, trackerID string, p Profile) error {
 // Edit applies a manual taxonomy edit (already validated by ValidateInput). The axes
 // present in `in` are replaced; the missing ones stay as they are. The origin of each term
 // is decided here, by comparing with what is stored (see ApplyEdit).
-func (s *Service) Edit(ctx context.Context, userID, trackerID string, in map[string][]TermInput) (Result, error) {
+func (s *Service) Edit(ctx context.Context, trackerID string, in map[string][]TermInput) (Result, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	name, cur, err := lock(ctx, tx, userID, trackerID)
+	name, cur, err := lock(ctx, tx, trackerID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -278,7 +278,7 @@ func (s *Service) Edit(ctx context.Context, userID, trackerID string, in map[str
 // to the default. The Config goes through CleanDescription HERE, in the service — not just in the handler — because
 // it is a write point and validation cannot depend on the caller. The taxonomy is passed through
 // as is.
-func (s *Service) SetDescription(ctx context.Context, userID, trackerID string, cfg *description.Config) (Result, error) {
+func (s *Service) SetDescription(ctx context.Context, trackerID string, cfg *description.Config) (Result, error) {
 	var clean *description.Config
 	if cfg != nil {
 		c, err := CleanDescription(*cfg)
@@ -294,7 +294,7 @@ func (s *Service) SetDescription(ctx context.Context, userID, trackerID string, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	name, cur, err := lock(ctx, tx, userID, trackerID)
+	name, cur, err := lock(ctx, tx, trackerID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -312,7 +312,7 @@ func (s *Service) SetDescription(ctx context.Context, userID, trackerID string, 
 // using only the global imgbb in the screenshot chain. The Spec goes through CleanImageHost HERE,
 // in the service — not just in the handler — because it is a write point and validation cannot
 // depend on the caller. The taxonomy and other sections are passed through as is.
-func (s *Service) SetImageHost(ctx context.Context, userID, trackerID string, spec *imagehost.Spec) (Result, error) {
+func (s *Service) SetImageHost(ctx context.Context, trackerID string, spec *imagehost.Spec) (Result, error) {
 	var clean *imagehost.Spec
 	if spec != nil {
 		c, err := CleanImageHost(*spec)
@@ -328,7 +328,7 @@ func (s *Service) SetImageHost(ctx context.Context, userID, trackerID string, sp
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	name, cur, err := lock(ctx, tx, userID, trackerID)
+	name, cur, err := lock(ctx, tx, trackerID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -346,14 +346,14 @@ func (s *Service) SetImageHost(ctx context.Context, userID, trackerID string, sp
 // ValidateApplyItems) using the Merge rule: completes what's missing, never overwrites the
 // manual. Merge runs INSIDE the transaction, on the locked state — not on what the
 // Portal saw when the proposal was generated, which may have changed since then.
-func (s *Service) Apply(ctx context.Context, userID, trackerID string, items []ApplyItem) (Result, error) {
+func (s *Service) Apply(ctx context.Context, trackerID string, items []ApplyItem) (Result, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	name, cur, err := lock(ctx, tx, userID, trackerID)
+	name, cur, err := lock(ctx, tx, trackerID)
 	if err != nil {
 		return Result{}, err
 	}

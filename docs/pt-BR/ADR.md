@@ -451,7 +451,9 @@ Limitações:
 > - **A recusa aponta a saída.** O 409 `migration_in_flight` diz que dá para cancelar e **qual** migração (inclusive quando a ação foi sobre a cópia do destino, cuja migração o operador não teria como descobrir): *"…aguarde a conclusão ou cancele a migração (Portal: Alertas & Eventos → Migrações recentes → Cancelar migração; API: POST /api/v1/migrations/{id}/cancel)"*.
 # **ADR-019**
 # **Publicação de conteúdo local: upload → criação do `.torrent` no Engine + seeding, com trackers do operador (streaming pelo CP)**
-**Estado:** Aprovada
+**Estado:** Aprovada — **dono do tracker substituído pela ADR-047**
+
+> A ADR-047 substitui a parte desta ADR que tornava os trackers **por operador, cadastrados no Perfil**: os trackers passam a ser do cluster e o Administrador os gerencia. O resto continua valendo.
 
 **Contexto**
 O operador quer **publicar conteúdo próprio** (ISOs, arquivos) direto do PC pelo Portal: o Cluster gera o `.torrent`, anuncia e passa a **semear**, sem precisar de um cliente BitTorrent local nem de um `.torrent` pronto. Na publicação escolhe **público** ou **privado** — este último anuncia num **tracker do próprio operador** (announce URL + passkey). Hoje o SeedGrid só *consome* torrents (magnet ou `.torrent` já existente); não *cria*.
@@ -468,8 +470,8 @@ O operador quer **publicar conteúdo próprio** (ISOs, arquivos) direto do PC pe
 - **Transporte:** streaming `browser → CP → Node`. O CP lê as partes do multipart e as reempacota como **tar stream** para o Agent (reusa `extractTar` da ADR-018); o Agent extrai no storage (`/data`). Autorização por **token de uso único** emitido pelo CP; canal de **recepção** no Agent (mesma família do `transfer.Server` da ADR-018, agora com um endpoint de *push*), com **path confinado** ao storage e **nome sanitizado** (anti-traversal).
 - **Criação do `.torrent`: o próprio Engine cria** (qBittorrent `torrentcreator`, `startSeeding=true`) — sem biblioteca externa. O Agent dispara a criação (`sourcePath` no `/data`, `trackers`, `isPrivate`), aguarda concluir, **exporta o `.torrent` gerado** e o devolve ao CP, que o **persiste** em `torrent_files` (`source='created'`, casa com ADR-018/ADR-006). O torrent já nasce **SEEDING** no Node.
 - **Escolha do Node:** o **Scheduler** decide por padrão (mesma elegibilidade/score do add normal); o operador pode **forçar** um Node destino (bypass explícito do Scheduler, registrado na decisão) — útil para fixar num disco específico.
-- **Trackers do operador (announce):** credenciais cadastradas **por operador** no Perfil (nome + announce URL contendo o passkey). Na publicação: **Público** (sem tracker — descoberta por DHT/PeX) **ou** um tracker cadastrado (**privado**, `isPrivate=true`, DHT off). O announce é guardado **em texto** (decisão do operador — sem cifragem em repouso) e **não é devolvido na listagem** da API (só nome + host mascarado); o CP injeta o announce apenas no comando ao Agent na hora de publicar.
-- **Persistência:** nova relação `trackers` (por usuário, announce em texto, flag de default) no Postgres (ADR-006). O `.torrent` criado entra em `torrent_files` como qualquer outro → o conteúdo publicado é **migratável** (ADR-018) e re-provisionável.
+- **Trackers do operador (announce):** credenciais cadastradas **por operador** no Perfil (ADR-047: trackers do cluster, geridos pelo Administrador) (nome + announce URL contendo o passkey). Na publicação: **Público** (sem tracker — descoberta por DHT/PeX) **ou** um tracker cadastrado (**privado**, `isPrivate=true`, DHT off). O announce é guardado **em texto** (decisão do operador — sem cifragem em repouso) e **não é devolvido na listagem** da API (só nome + host mascarado); o CP injeta o announce apenas no comando ao Agent na hora de publicar.
+- **Persistência:** nova relação `trackers` (por usuário — do cluster desde a ADR-047 —, announce em texto, flag de default) no Postgres (ADR-006). O `.torrent` criado entra em `torrent_files` como qualquer outro → o conteúdo publicado é **migratável** (ADR-018) e re-provisionável.
 
 **Consequências**
 Benefícios:
@@ -1159,7 +1161,7 @@ Definir um modelo de autorização para operadores do Portal/API que: (a) preser
 3. **RBAC permission-based sobre o schema existente**: cada rota protegida exige uma permissão (`resource:action`); papéis agregam permissões via `role_permissions`; o middleware verifica `user.HasPermission(perm)`; admin resolve por wildcard. Reutiliza o schema da migration 00001, mantém granularidade e permite novos papéis sem tocar rotas. **Adotada.**
 
 **Decisão adotada**
-- **Quatro papéis de sistema** (seed na migration 00034): `Administrator` (acesso total), `Publisher` (gerencia conteúdo: torrents, trackers, publicação), `Downloader` (consome: lê e baixa), `Viewer` (somente leitura).
+- **Quatro papéis de sistema** (seed na migration 00034): `Administrator` (acesso total), `Publisher` (gerencia conteúdo: torrents, trackers, publicação — desde a ADR-047 publica nos trackers do cluster, mas não os gerencia), `Downloader` (consome: lê e baixa), `Viewer` (somente leitura).
 - **Permissões no formato `resource:action`**, seeds na mesma migration, associadas a papéis via `role_permissions`. Administrador resolve por wildcard (`*`) — não precisa de seed explícito para cada permissão nova.
 - **`auth.User` passa a carregar `Roles` e `Permissions`** no `Authenticate` (JOIN com user_roles/role_permissions); ganha o método `HasPermission(perm)`.
 - **Middleware `httpx.RequirePermission(perm)`** roda POR DENTRO do `RequireOperator` (já tem o usuário no contexto) e responde **403** quando a permissão falta. Cada rota protegida declara sua permissão ao ser registrada; rotas que exigem mais de uma permissão combinam middlewares.
@@ -1434,7 +1436,7 @@ Entregue em #197 (**sem migration**: a origem nova mora dentro do JSONB, e o arq
 - **Um termo novo não pode ofuscar o certo.** O painel de publicação casa o nome do release com o do termo (`findByLabel`) e pré-preenche a primeira categoria de cada papel. Um arquivo hostil — ou só descuidado — que traga `{id: 1, "Séries", tv}` num perfil que já tem Séries = 2 mudaria o que o painel escolhe, sem o operador ter decidido nada. Três defesas: **(i)** o arquivo com dois nomes que só diferem em caixa ou acento **dentro do mesmo eixo** é recusado (`taxonomy.category[1].name: nome repetido no eixo…`), com a mesma normalização do Portal (`NormalizeLabel` ↔ `normalizeLabel`: NFD sem marcas de acento, minúsculas, espaços colapsados — há teste de paridade); **(ii)** a pré-visualização avisa, **em cada linha**, o termo novo ou renomeado cujo nome colide com o de outro id do eixo — calculado sobre o estado em que o eixo FICARIA, não sobre o atual — e o termo que passaria a ser a **primeira** categoria de um papel que já tinha dono (vários termos com o mesmo papel são normais — séries e animes são `tv` —; só mudar o dono do padrão avisa); **(iii)** no Portal, `findByLabel` só devolve um termo quando o rótulo é **inequívoco** — com dois ids para o mesmo nome, não pré-preenche e o operador escolhe. Como o export passa pela mesma validação, um perfil local com nomes repetidos **não é exportado** (`409 profile_not_exportable`, com o motivo): o export nunca entrega um arquivo que o próprio import recusaria.
 - **O nome do site no arquivo é o rótulo livre do operador — e pode conter uma credencial.** Quem cola o announce (ou só a passkey) no nome do tracker levaria a passkey para um arquivo feito para ser compartilhado. `siteLabel` **não limpa nem trunca** (truncar um announce de 90 caracteres deixaria os primeiros ~27, passkey inclusa): um nome que não passa em `CleanName`, ou que **parece conter uma credencial** — barra, `\`, `?` ou `=`, um UUID, ou 20 ou mais letras e dígitos seguidos —, é trocado pelo **host público** (se couber em 64 caracteres) ou por `tracker`. O limite de 20 é uma heurística, e a decisão é do operador: um fragmento menor colado no nome passa, e por isso o Portal diz o que o arquivo leva e pede para conferir antes de compartilhar.
 - **Auditoria (ADR-025):** só o import aplicado é registrado («Importou um perfil de arquivo no tracker «Y»: N novo(s), M renomeado(s), K papel(éis) preenchido(s); P mantido(s) por serem do operador ou já confirmados pelo site dele»). **Nada que veio do arquivo entra na trilha**: o nome do site dele é texto de terceiro e, com as aspas «», forjaria o resto da linha. O nome do tracker passa pelo mesmo rótulo seguro e perde as aspas. A pré-visualização e o export são leitura e ficam fora.
-- **RBAC no padrão dos endpoints de tracker:** exportar é `trackers:read` (o conteúdo já está na listagem de trackers, que o mesmo papel lê); pré-visualizar e importar são `trackers:write`. Tracker é de quem o cadastrou: o de outro operador não existe para quem pergunta (`404`).
+- **RBAC no padrão dos endpoints de tracker:** exportar é `trackers:read` (o conteúdo já está na listagem de trackers, que o mesmo papel lê); pré-visualizar e importar são `trackers:write`. Tracker é de quem o cadastrou: o de outro operador não existe para quem pergunta (`404`). *(ADR-047: os trackers são do cluster; só um id desconhecido é `404`.)*
 
 Entregue em #192 (**sem migration**, **sem coluna nova**): a **composição da descrição** do upload sai do Portal e passa a ser uma **seção do perfil** do tracker.
 - **O que mudou de lugar.** `portal/src/pages/publish/bbcode.ts` montava o BBCode (pôster, sinopse, tags, screenshots e MediaInfo; capa, título, sobre, gêneros e plataformas) — fora do alcance de qualquer cliente da API, sem onde dois sites divergirem e sem teste em Go, sendo o campo que o site publica na íntegra. Agora é `internal/description` (`ComposeMedia`/`ComposeGame`), chamado por `POST /api/v1/publish/description` (`publish:write`, fora da auditoria: só compõe texto). O Portal pede o texto e o entrega ao campo, que o operador continua editando — a conferência humana da ADR-020 não muda — e `buildBBCode`/`buildGameBBCode` foram removidos.
@@ -1732,7 +1734,7 @@ Ao gravar a chave, o Control Plane grava junto o **host do `upload_url` vigente*
 - **Cada falha vira entrada no Feed** (ADR-022), um tipo novo (`screenshot_host_failed`) com o torrent, o tracker, o host (o **nome DNS** do `upload_url`, nunca o rótulo `name` do perfil, que é texto de terceiro), o motivo e o próximo host da fila. É o item (d): a falha do host do site deixa de ser invisível só porque o imgbb salvou a publicação.
 - **Todos falharam** → o mesmo erro de hoje (`502 screenshots_failed`), agora com a lista de motivos por host; o operador continua podendo colar o BBCode à mão (ADR-026). **Nenhum host configurado** → o mesmo erro de hoje.
 - **A resposta ganha `host`** (quem hospedou) **e `failures`** (`[{host, reason}]`), campos aditivos. O Portal mostra onde as imagens ficaram e o que falhou antes.
-- **O tracker entra na requisição:** as rotas de screenshots que sobem imagens aceitam `tracker_id` opcional. Tracker de outro operador não existe para quem pergunta (`404`, como nas rotas de perfil). **Sem `tracker_id`, só o imgbb** — o comportamento atual, preservado para quem chama a API sem o campo. O painel de publicação passa a enviá-lo.
+- **O tracker entra na requisição:** as rotas de screenshots que sobem imagens aceitam `tracker_id` opcional. Tracker de outro operador não existe para quem pergunta (`404`, como nas rotas de perfil). *(ADR-047: os trackers são do cluster; só um id desconhecido é `404`.)* **Sem `tracker_id`, só o imgbb** — o comportamento atual, preservado para quem chama a API sem o campo. O painel de publicação passa a enviá-lo.
 - **A URL devolvida por qualquer host é validada** antes de entrar no BBCode: absoluta, `https`, até 2048 caracteres, sem espaço, controle, `[`, `]` nem aspas. Ela é interpolada em `[url=…][img]…[/img][/url]`; sem a validação, a resposta de um host injetaria markup na descrição que o site publica. Vale para o imgbb também, que hoje é interpolado sem conferência.
 
 **4. Orçamento de tempo.** A fase de upload tem **25 s no total**, abaixo dos 30 s de `WriteTimeout` do Control Plane e dos 60 s do proxy no `/api/`. Cada host recebe a **parte justa do que resta** — o restante dividido pelos hosts que ainda faltam —, e o tempo que um host não usa passa ao seguinte: com dois hosts, o do tracker tem até 12,5 s, e um host que trava não consome o tempo do fallback. O timeout de cada requisição é limitado pelo prazo do host. Foi considerado estender o prazo de escrita só nessas rotas (`http.ResponseController`) e abrir uma `location` própria no proxy; ficou de fora porque mexe em infraestrutura por uma fase que normalmente leva poucos segundos. Se host real se mostrar lento, o motivo `tempo esgotado` no Feed é o sinal para revisitar. A rota que extrai **e** sobe numa chamada só (`POST /torrents/{id}/screenshots`) mantém a limitação que já tinha (a extração pode sozinha passar do prazo); o Portal usa extração e upload em duas chamadas.
@@ -2174,6 +2176,49 @@ A ADR-027 manteve o rollout manual por um motivo: um binário ruim não deve ati
 - **ADR-027**: substitui "um Node por vez" por "um Node primeiro"; todo o resto permanece.
 - **ADR-014**: Nodes offline são excluídos porque seu comando ficaria na fila.
 
+# **ADR-047**
+
+**Título:** Trackers são do cluster; o Administrador os gerencia
+
+**Status:** Aprovada — implementada (#19)
+
+**Contexto**
+A ADR-019 tornou os trackers **por operador**: cada um registra suas próprias credenciais de announce no Perfil, e toda consulta filtra por quem os registrou (`trackers.user_id`). O Portal nunca seguiu isso: o registro de tracker fica em **Configurações › Trackers**, protegido por `settings:write`, que apenas o Administrador acessa. A ADR-035 deu ao Publisher `trackers:write`, uma permissão sem tela correspondente.
+
+Na prática, os trackers do Administrador eram invisíveis para todos os outros, e o Publisher não tinha como registrar um. O Publisher só podia publicar publicamente (DHT).
+
+A ADR-021 já havia tratado a conta do tracker como sendo do Cluster: uma passkey compartilhada por todo Node, com o limite de slots de download contado por conta, em todo o Cluster.
+
+**Problema**
+Quem registra um tracker e quem o vê.
+
+**Alternativas consideradas**
+1. **Status quo:** por operador, gerenciado em Configurações. Um Publisher nunca tem um tracker. Rejeitada.
+2. **Por operador, gerenciado no Perfil** (o que a ADR-019 descrevia): cada Publisher mantém sua própria conta em cada site. Isso espalha segredos e configurações entre usuários, obriga cada Publisher a configurar taxonomia e descrição para sites que o Cluster já conhece, e o controle de admissão da ADR-021 conta slots por linha de tracker, não por site. Rejeitada.
+3. **Trackers do Cluster, gerenciados pelo Administrador (adotada).**
+
+**Decisão** (alternativa 3)
+- Um tracker é um **recurso do Cluster**. Todos com `trackers:read` veem a mesma lista, publicam e fazem seed com qualquer um deles. Nada no Control Plane filtra mais trackers por usuário.
+- Alterar trackers exige `trackers:write`: criar, editar, remover, definir padrão, perfil do site (taxonomia, descrição, host de imagens), chave do host de imagens e importação de perfil. O **Publisher perde essa permissão**; ele mantém `trackers:read` e `trackers:seed`. Por padrão, apenas o Administrador a possui; um papel personalizado ainda pode recebê-la.
+- **Um padrão** para o Cluster, e nomes de trackers são **únicos em todo o Cluster**.
+- O usuário que registrou permanece em `trackers.created_by`, apenas como registro. Não concede nada.
+- Instalações existentes (migração):
+  - Remove `trackers:write` do Publisher.
+  - Mantém o padrão mais antigo.
+  - Renomeia um nome duplicado para `nome (username)` do seu dono. Nada é excluído.
+- O Portal mantém o gerenciamento de trackers em Configurações. Onde ele instrui o usuário a registrar um tracker, quem não tem `trackers:write` é orientado a pedir a um administrador.
+
+**Consequências**
+- Um Publisher publica nos trackers que o Administrador registrou, **com a conta do Administrador** naquele site: a passkey, o token de API e a chave do host de imagens. Os lançamentos aparecem no site sob essa conta.
+- Segredos ficam em um só lugar; a API ainda nunca os retorna (ADR-019).
+- Um Publisher que registrou trackers antes continua usando-os, agora compartilhados com todos, e não pode mais editá-los.
+- Um Publisher não pode mais usar uma conta de tracker própria. Se isso for necessário no futuro, será uma nova ADR (credenciais por usuário em um tracker do Cluster).
+
+**Relação com outras ADRs**
+- **ADR-019**: substitui "por operador no Perfil" por trackers do Cluster gerenciados pelo Administrador. O resto permanece (segredo em texto puro, nunca retornado pela API).
+- **ADR-020**, **ADR-037**, **ADR-040**: o perfil do site, taxonomia e chave do host de imagens do tracker seguem o tracker. Um id de tracker inexistente retorna `404`; "de outro operador" não se aplica mais.
+- **ADR-021**: consistente com ela. A conta de tracker do Cluster é aquela cujos slots são contados.
+- **ADR-035**: altera as permissões do Publisher; o papel deixa de "gerenciar trackers".
 # **10. Template Oficial**
 Toda ADR deverá seguir uma estrutura padronizada.
 Campos mínimos:

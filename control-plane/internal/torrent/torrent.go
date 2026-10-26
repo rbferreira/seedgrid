@@ -106,13 +106,13 @@ type dlTicket struct {
 // chain (ADR-040); nil = the profile does not have the section. Satisfied by trackerprofile.Service
 // — the interface exists so this package does not depend on trackerprofile.
 type TrackerProfileProvider interface {
-	ImageHostSpec(ctx context.Context, userID, trackerID string) (*imagehost.Spec, error)
+	ImageHostSpec(ctx context.Context, trackerID string) (*imagehost.Spec, error)
 }
 
 // ImageHostKeyProvider returns the key and the host recorded with it for the screenshot chain
 // (#193). Satisfied by tracker.Service.
 type ImageHostKeyProvider interface {
-	ImageHostKeyForChain(ctx context.Context, userID, trackerID string) (key, host string, err error)
+	ImageHostKeyForChain(ctx context.Context, trackerID string) (key, host string, err error)
 }
 
 // ScreenshotResult is the return of the screenshot routes with the chain (ADR-040). Failures
@@ -786,18 +786,17 @@ type PendingPublish struct {
 }
 
 // PendingTracker lists torrents with a linked tracker that are not yet published —
-// the "pending publication" ones (backlog #8). Only torrents from the operator owning the tracker.
-func (s *Service) PendingTracker(ctx context.Context, userID string) ([]PendingPublish, error) {
+// the "pending publication" ones (backlog #8), for every tracker in the cluster (ADR-047).
+func (s *Service) PendingTracker(ctx context.Context) ([]PendingPublish, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT t.id::text, t.name, t.status, t.created_at,
 		        (tf.torrent_id IS NOT NULL) AS has_file,
 		        tr.id::text, tr.name, COALESCE(tr.source, '')
 		   FROM torrents t
-		   JOIN trackers tr ON tr.id = t.tracker_id AND tr.deleted_at IS NULL AND tr.user_id = $1
+		   JOIN trackers tr ON tr.id = t.tracker_id AND tr.deleted_at IS NULL
 		   LEFT JOIN torrent_files tf ON tf.torrent_id = t.id
 		  WHERE t.deleted_at IS NULL AND t.tracker_id IS NOT NULL AND t.published_tracker_at IS NULL
-		  ORDER BY t.created_at DESC`,
-		userID)
+		  ORDER BY t.created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -1435,7 +1434,7 @@ func (s *Service) lookup(ctx context.Context, id string) (nodeID, hash, name str
 // on the tracker, using the host chain (tracker → imgbb) when trackerID is provided.
 // Without trackerID, only imgbb (old behavior). imgbbAPIKey comes from the catalog (ADR-029/030);
 // count comes from the tunables catalog (publish.screenshot_count).
-func (s *Service) GenerateScreenshots(ctx context.Context, id, userID, trackerID, imgbbAPIKey string, count int) (ScreenshotResult, error) {
+func (s *Service) GenerateScreenshots(ctx context.Context, id, trackerID, imgbbAPIKey string, count int) (ScreenshotResult, error) {
 	nodeID, hash, name, err := s.lookup(ctx, id)
 	if err != nil {
 		return ScreenshotResult{}, err
@@ -1444,7 +1443,7 @@ func (s *Service) GenerateScreenshots(ctx context.Context, id, userID, trackerID
 	if err != nil {
 		return ScreenshotResult{}, fmt.Errorf("extract screenshots on Node: %w", err)
 	}
-	return s.uploadChain(ctx, userID, trackerID, imgbbAPIKey, id, name, frames)
+	return s.uploadChain(ctx, trackerID, imgbbAPIKey, id, name, frames)
 }
 
 // RequestScreenshots queues screenshot extraction on the torrent Node and returns the
@@ -1460,15 +1459,15 @@ func (s *Service) RequestScreenshots(ctx context.Context, id string, count int) 
 
 // RenderScreenshots reads the frames from a completed extract_screenshots command, uploads to
 // the host chain (ADR-040) and returns the BBCode. Called by the Portal after seeing the
-// command in DONE. Without trackerID, only imgbb (old behavior). Tracker ownership
+// command in DONE. Without trackerID, only imgbb (old behavior). That the tracker exists
 // is checked by the handler before reaching here.
-func (s *Service) RenderScreenshots(ctx context.Context, cmdID, userID, trackerID, imgbbAPIKey string) (ScreenshotResult, error) {
+func (s *Service) RenderScreenshots(ctx context.Context, cmdID, trackerID, imgbbAPIKey string) (ScreenshotResult, error) {
 	frames, err := screenshot.FramesFromCommand(ctx, s.cmds, cmdID)
 	if err != nil {
 		return ScreenshotResult{}, fmt.Errorf("read extracted frames: %w", err)
 	}
 	torrentID, torrentName := s.torrentForCommand(ctx, cmdID)
-	return s.uploadChain(ctx, userID, trackerID, imgbbAPIKey, torrentID, torrentName, frames)
+	return s.uploadChain(ctx, trackerID, imgbbAPIKey, torrentID, torrentName, frames)
 }
 
 // torrentForCommand finds the torrent for an extract_screenshots command, so the Feed
@@ -1496,8 +1495,8 @@ func (s *Service) torrentForCommand(ctx context.Context, cmdID string) (id, name
 // tracker → imgbb, with a 25s budget. Each failure is recorded in the Feed with the sanitized
 // reason. It returns the BBCode, the winning host and the failure list; when all fail,
 // the error is *imagehost.ChainError (with the failures also in ScreenshotResult).
-func (s *Service) uploadChain(ctx context.Context, userID, trackerID, imgbbAPIKey, torrentID, torrentName string, frames [][]byte) (ScreenshotResult, error) {
-	candidates, err := s.screenshotCandidates(ctx, userID, trackerID, imgbbAPIKey)
+func (s *Service) uploadChain(ctx context.Context, trackerID, imgbbAPIKey, torrentID, torrentName string, frames [][]byte) (ScreenshotResult, error) {
+	candidates, err := s.screenshotCandidates(ctx, trackerID, imgbbAPIKey)
 	if err != nil {
 		return ScreenshotResult{}, err
 	}
@@ -1529,10 +1528,10 @@ func (s *Service) uploadChain(ctx context.Context, userID, trackerID, imgbbAPIKe
 // screenshotCandidates builds the chain in ADR-040 order: the tracker host (when the
 // trackerID comes, the profile has the section and there is a key) and, last, imgbb (when there is a
 // global key). Empty list = nothing to try.
-func (s *Service) screenshotCandidates(ctx context.Context, userID, trackerID, imgbbAPIKey string) ([]imagehost.Candidate, error) {
+func (s *Service) screenshotCandidates(ctx context.Context, trackerID, imgbbAPIKey string) ([]imagehost.Candidate, error) {
 	var candidates []imagehost.Candidate
 	if trackerID != "" {
-		c, err := s.trackerCandidate(ctx, userID, trackerID)
+		c, err := s.trackerCandidate(ctx, trackerID)
 		if err != nil {
 			return nil, err
 		}
@@ -1575,19 +1574,19 @@ func imgbbChainError(err error) error {
 
 // trackerCandidate builds the tracker host candidate. nil = the tracker is not included (without
 // providers, without the image_host section or without a key). The error from providers (including the "not
-// found" from each one) comes back as it came — the handler already checked ownership beforehand.
-func (s *Service) trackerCandidate(ctx context.Context, userID, trackerID string) (*imagehost.Candidate, error) {
+// found" from each one) comes back as it came — the handler already checked the tracker exists.
+func (s *Service) trackerCandidate(ctx context.Context, trackerID string) (*imagehost.Candidate, error) {
 	if s.profiles == nil || s.imageHostKey == nil {
 		return nil, nil
 	}
-	spec, err := s.profiles.ImageHostSpec(ctx, userID, trackerID)
+	spec, err := s.profiles.ImageHostSpec(ctx, trackerID)
 	if err != nil {
 		return nil, err
 	}
 	if spec == nil {
 		return nil, nil
 	}
-	key, registeredHost, err := s.imageHostKey.ImageHostKeyForChain(ctx, userID, trackerID)
+	key, registeredHost, err := s.imageHostKey.ImageHostKeyForChain(ctx, trackerID)
 	if err != nil {
 		return nil, err
 	}

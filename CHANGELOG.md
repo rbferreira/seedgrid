@@ -14,6 +14,19 @@ the configuration; each release says how to upgrade.
   Node goes first, and the others only after it is back on the new version. If it does not come
   back, the others are left alone.
 
+### Changed
+
+- **Trackers belong to the cluster; the Administrator manages them (#19, ADR-047).** Until now
+  each tracker was visible only to whoever registered it, and registration lived in Settings,
+  which only the Administrator opens. A Publisher never had a tracker to publish to.
+  - Everyone who reads trackers now sees the same list.
+  - The Publisher publishes and seeds with any tracker, but no longer creates, edits or removes
+    them: migration 00050 takes `trackers:write` away from it.
+  - Tracker names are unique across the cluster, and there is one default. On upgrade a
+    duplicate name gets its owner's username appended, and the oldest default stays.
+  - Where the Portal needs a tracker that is missing, whoever cannot manage trackers is told to
+    ask an administrator.
+
 ## [0.4.0] — 2026-10-24
 
 A Node can run rTorrent, and a Node can be installed without root, on a shared seedbox.

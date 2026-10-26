@@ -510,53 +510,48 @@ func TestProfileImport_HostilePayloads(t *testing.T) {
 }
 
 // RBAC follows the tracker endpoints standard: export is read (trackers:read); preview
-// and import are write (trackers:write). The tracker belongs to whoever registered it.
+// and import are write (trackers:write), which only the Administrator holds (ADR-047). Trackers
+// belong to the cluster: anyone who reads trackers exports any of them.
 func TestProfileExchange_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
 	fake := newSite(t)
-	own := exTracker(t, h, tokens["Publisher"], "Do Publisher", fake.srv.URL)
-	other := exTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
+	id := exTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
 	file := `{"format":"seedgrid.tracker-profile","site":{"name":"x"},"family":"unit3d","schema_version":1,"taxonomy":{"type":[{"id":3,"name":"Encode"}]}}`
 	missing := "00000000-0000-0000-0000-000000000000"
 
 	// No session: 401 on all three.
 	for _, r := range []struct{ method, path, body string }{
-		{"GET", fmt.Sprintf(exPath, own), ``},
-		{"POST", fmt.Sprintf(exPreview, own), file},
-		{"POST", fmt.Sprintf(exImport, own), file},
+		{"GET", fmt.Sprintf(exPath, id), ``},
+		{"POST", fmt.Sprintf(exPreview, id), file},
+		{"POST", fmt.Sprintf(exImport, id), file},
 	} {
 		if code, _ := tpCall(t, h, r.method, r.path, "", r.body); code != http.StatusUnauthorized {
 			t.Errorf("no session on %s %s: %d, want 401", r.method, r.path, code)
 		}
 	}
 
-	// Viewer (only trackers:read): passes the export permission (404 on an id that isn't theirs —
-	// the permission was accepted and the tracker doesn't exist for them) and gets 403 on write ones.
-	if code, _, _ := exExport(t, h, tokens["Viewer"], missing); code != http.StatusNotFound {
-		t.Errorf("Viewer exporting: %d, want 404 (allowed, nonexistent tracker)", code)
-	}
-	for _, path := range []string{exPreview, exImport} {
-		if code, _ := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, missing), tokens["Viewer"], file); code != http.StatusForbidden {
-			t.Errorf("Viewer on %s: %d, want 403", path, code)
+	// Viewer and Publisher (trackers:read): export the cluster's tracker, 403 on the write ones.
+	for _, role := range []string{"Viewer", "Publisher"} {
+		if code, body, _ := exExport(t, h, tokens[role], id); code != http.StatusOK {
+			t.Errorf("%s exporting: %d %.150s, want 200", role, code, body)
+		}
+		for _, path := range []string{exPreview, exImport} {
+			if code, _ := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, id), tokens[role], file); code != http.StatusForbidden {
+				t.Errorf("%s on %s: %d, want 403", role, path, code)
+			}
 		}
 	}
 
-	// Publisher (trackers:read + write): all three work on their tracker...
-	if code, body, _ := exExport(t, h, tokens["Publisher"], own); code != http.StatusOK {
-		t.Errorf("Publisher exporting: %d %.150s", code, body)
-	}
+	// Administrator: all three work; a tracker that does not exist is 404.
 	for _, path := range []string{exPreview, exImport} {
-		if code, body := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, own), tokens["Publisher"], file); code != http.StatusOK {
-			t.Errorf("Publisher em %s: %d %.150s", path, code, body)
+		if code, body := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, id), tokens["Administrator"], file); code != http.StatusOK {
+			t.Errorf("Administrator on %s: %d %.150s", path, code, body)
+		}
+		if code, _ := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, missing), tokens["Administrator"], file); code != http.StatusNotFound {
+			t.Errorf("Administrator on %s of a missing tracker: %d, want 404", path, code)
 		}
 	}
-	// ...and ANOTHER operator's tracker doesn't exist for them, even with the permission.
-	if code, _, _ := exExport(t, h, tokens["Publisher"], other); code != http.StatusNotFound {
-		t.Errorf("Publisher exporting the admin's tracker: %d, want 404", code)
-	}
-	for _, path := range []string{exPreview, exImport} {
-		if code, _ := tpCall(t, h, http.MethodPost, fmt.Sprintf(path, other), tokens["Publisher"], file); code != http.StatusNotFound {
-			t.Errorf("Publisher on %s on the admin's tracker: %d, want 404", path, code)
-		}
+	if code, _, _ := exExport(t, h, tokens["Viewer"], missing); code != http.StatusNotFound {
+		t.Errorf("exporting a missing tracker: %d, want 404", code)
 	}
 }

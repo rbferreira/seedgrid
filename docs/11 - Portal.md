@@ -166,7 +166,7 @@ The Portal filters navigation and actions based on the roles/permissions of the 
 (`GET /api/v1/auth/me`). System roles:
 
 - **Administrator** — full access; sees everything, including the **Users** page.
-- **Publisher** — manages content: Add Torrent, Publish, Explore, Trackers.
+- **Publisher** — publishes content: Add Torrent, Publish, Explore. Picks the cluster's trackers; it does not manage them (ADR-047).
 - **Downloader** — consumes: Explore and download torrents.
 - **Viewer** — read-only: Dashboard, Nodes, Explore, Feed, Alerts, Metrics.
 
@@ -232,6 +232,8 @@ access control. Settings, Users, and Audit remain gated only by route: today
 only the Administrator role can reach them, and their internal actions (`settings:write`,
 `trackers:write`, `notify:write`, `users:write`) are also only for it. The export and import tracker profile buttons are the exception: they are born with `can`, based on the permission of the route they call (table above). If a custom
 role with partial access to these screens ever exists, their buttons will be added to the table above.
+
+Trackers belong to the cluster and the Administrator manages them (ADR-047). Where a screen needs a tracker that is missing — Publish without trackers, the Catalog without an API integration, a profile without taxonomy in the publish panel — whoever can open Settings and holds `trackers:write` gets the link to Settings › Trackers; everyone else is told to ask an administrator.
 # **14. Navigation**
 Navigation must prioritize speed and simplicity.
 The operator must reach any main functionality with few clicks.

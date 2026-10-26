@@ -13,8 +13,11 @@ import (
 )
 
 // setup connects to the test database (skipping if not configured), applies
-// migrations and creates a unique user to satisfy the trackers FK constraint.
-func setup(t *testing.T) (*tracker.Service, string) {
+// migrations and creates a unique user to satisfy the trackers FK constraint. Trackers
+// belong to the cluster (ADR-047) and the database is shared by every test of the run, so
+// the returned name function makes names unique to this test and assertions look only at
+// the trackers the test created.
+func setup(t *testing.T) (*tracker.Service, string, func(string) string) {
 	t.Helper()
 	dsn := os.Getenv("SEEDGRID_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -36,17 +39,27 @@ func setup(t *testing.T) (*tracker.Service, string) {
 		username).Scan(&userID); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	return tracker.NewService(pool), userID
+	return tracker.NewService(pool), userID, func(n string) string { return n + " " + username }
+}
+
+// find returns the tracker with this id from a listing.
+func find(list []tracker.Tracker, id string) (tracker.Tracker, bool) {
+	for _, tr := range list {
+		if tr.ID == id {
+			return tr, true
+		}
+	}
+	return tracker.Tracker{}, false
 }
 
 // TestCreateListForPublishDelete covers the basic cycle and the secret: listing
 // exposes name + host but NOT the announce; ForPublish returns the full URL.
 func TestCreateListForPublishDelete(t *testing.T) {
-	svc, userID := setup(t)
+	svc, userID, name := setup(t)
 	ctx := context.Background()
 
 	const announce = "https://tracker.example.org:443/announce?passkey=secret123"
-	created, err := svc.Create(ctx, userID, tracker.Input{Name: "My Private", Announce: announce})
+	created, err := svc.Create(ctx, userID, tracker.Input{Name: name("My Private"), Announce: announce})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -54,15 +67,15 @@ func TestCreateListForPublishDelete(t *testing.T) {
 		t.Errorf("host = %q, want tracker.example.org:443", created.Host)
 	}
 
-	list, err := svc.List(ctx, userID)
+	list, err := svc.List(ctx)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(list) != 1 || list[0].Name != "My Private" {
-		t.Fatalf("List = %+v, want 1 tracker 'My Private'", list)
+	if got, ok := find(list, created.ID); !ok || got.Name != name("My Private") {
+		t.Fatalf("List = %+v, want the tracker 'My Private'", list)
 	}
 
-	sec, err := svc.ForPublish(ctx, userID, created.ID)
+	sec, err := svc.ForPublish(ctx, created.ID)
 	if err != nil {
 		t.Fatalf("ForPublish: %v", err)
 	}
@@ -70,73 +83,68 @@ func TestCreateListForPublishDelete(t *testing.T) {
 		t.Errorf("ForPublish announce = %q, want %q", sec.Announce, announce)
 	}
 
-	if err := svc.Delete(ctx, userID, created.ID); err != nil {
+	if err := svc.Delete(ctx, created.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	list, _ = svc.List(ctx, userID)
-	if len(list) != 0 {
-		t.Errorf("after Delete, List = %+v, want empty", list)
+	list, _ = svc.List(ctx)
+	if _, ok := find(list, created.ID); ok {
+		t.Errorf("after Delete, List = %+v, want it without the tracker", list)
 	}
-	if _, err := svc.ForPublish(ctx, userID, created.ID); !errors.Is(err, tracker.ErrNotFound) {
+	if _, err := svc.ForPublish(ctx, created.ID); !errors.Is(err, tracker.ErrNotFound) {
 		t.Errorf("ForPublish after Delete = %v, want ErrNotFound", err)
 	}
 }
 
-// TestSingleDefault ensures that only one tracker is default per operator.
+// TestSingleDefault ensures that only one tracker is default in the cluster (ADR-047).
 func TestSingleDefault(t *testing.T) {
-	svc, userID := setup(t)
+	svc, userID, name := setup(t)
 	ctx := context.Background()
 
-	a, err := svc.Create(ctx, userID, tracker.Input{Name: "A", Announce: "udp://a.example:6969/announce", MakeDefault: true})
+	a, err := svc.Create(ctx, userID, tracker.Input{Name: name("A"), Announce: "udp://a.example:6969/announce", MakeDefault: true})
 	if err != nil {
 		t.Fatalf("Create A: %v", err)
 	}
-	b, err := svc.Create(ctx, userID, tracker.Input{Name: "B", Announce: "https://b.example/announce/key", MakeDefault: true})
+	b, err := svc.Create(ctx, userID, tracker.Input{Name: name("B"), Announce: "https://b.example/announce/key", MakeDefault: true})
 	if err != nil {
 		t.Fatalf("Create B: %v", err)
 	}
 
-	list, _ := svc.List(ctx, userID)
-	defaults := map[string]bool{}
-	for _, tr := range list {
-		defaults[tr.Name] = tr.IsDefault
-	}
-	if defaults["A"] || !defaults["B"] {
-		t.Fatalf("after creating B as default, defaults = %v; want only B", defaults)
-	}
-
-	// Revert the default to A.
-	if err := svc.SetDefault(ctx, userID, a.ID); err != nil {
-		t.Fatalf("SetDefault A: %v", err)
-	}
-	list, _ = svc.List(ctx, userID)
-	for _, tr := range list {
-		want := tr.ID == a.ID
-		if tr.IsDefault != want {
-			t.Errorf("tracker %s default = %v, want %v", tr.Name, tr.IsDefault, want)
+	onlyDefault := func(id string) {
+		t.Helper()
+		list, _ := svc.List(ctx)
+		for _, tr := range list {
+			if want := tr.ID == id; tr.IsDefault != want {
+				t.Errorf("tracker %s default = %v, want %v", tr.Name, tr.IsDefault, want)
+			}
 		}
 	}
-	_ = b
+	onlyDefault(b.ID)
+
+	// Revert the default to A.
+	if err := svc.SetDefault(ctx, a.ID); err != nil {
+		t.Fatalf("SetDefault A: %v", err)
+	}
+	onlyDefault(a.ID)
 }
 
 // TestDuplicateAndInvalid covers duplicate name, malformed announce and invalid api_url.
 func TestDuplicateAndInvalid(t *testing.T) {
-	svc, userID := setup(t)
+	svc, userID, name := setup(t)
 	ctx := context.Background()
 
-	if _, err := svc.Create(ctx, userID, tracker.Input{Name: "Dup", Announce: "https://t.example/announce"}); err != nil {
+	if _, err := svc.Create(ctx, userID, tracker.Input{Name: name("Dup"), Announce: "https://t.example/announce"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Create(ctx, userID, tracker.Input{Name: "Dup", Announce: "https://t2.example/announce"}); !errors.Is(err, tracker.ErrDuplicateName) {
+	if _, err := svc.Create(ctx, userID, tracker.Input{Name: name("Dup"), Announce: "https://t2.example/announce"}); !errors.Is(err, tracker.ErrDuplicateName) {
 		t.Errorf("Create duplicate name = %v, want ErrDuplicateName", err)
 	}
-	if _, err := svc.Create(ctx, userID, tracker.Input{Name: "Bad", Announce: "not-a-url"}); !errors.Is(err, tracker.ErrInvalidAnnounce) {
+	if _, err := svc.Create(ctx, userID, tracker.Input{Name: name("Bad"), Announce: "not-a-url"}); !errors.Is(err, tracker.ErrInvalidAnnounce) {
 		t.Errorf("Create invalid announce = %v, want ErrInvalidAnnounce", err)
 	}
 	if _, err := svc.Create(ctx, userID, tracker.Input{Name: "", Announce: "https://t.example/announce"}); !errors.Is(err, tracker.ErrInvalidAnnounce) {
 		t.Errorf("Create empty name = %v, want ErrInvalidAnnounce", err)
 	}
-	if _, err := svc.Create(ctx, userID, tracker.Input{Name: "NoScheme", Announce: "https://t.example/announce", APIURL: "ftp://x.example"}); !errors.Is(err, tracker.ErrInvalidAPIURL) {
+	if _, err := svc.Create(ctx, userID, tracker.Input{Name: name("NoScheme"), Announce: "https://t.example/announce", APIURL: "ftp://x.example"}); !errors.Is(err, tracker.ErrInvalidAPIURL) {
 		t.Errorf("Create invalid api_url = %v, want ErrInvalidAPIURL", err)
 	}
 }
@@ -144,13 +152,13 @@ func TestDuplicateAndInvalid(t *testing.T) {
 // TestUNIT3DIntegration covers ADR-020: source/api_url exposed, api_token NEVER
 // returned (only has_api_token), and ForPublish returns the token for internal use.
 func TestUNIT3DIntegration(t *testing.T) {
-	svc, userID := setup(t)
+	svc, userID, name := setup(t)
 	ctx := context.Background()
 
 	const announce = "https://tracker.example/announce/deadbeef"
 	const token = "super-secret-api-token"
 	created, err := svc.Create(ctx, userID, tracker.Input{
-		Name:     "Example",
+		Name:     name("Example"),
 		Announce: announce,
 		Source:   "EXAMPLE",
 		APIURL:   "https://tracker.example/", // trailing slash must be normalized
@@ -170,13 +178,13 @@ func TestUNIT3DIntegration(t *testing.T) {
 	}
 
 	// The secret (api_token) never appears in the public view (List).
-	list, _ := svc.List(ctx, userID)
-	if len(list) != 1 || !list[0].HasAPIToken || list[0].Source != "EXAMPLE" {
-		t.Fatalf("List = %+v, want 1 tracker with source+has_api_token", list)
+	list, _ := svc.List(ctx)
+	if got, ok := find(list, created.ID); !ok || !got.HasAPIToken || got.Source != "EXAMPLE" {
+		t.Fatalf("List = %+v, want the tracker with source+has_api_token", list)
 	}
 
 	// ForPublish returns the secrets for internal use (announce + source + api).
-	sec, err := svc.ForPublish(ctx, userID, created.ID)
+	sec, err := svc.ForPublish(ctx, created.ID)
 	if err != nil {
 		t.Fatalf("ForPublish: %v", err)
 	}
@@ -185,8 +193,8 @@ func TestUNIT3DIntegration(t *testing.T) {
 	}
 
 	// Update without api_token keeps the current token (empty field = keep).
-	updated, err := svc.Update(ctx, userID, created.ID, tracker.Input{
-		Name:     "Example",
+	updated, err := svc.Update(ctx, created.ID, tracker.Input{
+		Name:     name("Example"),
 		Announce: announce,
 		Source:   "EXAMPLE",
 		APIURL:   "https://tracker.example",
@@ -198,26 +206,26 @@ func TestUNIT3DIntegration(t *testing.T) {
 	if !updated.HasAPIToken {
 		t.Errorf("after Update without token, has_api_token = false, want to keep true")
 	}
-	sec, _ = svc.ForPublish(ctx, userID, created.ID)
+	sec, _ = svc.ForPublish(ctx, created.ID)
 	if sec.APIToken != token {
 		t.Errorf("after Update without token, api_token changed = %q, want to keep %q", sec.APIToken, token)
 	}
 
 	// Update with new token replaces it.
-	if _, err := svc.Update(ctx, userID, created.ID, tracker.Input{
-		Name: "Example", Announce: announce, Source: "EXAMPLE",
+	if _, err := svc.Update(ctx, created.ID, tracker.Input{
+		Name: name("Example"), Announce: announce, Source: "EXAMPLE",
 		APIURL: "https://tracker.example", APIToken: "new-token",
 	}); err != nil {
 		t.Fatalf("Update with new token: %v", err)
 	}
-	sec, _ = svc.ForPublish(ctx, userID, created.ID)
+	sec, _ = svc.ForPublish(ctx, created.ID)
 	if sec.APIToken != "new-token" {
 		t.Errorf("after Update with token, api_token = %q, want new-token", sec.APIToken)
 	}
 
 	// Update of non-existent tracker → ErrNotFound.
-	if _, err := svc.Update(ctx, userID, "00000000-0000-0000-0000-000000000000", tracker.Input{
-		Name: "X", Announce: announce,
+	if _, err := svc.Update(ctx, "00000000-0000-0000-0000-000000000000", tracker.Input{
+		Name: name("X"), Announce: announce,
 	}); !errors.Is(err, tracker.ErrNotFound) {
 		t.Errorf("Update nonexistent = %v, want ErrNotFound", err)
 	}

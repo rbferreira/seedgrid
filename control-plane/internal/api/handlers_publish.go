@@ -34,7 +34,7 @@ import (
 // multipart and STREAMS them to the chosen Node (Scheduler or forced),
 // which saves, creates the .torrent with the chosen announce and starts seeding. The CP does not
 // store the bytes. The body must include, BEFORE the files, the text fields:
-// name, tracker_id ("public" or the id of an operator's tracker), force_node_id and
+// name, tracker_id ("public" or the id of a cluster tracker), force_node_id and
 // manifest (JSON [{name,size}] in file order — tar needs the size).
 func handleCreateTorrent(d Deps) http.HandlerFunc {
 	type fileSpec struct {
@@ -42,11 +42,6 @@ func handleCreateTorrent(d Deps) http.HandlerFunc {
 		Size int64  `json:"size"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		// Large uploads (GBs): remove the read/write deadlines for this request.
 		rc := http.NewResponseController(w)
 		_ = rc.SetReadDeadline(time.Time{})
@@ -100,11 +95,11 @@ func handleCreateTorrent(d Deps) http.HandlerFunc {
 			name = filepath.Base(firstFile.FileName())
 		}
 
-		// Resolves the announce: "public"/empty → no tracker (DHT); otherwise, an operator's
+		// Resolves the announce: "public"/empty → no tracker (DHT); otherwise, a cluster
 		// tracker. For UNIT3D tracker (ADR-020), source is embedded in the .torrent.
 		announce, source, private, trackerRef := "", "", false, ""
 		if trackerID != "" && trackerID != "public" {
-			sec, terr := d.Trackers.ForPublish(r.Context(), user.ID, trackerID)
+			sec, terr := d.Trackers.ForPublish(r.Context(), trackerID)
 			if terr != nil {
 				trackerError(w, d, terr)
 				return
@@ -236,11 +231,6 @@ func publishParams(req publishRequest, mediaInfo string) unit3d.Params {
 // triggered explicitly by the Portal (anti-pollution gate). Nothing is posted without this call.
 func handlePublishToTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		torrentID := r.PathValue("id")
 		var req publishRequest
 		if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -257,7 +247,7 @@ func handlePublishToTracker(d Deps) http.HandlerFunc {
 		}
 
 		// Tracker API credentials (never exposed; only used here).
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, req.TrackerID)
+		sec, err := d.Trackers.ForPublish(r.Context(), req.TrackerID)
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -385,14 +375,14 @@ func newScreenshotResponse(res torrent.ScreenshotResult) screenshotResponse {
 	return screenshotResponse{BBCode: res.BBCode, Host: res.Host, Failures: failures}
 }
 
-// ownTracker verifies, when the request includes tracker_id, that the tracker belongs to the operator —
-// BEFORE extracting frames or uploading anything (foreign, removed tracker or malformed id
-// returns 404, like in profile routes). Writes the error and returns false when it fails.
-func ownTracker(w http.ResponseWriter, r *http.Request, d Deps, userID, trackerID string) bool {
+// trackerExists verifies, when the request includes tracker_id, that the tracker exists —
+// BEFORE extracting frames or uploading anything (removed tracker or malformed id returns 404,
+// like in profile routes). Writes the error and returns false when it fails.
+func trackerExists(w http.ResponseWriter, r *http.Request, d Deps, trackerID string) bool {
 	if trackerID == "" {
 		return true
 	}
-	if _, err := d.Profiles.Get(r.Context(), userID, trackerID); err != nil {
+	if _, err := d.Profiles.Get(r.Context(), trackerID); err != nil {
 		profileError(w, d, err)
 		return false
 	}
@@ -408,7 +398,7 @@ func screenshotError(w http.ResponseWriter, d Deps, err error, logArgs ...any) {
 	case errors.Is(err, torrent.ErrNoHash):
 		httpx.WriteError(w, http.StatusConflict, "no_hash", "torrent has no hash yet; wait for synchronization")
 	case errors.Is(err, trackerprofile.ErrNotFound), errors.Is(err, tracker.ErrNotFound):
-		// The tracker disappeared between the ownership check and the chain setup.
+		// The tracker disappeared between the existence check and the chain setup.
 		httpx.WriteError(w, http.StatusNotFound, "tracker_not_found", "tracker not found")
 	default:
 		d.Logger.Warn("screenshots", append(logArgs, "error", err)...)
@@ -421,11 +411,6 @@ func screenshotError(w http.ResponseWriter, d Deps, err error, logArgs ...any) {
 // the command reaches DONE. tracker_id is optional: if present, the tracker's host joins the chain.
 func handleRenderScreenshots(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req struct {
 			CommandID string `json:"command_id"`
 			TrackerID string `json:"tracker_id"`
@@ -434,11 +419,11 @@ func handleRenderScreenshots(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "command_id is required")
 			return
 		}
-		if !ownTracker(w, r, d, user.ID, req.TrackerID) {
+		if !trackerExists(w, r, d, req.TrackerID) {
 			return
 		}
 		imgbbKey := d.Settings.String("integrations.imgbb_api_key")
-		res, err := d.Torrents.RenderScreenshots(r.Context(), req.CommandID, user.ID, req.TrackerID, imgbbKey)
+		res, err := d.Torrents.RenderScreenshots(r.Context(), req.CommandID, req.TrackerID, imgbbKey)
 		if err != nil {
 			screenshotError(w, d, err, "command", req.CommandID)
 			return
@@ -454,11 +439,6 @@ func handleRenderScreenshots(d Deps) http.HandlerFunc {
 // host joins the upload chain; empty remains valid (only imgbb).
 func handleGenerateScreenshots(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		torrentID := r.PathValue("id")
 		var req struct {
 			TrackerID string `json:"tracker_id"`
@@ -468,13 +448,13 @@ func handleGenerateScreenshots(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_body", `invalid body: expected {"tracker_id"} or empty`)
 			return
 		}
-		if !ownTracker(w, r, d, user.ID, req.TrackerID) {
+		if !trackerExists(w, r, d, req.TrackerID) {
 			return
 		}
 		count := d.Settings.Int("publish.screenshot_count")
 		// The imgbb key comes from the catalog (ADR-029/030), editable in the Portal — empty disables it.
 		imgbbKey := d.Settings.String("integrations.imgbb_api_key")
-		res, err := d.Torrents.GenerateScreenshots(r.Context(), torrentID, user.ID, req.TrackerID, imgbbKey, count)
+		res, err := d.Torrents.GenerateScreenshots(r.Context(), torrentID, req.TrackerID, imgbbKey, count)
 		if err != nil {
 			screenshotError(w, d, err, "torrent", torrentID)
 			return
@@ -488,12 +468,7 @@ func handleGenerateScreenshots(d Deps) http.HandlerFunc {
 // Publish tab to resume publishing without re-uploading.
 func handlePendingTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		list, err := d.Torrents.PendingTracker(r.Context(), user.ID)
+		list, err := d.Torrents.PendingTracker(r.Context())
 		if err != nil {
 			d.Logger.Error("list pending releases", "error", err)
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list pending releases")
@@ -540,8 +515,8 @@ func handleInferPublish(d Deps) http.HandlerFunc {
 		resp := map[string]any{"parsed": parsed}
 		if d.TMDB != nil && d.TMDB.Enabled() {
 			lang := description.LangEN
-			if user, ok := httpx.OperatorFromContext(r.Context()); ok && strings.TrimSpace(req.TrackerID) != "" {
-				lang = contentLanguage(r.Context(), d, user.ID, req.TrackerID)
+			if strings.TrimSpace(req.TrackerID) != "" {
+				lang = contentLanguage(r.Context(), d, req.TrackerID)
 			}
 			res, err := d.TMDB.Lookup(r.Context(), parsed.Title, parsed.Year, isTV, lang)
 			switch {
@@ -583,11 +558,6 @@ func handleComposeDescription(d Deps) http.HandlerFunc {
 		Game      description.GameInput  `json:"game"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req request
 		r.Body = http.MaxBytesReader(w, r.Body, maxDescriptionBody)
 		if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -607,9 +577,9 @@ func handleComposeDescription(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "tracker_id is required")
 			return
 		}
-		// Get checks ownership and existence: removed tracker, from another operator, or with an id
+		// Get checks existence: a removed tracker or one with an id
 		// that is malformed is a 404, as in every tracker route.
-		prof, err := d.Profiles.Get(r.Context(), user.ID, req.TrackerID)
+		prof, err := d.Profiles.Get(r.Context(), req.TrackerID)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -730,17 +700,12 @@ func dupeEvidence(ctx context.Context, search dupeSearch, apiURL, apiToken, name
 // handleTrackerDupes: GET /trackers/{id}/dupes?name=…
 func handleTrackerDupes(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		name := strings.TrimSpace(r.URL.Query().Get("name"))
 		if name == "" {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "name is required")
 			return
 		}
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, r.PathValue("id"))
+		sec, err := d.Trackers.ForPublish(r.Context(), r.PathValue("id"))
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -776,11 +741,6 @@ func handleTrackerDupes(d Deps) http.HandlerFunc {
 // size, and the fact that the fingerprint covers them do.
 func handlePublishPreview(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		torrentID := r.PathValue("id")
 		var req publishRequest
 		if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -792,9 +752,9 @@ func handlePublishPreview(d Deps) http.HandlerFunc {
 			return
 		}
 
-		// Checks that the tracker belongs to the operator and has an API — the preview cannot say
+		// Checks that the tracker exists and has an API — the preview cannot say
 		// "all good" for a publish that submit would reject due to credentials.
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, req.TrackerID)
+		sec, err := d.Trackers.ForPublish(r.Context(), req.TrackerID)
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -851,13 +811,13 @@ func handlePublishPreview(d Deps) http.HandlerFunc {
 
 // contentLanguage is the content language of a tracker's profile (#74): the language of the
 // upload description and of the metadata TMDB returns for that site. A tracker without a
-// profile, without the description section, or that the operator cannot see is English — the
+// profile, without the description section, or that does not exist is English — the
 // lookup never fails a request because of it.
-func contentLanguage(ctx context.Context, d Deps, userID, trackerID string) string {
+func contentLanguage(ctx context.Context, d Deps, trackerID string) string {
 	if d.Profiles == nil {
 		return description.LangEN
 	}
-	prof, err := d.Profiles.Get(ctx, userID, trackerID)
+	prof, err := d.Profiles.Get(ctx, trackerID)
 	if err != nil || prof.Description == nil {
 		return description.LangEN
 	}

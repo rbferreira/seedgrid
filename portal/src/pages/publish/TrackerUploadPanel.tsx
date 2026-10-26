@@ -40,6 +40,7 @@ export function TrackerUploadPanel({
   name,
   mediaInfo,
   tracker,
+  canManageTrackers,
   onLogout,
   onPublished,
   onClose,
@@ -48,6 +49,8 @@ export function TrackerUploadPanel({
   name: string;
   mediaInfo: string;
   tracker: Tracker;
+  /** Whoever cannot manage trackers is told to ask an administrator (ADR-047). */
+  canManageTrackers: boolean;
   onLogout: () => void;
   onPublished?: () => void;
   onClose: () => void;
@@ -131,7 +134,9 @@ export function TrackerUploadPanel({
   // category and type are required in UNIT3D; the select's 0 is "not yet chosen".
   function taxonomyError(): string {
     if (!canPublish(tracker.profile)) {
-      return t("publish.trackerUploadPanel.errors.noTaxonomy", { name: tracker.name });
+      return canManageTrackers
+        ? t("publish.trackerUploadPanel.errors.noTaxonomy", { name: tracker.name })
+        : t("publish.trackerUploadPanel.errors.noTaxonomyAskAdmin", { name: tracker.name });
     }
     if (!form.category_id || !form.type_id) return t("publish.trackerUploadPanel.errors.missingTaxonomy");
     return "";
@@ -502,7 +507,10 @@ export function TrackerUploadPanel({
           />
           {!canPublish(tracker.profile) && (
             <p className="text-xs text-amber-400">
-              ⚠ {t("publish.trackerUploadPanel.warnings.noTaxonomy", { name: tracker.name })}
+              ⚠{" "}
+              {canManageTrackers
+                ? t("publish.trackerUploadPanel.warnings.noTaxonomy", { name: tracker.name })
+                : t("publish.trackerUploadPanel.warnings.noTaxonomyAskAdmin", { name: tracker.name })}
             </p>
           )}
 

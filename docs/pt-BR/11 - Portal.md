@@ -166,7 +166,7 @@ O Portal filtra navegação e ações pelos papéis/permissões do operador aute
 (`GET /api/v1/auth/me`). Papéis de sistema:
 
 - **Administrator** — acesso total; vê tudo, incluindo a página **Usuários**.
-- **Publisher** — gerencia conteúdo: Adicionar Torrent, Publicar, Explorar, Trackers.
+- **Publisher** — publica conteúdo: Adicionar Torrent, Publicar, Explorar. Escolhe os trackers do cluster; não os gerencia (ADR-047).
 - **Downloader** — consome: Explorar e baixar torrents.
 - **Viewer** — somente leitura: Dashboard, Nodes, Explorar, Feed, Alertas, Métricas.
 
@@ -232,6 +232,8 @@ O backend permanece a autoridade: o gate de UI evita o clique que tomaria 403 �
 só o papel Administrator as alcança, e as ações internas delas (`settings:write`,
 `trackers:write`, `notify:write`, `users:write`) também são só dele. Os botões de exportar e importar perfil de tracker são a exceção: já nascem com `can`, pela permissão da rota que chamam (tabela acima). Se um dia existir
 papel customizado com acesso parcial a essas telas, os botões delas entram na tabela acima.
+
+Os trackers são do cluster e o Administrador os gerencia (ADR-047). Onde uma tela precisa de um tracker que falta — Publicar sem trackers, o Catálogo sem integração de API, um perfil sem taxonomia no painel de publicação —, quem abre Configurações e tem `trackers:write` recebe o link para Configurações › Trackers; os demais são orientados a pedir a um administrador.
 # **14. Navegação**
 A navegação deverá privilegiar rapidez e simplicidade.
 O operador deverá alcançar qualquer funcionalidade principal com poucos cliques.

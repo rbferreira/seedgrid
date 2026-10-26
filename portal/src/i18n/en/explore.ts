@@ -6,6 +6,7 @@ export const explore: Catalog["explore"] = {
     description: "Tracker showcase with poster, Portuguese title and basic info. \"✓ in cluster\" is the same file you already have; \"You have it in …\" is another version of the same title, and the download shows which one before asking. Metadata comes from TMDB (movie/series), IGDB (game) and Open Library (book/audiobook) — when the provider has no key, the card falls back to simple mode.",
     noIntegration: "No tracker with API integration. Register one (source + token) in",
     trackersLink: "Settings › Trackers",
+    noIntegrationAskAdmin: "No tracker with API integration. Ask an administrator to register one.",
     alreadyInCluster: "This file is already in the cluster",
     loadMore: "Load more",
     error: {

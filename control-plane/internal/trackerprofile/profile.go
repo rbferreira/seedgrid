@@ -13,8 +13,8 @@
 //     trackers table, internal/tracker, NEVER exported.
 //
 // Layer 3 is kept OUT by design: no type in this package has a field for
-// credentials, and queries from here only touch the trackers table to check ownership and
-// existence (id, user_id, deleted_at) and read the name. An export that leaks the api_token due to
+// credentials, and queries from here only touch the trackers table to check existence
+// (id, deleted_at) and read the name. An export that leaks the api_token due to
 // a forgotten filter would first need a field that does not exist.
 //
 // Profile is UNTRUSTED CONTENT. The (id, name) pairs come from three places —

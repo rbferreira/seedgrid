@@ -138,6 +138,12 @@ func setupTrackerAPI(t *testing.T) (http.Handler, map[string]string, func(sql st
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(pool.Close)
+	// Trackers belong to the cluster (ADR-047): every test sees every tracker, and names and
+	// the default are unique across the cluster. Each test starts with none, as a fresh cluster.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE trackers SET deleted_at = now(), is_default = false WHERE deleted_at IS NULL`); err != nil {
+		t.Fatalf("clear trackers: %v", err)
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	authSvc := auth.NewService(pool, "reg-token")
@@ -614,12 +620,11 @@ func TestTrackerProfile_NoAPIIntegration(t *testing.T) {
 }
 
 // RBAC in the standard of tracker endpoints: reading the profile (it comes in the listing) is trackers:read;
-// editing, discovering, and applying are trackers:write — the Viewer doesn't pass; the Publisher does.
+// editing, discovering, and applying are trackers:write, which only the Administrator holds (ADR-047).
 func TestTrackerProfile_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
 	fake := newSite(t)
-	// Tracker is per operator: the Publisher must be the OWNER of what they will edit.
-	id, _ := createTracker(t, h, tokens["Publisher"], "RBAC", fake.srv.URL)
+	id, _ := createTracker(t, h, tokens["Administrator"], "RBAC", fake.srv.URL)
 
 	routes := []struct{ method, path, body string }{
 		{"PUT", "/api/v1/trackers/" + id + "/profile", `{"taxonomy":{"type":[{"id":1,"name":"a"}]}}`},
@@ -627,26 +632,51 @@ func TestTrackerProfile_RBAC(t *testing.T) {
 		{"POST", "/api/v1/trackers/" + id + "/apply-taxonomy", `{"items":[{"axis":"type","id":2,"name":"b"}]}`},
 	}
 	for _, r := range routes {
-		if code, _ := tpCall(t, h, r.method, r.path, tokens["Viewer"], r.body); code != http.StatusForbidden {
-			t.Errorf("Viewer on %s %s: %d, want 403", r.method, r.path, code)
+		for _, role := range []string{"Viewer", "Publisher"} {
+			if code, _ := tpCall(t, h, r.method, r.path, tokens[role], r.body); code != http.StatusForbidden {
+				t.Errorf("%s on %s %s: %d, want 403", role, r.method, r.path, code)
+			}
 		}
-		if code, body := tpCall(t, h, r.method, r.path, tokens["Publisher"], r.body); code != http.StatusOK {
-			t.Errorf("Publisher on %s %s: %d %.200s, want 200", r.method, r.path, code, body)
-		}
-	}
-	// Even with the permission, a tracker from ANOTHER operator doesn't exist for the requester.
-	other, _ := createTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
-	for _, r := range routes {
-		path := strings.Replace(r.path, id, other, 1)
-		if code, _ := tpCall(t, h, r.method, path, tokens["Publisher"], r.body); code != http.StatusNotFound {
-			t.Errorf("Publisher on admin's tracker, %s %s: %d, want 404", r.method, path, code)
+		if code, body := tpCall(t, h, r.method, r.path, tokens["Administrator"], r.body); code != http.StatusOK {
+			t.Errorf("Administrator on %s %s: %d %.200s, want 200", r.method, r.path, code, body)
 		}
 	}
-	// Reading (the listing loads the profile) is trackers:read — the Viewer has it.
-	if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens["Viewer"], ""); code != http.StatusOK {
-		t.Errorf("Viewer reading trackers: %d %.200s, want 200", code, body)
+	// Reading (the listing loads the profile) is trackers:read, and the listing is the cluster's: the
+	// Viewer and the Publisher see the Administrator's tracker with its profile.
+	for _, role := range []string{"Viewer", "Publisher"} {
+		if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens[role], ""); code != http.StatusOK ||
+			!strings.Contains(body, id) || !strings.Contains(body, `"profile"`) {
+			t.Errorf("%s reading trackers: %d %.200s, want 200 with the tracker and its profile", role, code, body)
+		}
 	}
-	if code, body := tpCall(t, h, http.MethodGet, "/api/v1/trackers", tokens["Publisher"], ""); code != http.StatusOK || !strings.Contains(body, `"profile"`) {
-		t.Errorf("Publisher reading trackers: %d %.200s, want 200 with profile", code, body)
+}
+
+// Trackers belong to the cluster and the Administrator manages them (ADR-047): the Publisher picks
+// trackers but does not create, edit, remove or set the default; names are unique across the cluster.
+func TestTrackers_ManagedByTheAdministrator(t *testing.T) {
+	h, tokens, _ := setupTrackerAPI(t)
+	admin, pub := tokens["Administrator"], tokens["Publisher"]
+	fake := newSite(t)
+	id, _ := createTracker(t, h, admin, "Cluster", fake.srv.URL)
+
+	writes := []struct{ method, path, body string }{
+		{"POST", "/api/v1/trackers", `{"name":"Own","announce":"https://tracker.example.org/announce/k"}`},
+		{"PUT", "/api/v1/trackers/" + id, `{"name":"Renamed","announce":""}`},
+		{"POST", "/api/v1/trackers/" + id + "/default", ``},
+		{"DELETE", "/api/v1/trackers/" + id, ``},
+	}
+	for _, r := range writes {
+		if code, _ := tpCall(t, h, r.method, r.path, pub, r.body); code != http.StatusForbidden {
+			t.Errorf("Publisher on %s %s: %d, want 403", r.method, r.path, code)
+		}
+	}
+	if code, body := tpCall(t, h, http.MethodPost, "/api/v1/trackers", admin,
+		`{"name":"Cluster","announce":"https://other.example.org/announce/k"}`); code != http.StatusConflict {
+		t.Errorf("second tracker named Cluster: %d %.200s, want 409", code, body)
+	}
+	for _, r := range writes[1:] {
+		if code, body := tpCall(t, h, r.method, r.path, admin, r.body); code >= 300 {
+			t.Errorf("Administrator on %s %s: %d %.200s, want success", r.method, r.path, code, body)
+		}
 	}
 }
