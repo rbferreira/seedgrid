@@ -4,6 +4,7 @@ export const explore = {
     description: "Vitrine do tracker com pôster, título em português e ficha básica. \"✓ no cluster\" é o mesmo arquivo que você já tem; \"Você tem em …\" é outra versão do mesmo título, e o download mostra qual antes de perguntar. Metadados vêm do TMDB (filme/série), IGDB (jogo) e Open Library (livro/audiolivro) — quando o provider está sem chave, o card cai no modo simples.",
     noIntegration: "Nenhum tracker com integração de API. Cadastre um (source + token) em",
     trackersLink: "Configurações › Trackers",
+    noIntegrationAskAdmin: "Nenhum tracker com integração de API. Peça a um administrador que cadastre um.",
     alreadyInCluster: "Este arquivo já está no cluster",
     loadMore: "Carregar mais",
     error: {

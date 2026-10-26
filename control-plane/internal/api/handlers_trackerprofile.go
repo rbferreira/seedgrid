@@ -47,13 +47,13 @@ type trackerView struct {
 	DescriptionDefault description.Config `json:"description_default"`
 }
 
-// profilesOf reads the operator's profiles. Failure becomes an empty profile + log: the tracker list
+// profilesOf reads the cluster's tracker profiles. Failure becomes an empty profile + log: the tracker list
 // cannot disappear because of an auxiliary table.
-func profilesOf(ctx context.Context, d Deps, userID string) map[string]trackerprofile.Profile {
+func profilesOf(ctx context.Context, d Deps) map[string]trackerprofile.Profile {
 	if d.Profiles == nil {
 		return nil
 	}
-	m, err := d.Profiles.ForTrackers(ctx, userID)
+	m, err := d.Profiles.ForTrackers(ctx)
 	if err != nil {
 		d.Logger.Error("read tracker profiles", "error", err)
 		return nil
@@ -115,11 +115,6 @@ func handleEditTrackerProfile(d Deps) http.HandlerFunc {
 		Taxonomy map[string][]trackerprofile.TermInput `json:"taxonomy"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req request
 		if !decodeProfileBody(w, r, &req) {
 			return
@@ -133,7 +128,7 @@ func handleEditTrackerProfile(d Deps) http.HandlerFunc {
 			profileError(w, d, err)
 			return
 		}
-		res, err := d.Profiles.Edit(r.Context(), user.ID, r.PathValue("id"), clean)
+		res, err := d.Profiles.Edit(r.Context(), r.PathValue("id"), clean)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -150,16 +145,11 @@ func handleEditTrackerProfile(d Deps) http.HandlerFunc {
 // the field path. The taxonomy is untouched.
 func handleSetTrackerDescription(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var cfg description.Config
 		if !decodeProfileBody(w, r, &cfg) {
 			return
 		}
-		res, err := d.Profiles.SetDescription(r.Context(), user.ID, r.PathValue("id"), &cfg)
+		res, err := d.Profiles.SetDescription(r.Context(), r.PathValue("id"), &cfg)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -174,12 +164,7 @@ func handleSetTrackerDescription(d Deps) http.HandlerFunc {
 // composition (the one the Portal always assembled). Idempotent — deleting what doesn't exist is also 200.
 func handleResetTrackerDescription(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		res, err := d.Profiles.SetDescription(r.Context(), user.ID, r.PathValue("id"), nil)
+		res, err := d.Profiles.SetDescription(r.Context(), r.PathValue("id"), nil)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -195,16 +180,11 @@ func handleResetTrackerDescription(d Deps) http.HandlerFunc {
 // and other ADR-040 rules are 400 invalid_profile with the field path.
 func handleSetTrackerImageHost(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var spec imagehost.Spec
 		if !decodeProfileBody(w, r, &spec) {
 			return
 		}
-		res, err := d.Profiles.SetImageHost(r.Context(), user.ID, r.PathValue("id"), &spec)
+		res, err := d.Profiles.SetImageHost(r.Context(), r.PathValue("id"), &spec)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -219,12 +199,7 @@ func handleSetTrackerImageHost(d Deps) http.HandlerFunc {
 // imgbb in the screenshot chain. Idempotent — deleting what doesn't exist is also 200.
 func handleResetTrackerImageHost(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		res, err := d.Profiles.SetImageHost(r.Context(), user.ID, r.PathValue("id"), nil)
+		res, err := d.Profiles.SetImageHost(r.Context(), r.PathValue("id"), nil)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -243,11 +218,6 @@ func handleSetTrackerImageHostKey(d Deps) http.HandlerFunc {
 		Key string `json:"key"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		id := r.PathValue("id")
 		var req request
 		if !decodeProfileBody(w, r, &req) {
@@ -259,7 +229,7 @@ func handleSetTrackerImageHostKey(d Deps) http.HandlerFunc {
 			return
 		}
 		// Check if the profile has the image_host section.
-		profile, err := d.Profiles.Get(r.Context(), user.ID, id)
+		profile, err := d.Profiles.Get(r.Context(), id)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -270,7 +240,7 @@ func handleSetTrackerImageHostKey(d Deps) http.HandlerFunc {
 			return
 		}
 		host := profile.ImageHost.Host()
-		name, err := d.Trackers.SetImageHostKey(r.Context(), user.ID, id, key, host)
+		name, err := d.Trackers.SetImageHostKey(r.Context(), id, key, host)
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -285,13 +255,8 @@ func handleSetTrackerImageHostKey(d Deps) http.HandlerFunc {
 // handleClearTrackerImageHostKey deletes the image host key. Idempotent.
 func handleClearTrackerImageHostKey(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		id := r.PathValue("id")
-		name, err := d.Trackers.ClearImageHostKey(r.Context(), user.ID, id)
+		name, err := d.Trackers.ClearImageHostKey(r.Context(), id)
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -361,11 +326,6 @@ func clampPages(n int) int {
 // go to the Audit trail (skipAuditPath) — the operator's action is the apply.
 func handleDiscoverTaxonomy(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req discoverRequest
 		r.Body = http.MaxBytesReader(w, r.Body, maxProfileBody)
 		// Empty body is valid (uses the default); present and malformed body is not.
@@ -378,7 +338,7 @@ func handleDiscoverTaxonomy(d Deps) http.HandlerFunc {
 			return
 		}
 
-		current, err := d.Profiles.Get(r.Context(), user.ID, r.PathValue("id"))
+		current, err := d.Profiles.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -387,7 +347,7 @@ func handleDiscoverTaxonomy(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "unsupported_family", "discovery is only supported for the unit3d family")
 			return
 		}
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, r.PathValue("id"))
+		sec, err := d.Trackers.ForPublish(r.Context(), r.PathValue("id"))
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -426,11 +386,6 @@ func handleApplyTaxonomy(d Deps) http.HandlerFunc {
 		Skipped []trackerprofile.Skipped `json:"skipped"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req request
 		if !decodeProfileBody(w, r, &req) {
 			return
@@ -440,7 +395,7 @@ func handleApplyTaxonomy(d Deps) http.HandlerFunc {
 			profileError(w, d, err)
 			return
 		}
-		res, err := d.Profiles.Apply(r.Context(), user.ID, r.PathValue("id"), items)
+		res, err := d.Profiles.Apply(r.Context(), r.PathValue("id"), items)
 		if err != nil {
 			profileError(w, d, err)
 			return

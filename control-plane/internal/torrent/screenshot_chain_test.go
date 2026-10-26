@@ -18,7 +18,7 @@ type fakeProfiles struct {
 	err  error
 }
 
-func (f fakeProfiles) ImageHostSpec(context.Context, string, string) (*imagehost.Spec, error) {
+func (f fakeProfiles) ImageHostSpec(context.Context, string) (*imagehost.Spec, error) {
 	return f.spec, f.err
 }
 
@@ -27,7 +27,7 @@ type fakeKeys struct {
 	err       error
 }
 
-func (f fakeKeys) ImageHostKeyForChain(context.Context, string, string) (string, string, error) {
+func (f fakeKeys) ImageHostKeyForChain(context.Context, string) (string, string, error) {
 	return f.key, f.host, f.err
 }
 
@@ -89,7 +89,7 @@ func TestScreenshotCandidates(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &Service{profiles: tc.profiles, imageHostKey: tc.keys}
-			got, err := s.screenshotCandidates(context.Background(), "u1", tc.trackerID, tc.imgbbKey)
+			got, err := s.screenshotCandidates(context.Background(), tc.trackerID, tc.imgbbKey)
 			if err != nil {
 				t.Fatalf("error: %v", err)
 			}
@@ -103,11 +103,11 @@ func TestScreenshotCandidates(t *testing.T) {
 func TestScreenshotCandidates_ProviderErrorReturnedAsIs(t *testing.T) {
 	sentinel := errors.New("tracker not found")
 	s := &Service{profiles: fakeProfiles{err: sentinel}, imageHostKey: fakeKeys{}}
-	if _, err := s.screenshotCandidates(context.Background(), "u1", "t1", "IMGBB"); !errors.Is(err, sentinel) {
+	if _, err := s.screenshotCandidates(context.Background(), "t1", "IMGBB"); !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want the profile provider's", err)
 	}
 	s = &Service{profiles: fakeProfiles{spec: chainSpec}, imageHostKey: fakeKeys{err: sentinel}}
-	if _, err := s.screenshotCandidates(context.Background(), "u1", "t1", "IMGBB"); !errors.Is(err, sentinel) {
+	if _, err := s.screenshotCandidates(context.Background(), "t1", "IMGBB"); !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want the one from the key provider", err)
 	}
 }

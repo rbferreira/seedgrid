@@ -157,7 +157,7 @@ export function App() {
   else if (route === "/analytics")
     page = can("torrents:read") ? <Analytics onLogout={logout} /> : dashboard;
   else if (route === "/add") page = can("torrents:create") ? <AddTorrent onLogout={logout} /> : dashboard;
-  else if (route === "/publish") page = can("torrents:publish") ? <Publish onLogout={logout} /> : dashboard;
+  else if (route === "/publish") page = can("torrents:publish") ? <Publish can={can} onLogout={logout} /> : dashboard;
   else if (route === "/explore") page = can("torrents:read") ? <Explore can={can} onLogout={logout} /> : dashboard;
   else if (route === "/alerts") page = can("alerts:read") ? <AlertsEvents can={can} onLogout={logout} /> : dashboard;
   else if (route === "/feed") page = can("activities:read") ? <Feed onLogout={logout} /> : dashboard;

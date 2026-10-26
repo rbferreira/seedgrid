@@ -248,7 +248,7 @@ func (s *Service) AgentRegistrationTokenValid(token string) bool {
 // SystemRoles are the system roles guaranteed by Bootstrap (ADR-035).
 var SystemRoles = []struct{ Name, Description string }{
 	{"Administrator", "Full administrative access"},
-	{"Publisher", "Manages content: torrents, trackers, publishing"},
+	{"Publisher", "Publishes content: torrents and publishing to the cluster's trackers"},
 	{"Downloader", "Consumes content: reads and downloads torrents"},
 	{"Viewer", "Read-only: observes the cluster without mutating anything"},
 }

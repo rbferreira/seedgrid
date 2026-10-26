@@ -39,12 +39,7 @@ func trackerError(w http.ResponseWriter, d Deps, err error) {
 
 func handleListTrackers(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		ts, err := d.Trackers.List(r.Context(), user.ID)
+		ts, err := d.Trackers.List(r.Context())
 		if err != nil {
 			d.Logger.Error("list trackers", "error", err)
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list trackers")
@@ -53,7 +48,7 @@ func handleListTrackers(d Deps) http.HandlerFunc {
 		// Each tracker carries the site profile (taxonomy, ADR-037) — that's where the
 		// publishing panel reads options from, without asking again. No credential: the public
 		// tracker view (layer 3 without secrets) plus the profile (layer 2).
-		profiles := profilesOf(r.Context(), d, user.ID)
+		profiles := profilesOf(r.Context(), d)
 		views := make([]trackerView, 0, len(ts))
 		for _, t := range ts {
 			views = append(views, viewOf(t, profiles))
@@ -101,39 +96,29 @@ func handleCreateTracker(d Deps) http.HandlerFunc {
 			trackerError(w, d, err)
 			return
 		}
-		httpx.WriteJSON(w, http.StatusCreated, viewOf(t, profilesOf(r.Context(), d, user.ID)))
+		httpx.WriteJSON(w, http.StatusCreated, viewOf(t, profilesOf(r.Context(), d)))
 	}
 }
 
 func handleUpdateTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req trackerRequest
 		if err := httpx.DecodeJSON(r, &req); err != nil {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_body", "invalid body")
 			return
 		}
-		t, err := d.Trackers.Update(r.Context(), user.ID, r.PathValue("id"), req.input())
+		t, err := d.Trackers.Update(r.Context(), r.PathValue("id"), req.input())
 		if err != nil {
 			trackerError(w, d, err)
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, viewOf(t, profilesOf(r.Context(), d, user.ID)))
+		httpx.WriteJSON(w, http.StatusOK, viewOf(t, profilesOf(r.Context(), d)))
 	}
 }
 
 func handleDeleteTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		if err := d.Trackers.Delete(r.Context(), user.ID, r.PathValue("id")); err != nil {
+		if err := d.Trackers.Delete(r.Context(), r.PathValue("id")); err != nil {
 			trackerError(w, d, err)
 			return
 		}
@@ -150,12 +135,7 @@ func handleDeleteTracker(d Deps) http.HandlerFunc {
 
 func handleSetDefaultTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		if err := d.Trackers.SetDefault(r.Context(), user.ID, r.PathValue("id")); err != nil {
+		if err := d.Trackers.SetDefault(r.Context(), r.PathValue("id")); err != nil {
 			trackerError(w, d, err)
 			return
 		}
@@ -168,12 +148,7 @@ func handleSetDefaultTracker(d Deps) http.HandlerFunc {
 // expose info_hash). Cursor-based pagination (?cursor=).
 func handleBrowseTracker(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, r.PathValue("id"))
+		sec, err := d.Trackers.ForPublish(r.Context(), r.PathValue("id"))
 		if err != nil {
 			trackerError(w, d, err)
 			return
@@ -213,7 +188,7 @@ func handleBrowseTracker(d Deps) http.HandlerFunc {
 		// (no poster/PT title) instead of disappearing from the list. It uses what is left of
 		// the route's deadline; an item not ready in time comes back neutral and isn't cached (#41).
 		// The catalog is the site's: its metadata comes in the site's content language (#74).
-		lang := contentLanguage(r.Context(), d, user.ID, r.PathValue("id"))
+		lang := contentLanguage(r.Context(), d, r.PathValue("id"))
 		enrichIn := make([]enrich.Item, len(res.Items))
 		for i, it := range res.Items {
 			enrichIn[i] = enrich.Item{
@@ -300,11 +275,6 @@ func handleSeedFromTracker(d Deps) http.HandlerFunc {
 		AllowOtherVersion bool   `json:"allow_other_version"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		var req request
 		if err := httpx.DecodeJSON(r, &req); err != nil {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_body", "invalid body")
@@ -314,7 +284,7 @@ func handleSeedFromTracker(d Deps) http.HandlerFunc {
 			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "torrent_id is required")
 			return
 		}
-		sec, err := d.Trackers.ForPublish(r.Context(), user.ID, r.PathValue("id"))
+		sec, err := d.Trackers.ForPublish(r.Context(), r.PathValue("id"))
 		if err != nil {
 			trackerError(w, d, err)
 			return

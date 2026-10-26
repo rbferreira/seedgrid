@@ -193,24 +193,26 @@ func TestTrackerImageHost_HostilePayloads(t *testing.T) {
 	}
 }
 
-// RBAC follows the tracker endpoints pattern: writing the section is trackers:write (the Viewer does
-// not pass, the owning Publisher passes) and a tracker from another operator does not exist for the requester.
+// RBAC follows the tracker endpoints pattern: writing the section is trackers:write, which only the
+// Administrator holds (ADR-047), and a tracker that does not exist is 404.
 func TestTrackerImageHost_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
+	admin := tokens["Administrator"]
 	fake := newSite(t)
-	id, _ := createTracker(t, h, tokens["Publisher"], "RBAC secao", fake.srv.URL)
-	other, _ := createTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
+	id, _ := createTracker(t, h, admin, "RBAC secao", fake.srv.URL)
 
 	routes := []struct{ method, body string }{{http.MethodPut, ihValid}, {http.MethodDelete, ""}}
 	for _, r := range routes {
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihSection, id), tokens["Viewer"], r.body); code != http.StatusForbidden {
-			t.Errorf("Viewer on %s: %d, want 403", r.method, code)
+		for _, role := range []string{"Viewer", "Publisher"} {
+			if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihSection, id), tokens[role], r.body); code != http.StatusForbidden {
+				t.Errorf("%s on %s: %d, want 403", role, r.method, code)
+			}
 		}
-		if code, body := tpCall(t, h, r.method, fmt.Sprintf(ihSection, id), tokens["Publisher"], r.body); code != http.StatusOK {
-			t.Errorf("Publisher owner on %s: %d %.200s, want 200", r.method, code, body)
+		if code, body := tpCall(t, h, r.method, fmt.Sprintf(ihSection, id), admin, r.body); code != http.StatusOK {
+			t.Errorf("Administrator on %s: %d %.200s, want 200", r.method, code, body)
 		}
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihSection, other), tokens["Publisher"], r.body); code != http.StatusNotFound {
-			t.Errorf("Publisher on admin's tracker, %s: %d, want 404", r.method, code)
+		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihSection, "00000000-0000-0000-0000-0000000000aa"), admin, r.body); code != http.StatusNotFound {
+			t.Errorf("unknown tracker, %s: %d, want 404", r.method, code)
 		}
 		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihSection, id), "", r.body); code != http.StatusUnauthorized {
 			t.Errorf("no token on %s: %d, want 401", r.method, code)

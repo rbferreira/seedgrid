@@ -60,6 +60,7 @@ export const publish = {
       igdbSearchFailed: "Falha ao buscar no IGDB.",
       missingTaxonomy: "Escolha a categoria e o tipo.",
       noTaxonomy: "O perfil de {name} ainda não tem categorias e tipos. Em Configurações → Trackers, abra o perfil e use “Descobrir taxonomia”.",
+      noTaxonomyAskAdmin: "O perfil de {name} ainda não tem categorias e tipos. Peça a um administrador que descubra a taxonomia do site.",
       previewFailed: "Falha ao montar o preview.",
       publishFailed: "Falha ao cadastrar no tracker.",
       requiredFields: "Nome e descrição são obrigatórios.",
@@ -115,6 +116,7 @@ export const publish = {
     },
     warnings: {
       noTaxonomy: "O perfil de {name} ainda não tem categorias e tipos. Em Configurações → Trackers, abra o perfil e use “Descobrir taxonomia” (ou cadastre à mão).",
+      noTaxonomyAskAdmin: "O perfil de {name} ainda não tem categorias e tipos. Peça a um administrador que descubra a taxonomia do site.",
     },
   },
 } as const;

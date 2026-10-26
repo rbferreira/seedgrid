@@ -19,12 +19,14 @@ import (
 )
 
 // env groups what is needed for database tests: pool, both services, and a dedicated
-// operator (the trackers FK requires a user).
+// operator (the trackers FK requires a user). Trackers belong to the cluster (ADR-047) and
+// tracker names are unique across it, so newTracker suffixes each name with the operator's.
 type env struct {
 	pool     *pgxpool.Pool
 	profiles *trackerprofile.Service
 	trackers *tracker.Service
 	userID   string
+	username string
 }
 
 func setup(t *testing.T) env {
@@ -49,13 +51,16 @@ func setup(t *testing.T) env {
 		username).Scan(&userID); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	return env{pool: pool, profiles: trackerprofile.NewService(pool), trackers: tracker.NewService(pool), userID: userID}
+	return env{pool: pool, profiles: trackerprofile.NewService(pool), trackers: tracker.NewService(pool), userID: userID, username: username}
 }
+
+// name is the tracker name this test registers for the given label.
+func (e env) name(label string) string { return label + " " + e.username }
 
 func (e env) newTracker(t *testing.T, name string) string {
 	t.Helper()
 	tr, err := e.trackers.Create(context.Background(), e.userID, tracker.Input{
-		Name:     name,
+		Name:     e.name(name),
 		Announce: "https://tracker.example.org/announce/PASSKEY-SECRET-123",
 		Source:   "TEST",
 		APIURL:   "https://tracker.example.org",
@@ -76,13 +81,13 @@ func ids(terms []trackerprofile.Term) []int {
 }
 
 // A tracker without a profile row is no error: it reads as an empty profile, with all axes.
-// And ownership is verified — an external tracker's profile does not exist for the requester.
-func TestGet_NoRowMeansEmptyProfileAndOwnershipChecked(t *testing.T) {
+// A tracker that does not exist has no profile.
+func TestGet_NoRowMeansEmptyProfileAndNotFound(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	id := e.newTracker(t, "No Profile")
 
-	p, err := e.profiles.Get(ctx, e.userID, id)
+	p, err := e.profiles.Get(ctx, id)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -95,13 +100,12 @@ func TestGet_NoRowMeansEmptyProfileAndOwnershipChecked(t *testing.T) {
 		}
 	}
 
-	for name, args := range map[string][2]string{
-		"other operator": {"00000000-0000-0000-0000-000000000001", id},
-		"nonexistent id": {e.userID, "00000000-0000-0000-0000-000000000002"},
-		"malformed id":   {e.userID, "'; DROP TABLE trackers;--"},
-		"empty id":       {e.userID, ""},
+	for name, id := range map[string]string{
+		"nonexistent id": "00000000-0000-0000-0000-000000000002",
+		"malformed id":   "'; DROP TABLE trackers;--",
+		"empty id":       "",
 	} {
-		if _, err := e.profiles.Get(ctx, args[0], args[1]); !errors.Is(err, trackerprofile.ErrNotFound) {
+		if _, err := e.profiles.Get(ctx, id); !errors.Is(err, trackerprofile.ErrNotFound) {
 			t.Errorf("%s: error = %v, want ErrNotFound", name, err)
 		}
 	}
@@ -112,17 +116,17 @@ func TestEdit_CreatesLineAndSavesManualOrigin(t *testing.T) {
 	ctx := context.Background()
 	id := e.newTracker(t, "Edited")
 
-	res, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{
+	res, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisCategory: {{ID: 2, Name: "Series", Kind: trackerprofile.KindTV}, {ID: 1, Name: "Filmes", Kind: trackerprofile.KindMovie}},
 	})
 	if err != nil {
 		t.Fatalf("Edit: %v", err)
 	}
-	if res.TrackerName != "Edited" {
+	if res.TrackerName != e.name("Edited") {
 		t.Errorf("TrackerName = %q, want Edited (the audit needs to say which tracker)", res.TrackerName)
 	}
 
-	p, err := e.profiles.Get(ctx, e.userID, id)
+	p, err := e.profiles.Get(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +143,7 @@ func TestEdit_CreatesLineAndSavesManualOrigin(t *testing.T) {
 		t.Error("type axis was not sent and should remain empty")
 	}
 
-	all, err := e.profiles.ForTrackers(ctx, e.userID)
+	all, err := e.profiles.ForTrackers(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +159,7 @@ func TestApply_CompletesAndDoesNotOverwriteManual(t *testing.T) {
 	ctx := context.Background()
 	id := e.newTracker(t, "Incremental")
 
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisCategory: {{ID: 2, Name: "Seriados", Kind: trackerprofile.KindTV}},
 	}); err != nil {
 		t.Fatal(err)
@@ -166,7 +170,7 @@ func TestApply_CompletesAndDoesNotOverwriteManual(t *testing.T) {
 		{Axis: trackerprofile.AxisCategory, ID: 2, Name: "Series", Origin: trackerprofile.OriginDiscovered},
 		{Axis: trackerprofile.AxisType, ID: 50, Name: "PC", Origin: trackerprofile.OriginDiscovered},
 	}
-	res, err := e.profiles.Apply(ctx, e.userID, id, items)
+	res, err := e.profiles.Apply(ctx, id, items)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -174,7 +178,7 @@ func TestApply_CompletesAndDoesNotOverwriteManual(t *testing.T) {
 		t.Errorf("applied=%+v skipped=%+v, want 2 applied and id 2 protected", res.Applied, res.Skipped)
 	}
 
-	p, _ := e.profiles.Get(ctx, e.userID, id)
+	p, _ := e.profiles.Get(ctx, id)
 	byID := map[int]trackerprofile.Term{}
 	for _, tm := range p.Taxonomy[trackerprofile.AxisCategory] {
 		byID[tm.ID] = tm
@@ -191,7 +195,7 @@ func TestApply_CompletesAndDoesNotOverwriteManual(t *testing.T) {
 	if err := e.pool.QueryRow(ctx, `SELECT updated_at FROM tracker_profiles WHERE tracker_id = $1`, id).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	again, err := e.profiles.Apply(ctx, e.userID, id, items)
+	again, err := e.profiles.Apply(ctx, id, items)
 	if err != nil || len(again.Applied) != 0 {
 		t.Fatalf("2nd application: applied=%+v err=%v, want none applied", again.Applied, err)
 	}
@@ -218,7 +222,7 @@ func TestApply_ConcurrentDoesNotLoseWrites(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := e.profiles.Apply(ctx, e.userID, id, []trackerprofile.ApplyItem{
+			_, err := e.profiles.Apply(ctx, id, []trackerprofile.ApplyItem{
 				{Axis: trackerprofile.AxisType, ID: i, Name: fmt.Sprintf("Type %d", i), Origin: trackerprofile.OriginDiscovered},
 			})
 			errs <- err
@@ -231,7 +235,7 @@ func TestApply_ConcurrentDoesNotLoseWrites(t *testing.T) {
 			t.Fatalf("concurrent Apply: %v", err)
 		}
 	}
-	p, _ := e.profiles.Get(ctx, e.userID, id)
+	p, _ := e.profiles.Get(ctx, id)
 	if got := ids(p.Taxonomy[trackerprofile.AxisType]); len(got) != n {
 		t.Errorf("ids = %v, want %d terms (lost concurrent writes)", got, n)
 	}
@@ -243,24 +247,24 @@ func TestTrackerRemovedAndProfileForgotten(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	id := e.newTracker(t, "Ephemeral")
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisType: {{ID: 1, Name: "x"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := e.trackers.Delete(ctx, e.userID, id); err != nil {
+	if err := e.trackers.Delete(ctx, id); err != nil {
 		t.Fatal(err)
 	}
 	// Even WITHOUT Forget, the profile of a removed tracker is inert.
-	if _, err := e.profiles.Get(ctx, e.userID, id); !errors.Is(err, trackerprofile.ErrNotFound) {
+	if _, err := e.profiles.Get(ctx, id); !errors.Is(err, trackerprofile.ErrNotFound) {
 		t.Errorf("Get of removed tracker: %v, want ErrNotFound", err)
 	}
-	all, _ := e.profiles.ForTrackers(ctx, e.userID)
+	all, _ := e.profiles.ForTrackers(ctx)
 	if _, ok := all[id]; ok {
 		t.Error("ForTrackers returned the profile of a removed tracker")
 	}
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{trackerprofile.AxisType: {}}); !errors.Is(err, trackerprofile.ErrNotFound) {
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{trackerprofile.AxisType: {}}); !errors.Is(err, trackerprofile.ErrNotFound) {
 		t.Errorf("Edit of removed tracker: %v, want ErrNotFound", err)
 	}
 
@@ -286,7 +290,7 @@ func TestProfileDoesNotLoadCredential(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	id := e.newTracker(t, "With Secrets")
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisCategory: {{ID: 1, Name: "Filmes", Kind: trackerprofile.KindMovie}},
 		trackerprofile.AxisType:     {{ID: 3, Name: "Encode"}},
 	}); err != nil {
@@ -315,11 +319,11 @@ func TestProfileDoesNotLoadCredential(t *testing.T) {
 		t.Fatal("tracker_profiles without columns? catalog query did not find the table")
 	}
 
-	p, err := e.profiles.Get(ctx, e.userID, id)
+	p, err := e.profiles.Get(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	all, _ := e.profiles.ForTrackers(ctx, e.userID)
+	all, _ := e.profiles.ForTrackers(ctx)
 	for name, v := range map[string]any{"Get": p, "ForTrackers": all} {
 		raw, _ := json.Marshal(v)
 		for _, secret := range []string{"PASSKEY-SECRET-123", "API-TOKEN-SECRET-456", "announce", "tracker.example.org"} {
@@ -335,7 +339,7 @@ func TestDatabaseConstraints(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	id := e.newTracker(t, "Restrictions")
-	if _, err := e.profiles.Edit(ctx, e.userID, id, map[string][]trackerprofile.TermInput{trackerprofile.AxisType: {}}); err != nil {
+	if _, err := e.profiles.Edit(ctx, id, map[string][]trackerprofile.TermInput{trackerprofile.AxisType: {}}); err != nil {
 		t.Fatal(err)
 	}
 

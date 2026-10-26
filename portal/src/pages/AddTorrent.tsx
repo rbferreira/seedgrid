@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, type DragEvent } from "react"
 import { TrackerUploadPanel } from "./publish/TrackerUploadPanel";
 import { fmtSize } from "./publish/bbcode";
 import { nodeLabel, nodeLabelById } from "../lib/node-label";
+import { canManageTrackers } from "../lib/tracker-admin";
 import { useOtherVersionsPrompt } from "../components/OtherVersionsDialog";
 import {
   addTorrentMagnet,
@@ -58,12 +59,12 @@ export function AddTorrent({ onLogout }: { onLogout: () => void }) {
 // Publish is the local content publishing page (ADR-019/020): uploads files,
 // the Cluster creates the .torrent, announces and seeds; optionally registers on a tracker
 // UNIT3D. Also shows the pending publishing queue (backlog #8).
-export function Publish({ onLogout }: { onLogout: () => void }) {
+export function Publish({ can, onLogout }: { can: (perm: string) => boolean; onLogout: () => void }) {
   const t = useT();
   return (
     <>
       <h1 className="text-lg font-semibold text-white">{t("torrents.addTorrent.publishTitle")}</h1>
-      <PublishContent onLogout={onLogout} />
+      <PublishContent can={can} onLogout={onLogout} />
     </>
   );
 }
@@ -347,7 +348,7 @@ type PublishPhase = "idle" | "uploading" | "processing" | "done" | "error";
 // PublishContent publishes local files (ADR-019): uploads the content, the Node creates
 // the .torrent and starts seeding. Chooses public (DHT) or a registered tracker, and lets
 // the Scheduler choose the Node (or forces one).
-function PublishContent({ onLogout }: { onLogout: () => void }) {
+function PublishContent({ can, onLogout }: { can: (perm: string) => boolean; onLogout: () => void }) {
   const t = useT();
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -667,15 +668,18 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        {trackers.length === 0 && (
-          <p className="text-xs text-slate-500">
-            {t("torrents.addTorrent.noTrackersHintPrefix")}{" "}
-            <a href="#/settings" className="text-emerald-400 hover:underline">
-              {t("torrents.addTorrent.trackersLink")}
-            </a>{" "}
-            {t("torrents.addTorrent.noTrackersHintSuffix")}
-          </p>
-        )}
+        {trackers.length === 0 &&
+          (canManageTrackers(can) ? (
+            <p className="text-xs text-slate-500">
+              {t("torrents.addTorrent.noTrackersHintPrefix")}{" "}
+              <a href="#/settings" className="text-emerald-400 hover:underline">
+                {t("torrents.addTorrent.trackersLink")}
+              </a>{" "}
+              {t("torrents.addTorrent.noTrackersHintSuffix")}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">{t("torrents.addTorrent.noTrackersAskAdmin")}</p>
+          ))}
 
         {phase !== "idle" && (
           <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm">
@@ -714,6 +718,7 @@ function PublishContent({ onLogout }: { onLogout: () => void }) {
           name={published.name}
           mediaInfo={published.mediaInfo}
           tracker={published.tracker}
+          canManageTrackers={canManageTrackers(can)}
           onLogout={onLogout}
           onPublished={reloadPending}
           onClose={() => setPublished(null)}

@@ -62,6 +62,7 @@ export const publish: Catalog["publish"] = {
       igdbSearchFailed: "Failed to search IGDB.",
       missingTaxonomy: "Choose a category and type.",
       noTaxonomy: "The {name} profile has no categories or types yet. In Settings → Trackers, open the profile and use “Discover taxonomy”.",
+      noTaxonomyAskAdmin: "The {name} profile has no categories or types yet. Ask an administrator to discover the site's taxonomy.",
       previewFailed: "Failed to build the preview.",
       publishFailed: "Failed to register on the tracker.",
       requiredFields: "Name and description are required.",
@@ -117,6 +118,7 @@ export const publish: Catalog["publish"] = {
     },
     warnings: {
       noTaxonomy: "The {name} profile has no categories or types yet. In Settings → Trackers, open the profile and use “Discover taxonomy” (or add them manually).",
+      noTaxonomyAskAdmin: "The {name} profile has no categories or types yet. Ask an administrator to discover the site's taxonomy.",
     },
   },
 };

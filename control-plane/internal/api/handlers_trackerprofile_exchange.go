@@ -60,12 +60,7 @@ func readDocument(w http.ResponseWriter, r *http.Request, d Deps) (trackerprofil
 // contain anything that the listing doesn't also show besides name and host.
 func handleExportTrackerProfile(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
-		doc, err := d.Profiles.Export(r.Context(), user.ID, r.PathValue("id"))
+		doc, err := d.Profiles.Export(r.Context(), r.PathValue("id"))
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -114,16 +109,11 @@ type previewResponse struct {
 // is to apply.
 func handlePreviewProfileImport(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		doc, overwrite, ok := readDocument(w, r, d)
 		if !ok {
 			return
 		}
-		plan, err := d.Profiles.PreviewImport(r.Context(), user.ID, r.PathValue("id"), doc, overwrite)
+		plan, err := d.Profiles.PreviewImport(r.Context(), r.PathValue("id"), doc, overwrite)
 		if err != nil {
 			profileError(w, d, err)
 			return
@@ -141,16 +131,11 @@ func handleImportTrackerProfile(d Deps) http.HandlerFunc {
 		Plan    trackerprofile.ImportPlan `json:"plan"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := httpx.OperatorFromContext(r.Context())
-		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "unauthenticated")
-			return
-		}
 		doc, overwrite, ok := readDocument(w, r, d)
 		if !ok {
 			return
 		}
-		res, err := d.Profiles.Import(r.Context(), user.ID, r.PathValue("id"), doc, overwrite)
+		res, err := d.Profiles.Import(r.Context(), r.PathValue("id"), doc, overwrite)
 		if err != nil {
 			profileError(w, d, err)
 			return

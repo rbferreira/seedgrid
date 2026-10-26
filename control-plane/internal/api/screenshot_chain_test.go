@@ -7,41 +7,37 @@ import (
 	"testing"
 )
 
-// TestScreenshotRender_TrackerFromOtherOperator ensures that the /screenshots/render route responds
-// 404 when the tracker_id belongs to another operator (same pattern as profile routes: a tracker
-// from another operator does not exist for the requester).
-func TestScreenshotRender_TrackerFromOtherOperator(t *testing.T) {
+// TestScreenshotRoutes_ClusterTracker: trackers belong to the cluster (ADR-047), so the
+// Publisher renders and generates with the tracker the Administrator registered — the tracker
+// check passes and the request fails further on, on the fake command or torrent. A tracker id
+// that does not exist is a 404 from the TRACKER, before any work on the command or torrent.
+func TestScreenshotRoutes_ClusterTracker(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
-	admin := tokens["Administrator"]
 	pub := tokens["Publisher"]
 	fake := newSite(t)
-	id, _ := createTracker(t, h, admin, "Tracker do Admin", fake.srv.URL)
+	id, _ := createTracker(t, h, tokens["Administrator"], "Tracker do Admin", fake.srv.URL)
+	const unknown = "00000000-0000-0000-0000-0000000000aa"
 
-	// Publisher (another operator) tries to render with the admin's tracker_id. The command
-	// is fake, but tracker validation comes before anything else in the chain.
-	body := fmt.Sprintf(`{"command_id":"00000000-0000-0000-0000-000000000000","tracker_id":%q}`, id)
-	code, resp := tpCall(t, h, http.MethodPost, "/api/v1/screenshots/render", pub, body)
-	if code != http.StatusNotFound || !strings.Contains(resp, "tracker not found") {
-		t.Errorf("render with tracker from another operator: %d %s, want 404 from tracker", code, resp)
+	render := func(trackerID string) (int, string) {
+		body := fmt.Sprintf(`{"command_id":"00000000-0000-0000-0000-000000000000","tracker_id":%q}`, trackerID)
+		return tpCall(t, h, http.MethodPost, "/api/v1/screenshots/render", pub, body)
 	}
-}
+	generate := func(trackerID string) (int, string) {
+		return tpCall(t, h, http.MethodPost, "/api/v1/torrents/00000000-0000-0000-0000-000000000000/screenshots",
+			pub, fmt.Sprintf(`{"tracker_id":%q}`, trackerID))
+	}
 
-// TestScreenshotGenerate_TrackerFromOtherOperator ensures that the /torrents/{id}/screenshots route
-// returns 404 when the tracker_id belongs to another operator.
-func TestScreenshotGenerate_TrackerFromOtherOperator(t *testing.T) {
-	h, tokens, _ := setupTrackerAPI(t)
-	admin := tokens["Administrator"]
-	pub := tokens["Publisher"]
-	fake := newSite(t)
-	trackerID, _ := createTracker(t, h, admin, "Tracker do Admin Gen", fake.srv.URL)
-
-	// The Publisher points to the admin's tracker. The torrent doesn't even exist: the 404 must be
-	// from the TRACKER, proving that ownership is checked before any work on the torrent.
-	body := fmt.Sprintf(`{"tracker_id":%q}`, trackerID)
-	code, resp := tpCall(t, h, http.MethodPost,
-		"/api/v1/torrents/00000000-0000-0000-0000-000000000000/screenshots", pub, body)
-	if code != http.StatusNotFound || !strings.Contains(resp, "tracker not found") {
-		t.Errorf("generate with tracker from another operator: %d %s, want 404 from tracker", code, resp)
+	if code, resp := render(id); code == http.StatusForbidden || strings.Contains(resp, "tracker not found") {
+		t.Errorf("Publisher rendering with the cluster's tracker: %d %s, want past the tracker check", code, resp)
+	}
+	if code, resp := generate(id); code != http.StatusNotFound || !strings.Contains(resp, "torrent not found") {
+		t.Errorf("Publisher generating with the cluster's tracker: %d %s, want 404 from the torrent", code, resp)
+	}
+	if code, resp := render(unknown); code != http.StatusNotFound || !strings.Contains(resp, "tracker not found") {
+		t.Errorf("render with an unknown tracker: %d %s, want 404 from tracker", code, resp)
+	}
+	if code, resp := generate(unknown); code != http.StatusNotFound || !strings.Contains(resp, "tracker not found") {
+		t.Errorf("generate with an unknown tracker: %d %s, want 404 from tracker", code, resp)
 	}
 }
 

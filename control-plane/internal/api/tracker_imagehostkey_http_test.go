@@ -196,32 +196,30 @@ func TestTrackerImageHostKey_EditReturnsField(t *testing.T) {
 	}
 }
 
-// RBAC as per tracker endpoints: writing the key is trackers:write (the Viewer does
-// not pass, the owner Publisher passes) and a tracker from another operator does not exist for the requester.
+// RBAC as per tracker endpoints: writing the key is trackers:write, which only the
+// Administrator holds (ADR-047) — the Viewer and the Publisher get 403 — and a tracker that does
+// not exist is 404.
 func TestTrackerImageHostKey_RBAC(t *testing.T) {
 	h, tokens, _ := setupTrackerAPI(t)
+	admin := tokens["Administrator"]
 	fake := newSite(t)
-	id, _ := createTracker(t, h, tokens["Publisher"], "RBAC key", fake.srv.URL)
-	other, _ := createTracker(t, h, tokens["Administrator"], "Do admin", fake.srv.URL)
-
-	// Sets up the section for both.
-	if code, body := tpCall(t, h, http.MethodPut, fmt.Sprintf("/api/v1/trackers/%s/profile/image-host", id), tokens["Publisher"], ihValid); code != http.StatusOK {
-		t.Fatalf("PUT image-host: %d %s", code, body)
-	}
-	if code, body := tpCall(t, h, http.MethodPut, fmt.Sprintf("/api/v1/trackers/%s/profile/image-host", other), tokens["Administrator"], ihValid); code != http.StatusOK {
+	id, _ := createTracker(t, h, admin, "RBAC key", fake.srv.URL)
+	if code, body := tpCall(t, h, http.MethodPut, fmt.Sprintf("/api/v1/trackers/%s/profile/image-host", id), admin, ihValid); code != http.StatusOK {
 		t.Fatalf("PUT image-host: %d %s", code, body)
 	}
 
 	routes := []struct{ method, body string }{{http.MethodPut, `{"key": "CHAVE"}`}, {http.MethodDelete, ""}}
 	for _, r := range routes {
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, id), tokens["Viewer"], r.body); code != http.StatusForbidden {
-			t.Errorf("Viewer on %s: %d, want 403", r.method, code)
+		for _, role := range []string{"Viewer", "Publisher"} {
+			if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, id), tokens[role], r.body); code != http.StatusForbidden {
+				t.Errorf("%s on %s: %d, want 403", role, r.method, code)
+			}
 		}
-		if code, body := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, id), tokens["Publisher"], r.body); code != http.StatusOK {
-			t.Errorf("Publisher owner on %s: %d %.200s, want 200", r.method, code, body)
+		if code, body := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, id), admin, r.body); code != http.StatusOK {
+			t.Errorf("Administrator on %s: %d %.200s, want 200", r.method, code, body)
 		}
-		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, other), tokens["Publisher"], r.body); code != http.StatusNotFound {
-			t.Errorf("Publisher on admin's tracker, %s: %d, want 404", r.method, code)
+		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, "00000000-0000-0000-0000-0000000000aa"), admin, r.body); code != http.StatusNotFound {
+			t.Errorf("unknown tracker, %s: %d, want 404", r.method, code)
 		}
 		if code, _ := tpCall(t, h, r.method, fmt.Sprintf(ihkPath, id), "", r.body); code != http.StatusUnauthorized {
 			t.Errorf("no token on %s: %d, want 401", r.method, code)

@@ -17,7 +17,7 @@ import (
 
 func (e env) fill(t *testing.T, trackerID string) {
 	t.Helper()
-	if _, err := e.profiles.Edit(context.Background(), e.userID, trackerID, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(context.Background(), trackerID, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisCategory:   {{ID: 1, Name: "Filmes", Kind: trackerprofile.KindMovie}, {ID: 2, Name: "Séries", Kind: trackerprofile.KindTV}},
 		trackerprofile.AxisType:       {{ID: 3, Name: "Encode"}},
 		trackerprofile.AxisResolution: {{ID: 3, Name: "1080p"}},
@@ -34,7 +34,7 @@ func TestExport_DoesNotLoadCredential(t *testing.T) {
 	id := e.newTracker(t, "With Secrets")
 	e.fill(t, id)
 
-	doc, err := e.profiles.Export(ctx, e.userID, id)
+	doc, err := e.profiles.Export(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestExport_DoesNotLoadCredential(t *testing.T) {
 			t.Errorf("export leaks %q:\n%s", secret, raw)
 		}
 	}
-	if doc.Site.Name != "With Secrets" || doc.Site.Host != "tracker.example.org" {
+	if doc.Site.Name != e.name("With Secrets") || doc.Site.Host != "tracker.example.org" {
 		t.Errorf("site = %+v", doc.Site)
 	}
 	if _, err := trackerprofile.ParseDocument(raw); err != nil {
@@ -58,12 +58,12 @@ func TestExport_DoesNotLoadCredential(t *testing.T) {
 	}
 }
 
-func TestExport_EmptyProfileAndOwnership(t *testing.T) {
+func TestExport_EmptyProfileAndNotFound(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	id := e.newTracker(t, "Empty")
 
-	doc, err := e.profiles.Export(ctx, e.userID, id)
+	doc, err := e.profiles.Export(ctx, id)
 	if err != nil {
 		t.Fatalf("tracker export without profile row: %v", err)
 	}
@@ -78,20 +78,17 @@ func TestExport_EmptyProfileAndOwnership(t *testing.T) {
 		t.Errorf("export created profile row (n=%d, err=%v)", n, err)
 	}
 
-	// Ownership and format of the id.
+	// A tracker that does not exist, and the format of the id.
 	for _, bad := range []string{"00000000-0000-0000-0000-000000000000", "not-a-uuid", "' OR 1=1 --"} {
-		if _, err := e.profiles.Export(ctx, e.userID, bad); !errors.Is(err, trackerprofile.ErrNotFound) {
+		if _, err := e.profiles.Export(ctx, bad); !errors.Is(err, trackerprofile.ErrNotFound) {
 			t.Errorf("export of %q: %v, want ErrNotFound", bad, err)
 		}
-	}
-	if _, err := e.profiles.Export(ctx, "00000000-0000-0000-0000-000000000000", id); !errors.Is(err, trackerprofile.ErrNotFound) {
-		t.Errorf("export of another operator's tracker: %v, want ErrNotFound", err)
 	}
 }
 
 func parseExport(t *testing.T, e env, trackerID string) trackerprofile.Document {
 	t.Helper()
-	doc, err := e.profiles.Export(context.Background(), e.userID, trackerID)
+	doc, err := e.profiles.Export(context.Background(), trackerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +110,7 @@ func TestImport_PreviewDoesNotSaveAndImportSaves(t *testing.T) {
 	to := e.newTracker(t, "Destination")
 	doc := parseExport(t, e, from)
 
-	plan, err := e.profiles.PreviewImport(ctx, e.userID, to, doc, nil)
+	plan, err := e.profiles.PreviewImport(ctx, to, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,18 +121,18 @@ func TestImport_PreviewDoesNotSaveAndImportSaves(t *testing.T) {
 	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM tracker_profiles WHERE tracker_id = $1`, to).Scan(&rows); err != nil || rows != 0 {
 		t.Errorf("preview created the profile row (rows=%d, err=%v)", rows, err)
 	}
-	if p, _ := e.profiles.Get(ctx, e.userID, to); len(p.Taxonomy[trackerprofile.AxisCategory]) != 0 {
+	if p, _ := e.profiles.Get(ctx, to); len(p.Taxonomy[trackerprofile.AxisCategory]) != 0 {
 		t.Error("preview saved terms")
 	}
 
-	res, err := e.profiles.Import(ctx, e.userID, to, doc, nil)
+	res, err := e.profiles.Import(ctx, to, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.TrackerName != "Destination" || res.Plan.Counts.New != 4 {
+	if res.TrackerName != e.name("Destination") || res.Plan.Counts.New != 4 {
 		t.Errorf("res = %s %+v", res.TrackerName, res.Plan.Counts)
 	}
-	got, _ := e.profiles.Get(ctx, e.userID, to)
+	got, _ := e.profiles.Get(ctx, to)
 	for axis, terms := range got.Taxonomy {
 		for _, tm := range terms {
 			if tm.Origin != trackerprofile.OriginImported {
@@ -150,7 +147,7 @@ func TestImport_PreviewDoesNotSaveAndImportSaves(t *testing.T) {
 	// A 2nd import changes nothing and does not overwrite (updated_at stays).
 	var before, after string
 	_ = e.pool.QueryRow(ctx, `SELECT updated_at::text FROM tracker_profiles WHERE tracker_id = $1`, to).Scan(&before)
-	res2, err := e.profiles.Import(ctx, e.userID, to, doc, nil)
+	res2, err := e.profiles.Import(ctx, to, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +170,7 @@ func TestImport_RespectsManualOnLockedState(t *testing.T) {
 	}())
 
 	// Preview: category 2 would be a new addition.
-	plan, err := e.profiles.PreviewImport(ctx, e.userID, to, doc, nil)
+	plan, err := e.profiles.PreviewImport(ctx, to, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,19 +178,19 @@ func TestImport_RespectsManualOnLockedState(t *testing.T) {
 		t.Fatalf("category 2 in preview = %+v, want new", it)
 	}
 	// Before importing, the operator manually creates category 2 with another name.
-	if _, err := e.profiles.Edit(ctx, e.userID, to, map[string][]trackerprofile.TermInput{
+	if _, err := e.profiles.Edit(ctx, to, map[string][]trackerprofile.TermInput{
 		trackerprofile.AxisCategory: {{ID: 2, Name: "Seriados"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.profiles.Import(ctx, e.userID, to, doc, nil)
+	res, err := e.profiles.Import(ctx, to, doc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if it := res.Plan.Items[trackerprofile.AxisCategory][1]; it.Status != trackerprofile.StatusProtected {
 		t.Errorf("category 2 in import = %+v, want protected (state changed since preview)", it)
 	}
-	got, _ := e.profiles.Get(ctx, e.userID, to)
+	got, _ := e.profiles.Get(ctx, to)
 	for _, tm := range got.Taxonomy[trackerprofile.AxisCategory] {
 		if tm.ID == 2 && (tm.Name != "Seriados" || tm.Origin != trackerprofile.OriginManual) {
 			t.Errorf("manual adjustment was overwritten: %+v", tm)
@@ -201,7 +198,7 @@ func TestImport_RespectsManualOnLockedState(t *testing.T) {
 	}
 
 	// When requesting, overwrites.
-	res, err = e.profiles.Import(ctx, e.userID, to, doc, map[trackerprofile.OverwriteKey]bool{{Axis: trackerprofile.AxisCategory, ID: 2}: true})
+	res, err = e.profiles.Import(ctx, to, doc, map[trackerprofile.OverwriteKey]bool{{Axis: trackerprofile.AxisCategory, ID: 2}: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +230,7 @@ func TestImport_ConcurrentDoesNotLoseWrites(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := e.profiles.Import(ctx, e.userID, id, doc, nil)
+			_, err := e.profiles.Import(ctx, id, doc, nil)
 			errs <- err
 		}()
 	}
@@ -244,7 +241,7 @@ func TestImport_ConcurrentDoesNotLoseWrites(t *testing.T) {
 			t.Errorf("concurrent import: %v", err)
 		}
 	}
-	p, _ := e.profiles.Get(ctx, e.userID, id)
+	p, _ := e.profiles.Get(ctx, id)
 	if got := len(p.Taxonomy[trackerprofile.AxisType]); got != n {
 		t.Errorf("types after %d concurrent imports = %d (%v), want %d — some write was lost", n, got, ids(p.Taxonomy[trackerprofile.AxisType]), n)
 	}
@@ -269,13 +266,13 @@ func TestImport_FamilyIncompatibleWithTracker(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ve *trackerprofile.ValidationError
-	if _, err := e.profiles.PreviewImport(ctx, e.userID, id, doc, nil); !errors.As(err, &ve) || ve.ErrorCode() != trackerprofile.CodeIncompatibleFamily {
+	if _, err := e.profiles.PreviewImport(ctx, id, doc, nil); !errors.As(err, &ve) || ve.ErrorCode() != trackerprofile.CodeIncompatibleFamily {
 		t.Errorf("preview: %v, want incompatible_family", err)
 	}
-	if _, err := e.profiles.Import(ctx, e.userID, id, doc, nil); !errors.As(err, &ve) || ve.ErrorCode() != trackerprofile.CodeIncompatibleFamily {
+	if _, err := e.profiles.Import(ctx, id, doc, nil); !errors.As(err, &ve) || ve.ErrorCode() != trackerprofile.CodeIncompatibleFamily {
 		t.Errorf("import: %v, want incompatible_family", err)
 	}
-	p, _ := e.profiles.Get(ctx, e.userID, id)
+	p, _ := e.profiles.Get(ctx, id)
 	for _, tm := range p.Taxonomy[trackerprofile.AxisType] {
 		if tm.ID == 9 {
 			t.Error("incompatible family import saved anyway")
@@ -283,26 +280,21 @@ func TestImport_FamilyIncompatibleWithTracker(t *testing.T) {
 	}
 }
 
-// Ownership: import on another operator's tracker does not exist, and a malformed id is 404, not a cast error.
-func TestImport_OwnershipAndMalformedId(t *testing.T) {
+// Import on a tracker that does not exist, or with a malformed id, is 404, not a cast error.
+func TestImport_NotFoundAndMalformedId(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	id := e.newTracker(t, "My")
 	raw, _ := json.Marshal(map[string]any{
 		"format": trackerprofile.FormatID, "site": map[string]any{"name": "x"}, "family": "unit3d", "schema_version": 1,
 		"taxonomy": map[string]any{"type": []any{map[string]any{"id": 9, "name": "New"}}},
 	})
 	doc, _ := trackerprofile.ParseDocument(raw)
-	const foreign = "00000000-0000-0000-0000-000000000000"
-	if _, err := e.profiles.Import(ctx, foreign, id, doc, nil); !errors.Is(err, trackerprofile.ErrNotFound) {
-		t.Errorf("import by another operator: %v", err)
-	}
-	if _, err := e.profiles.PreviewImport(ctx, foreign, id, doc, nil); !errors.Is(err, trackerprofile.ErrNotFound) {
-		t.Errorf("preview by another operator: %v", err)
-	}
-	for _, bad := range []string{foreign, "not-a-uuid"} {
-		if _, err := e.profiles.Import(ctx, e.userID, bad, doc, nil); !errors.Is(err, trackerprofile.ErrNotFound) {
-			t.Errorf("import em %q: %v", bad, err)
+	for _, bad := range []string{"00000000-0000-0000-0000-000000000000", "not-a-uuid"} {
+		if _, err := e.profiles.Import(ctx, bad, doc, nil); !errors.Is(err, trackerprofile.ErrNotFound) {
+			t.Errorf("import on %q: %v", bad, err)
+		}
+		if _, err := e.profiles.PreviewImport(ctx, bad, doc, nil); !errors.Is(err, trackerprofile.ErrNotFound) {
+			t.Errorf("preview on %q: %v", bad, err)
 		}
 	}
 }

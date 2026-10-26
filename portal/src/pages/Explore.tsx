@@ -14,6 +14,7 @@ import { fmtBytes, TRANSFER } from "../components/ui";
 import { Spinner, toast } from "../actions";
 import { useOtherVersionsPrompt } from "../components/OtherVersionsDialog";
 import { useT, type TFn } from "../i18n";
+import { canManageTrackers } from "../lib/tracker-admin";
 
 // Explore (#12/#13, catalog redesign): the Control Plane browses the UNIT3D tracker + enriches
 // each item with TMDB (movie/series), IGDB (game) or Open Library (book/audiobook) —
@@ -247,11 +248,17 @@ export function Explore({ can, onLogout }: { can: (perm: string) => boolean; onL
 
       {integ.length === 0 ? (
         <div className="max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-sm text-slate-400">
-          {t("explore.explore.noIntegration")}{" "}
-          <a href="#/settings" className="text-emerald-400 hover:underline">
-            {t("explore.explore.trackersLink")}
-          </a>
-          .
+          {canManageTrackers(can) ? (
+            <>
+              {t("explore.explore.noIntegration")}{" "}
+              <a href="#/settings" className="text-emerald-400 hover:underline">
+                {t("explore.explore.trackersLink")}
+              </a>
+              .
+            </>
+          ) : (
+            t("explore.explore.noIntegrationAskAdmin")
+          )}
         </div>
       ) : (
         <>
